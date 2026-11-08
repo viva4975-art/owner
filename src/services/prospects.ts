@@ -46,6 +46,8 @@ export interface Prospect {
   created_at: Date;
   version: number;
   activity_count: number;
+  /** Aktivitäten ohne die aus dem Import übernommenen Notizen */
+  contact_count: number;
   last_kind: ActivityKind | null;
   last_at: Date | null;
   last_note: string | null;
@@ -69,11 +71,18 @@ export const dueState = (p: Pick<Prospect, 'followup_on' | 'status'>, today = to
         ? 'today'
         : null;
 
+/** Kennzeichen am Ersteller von Notizen, die der Import anlegt. */
+export const IMPORT_ACTOR = ' (Import)';
+
 export async function listProspects(sql: Sql): Promise<Prospect[]> {
   return sql<Prospect[]>`
-    select p.*, coalesce(a.n, 0)::int as activity_count, l.kind as last_kind, l.at as last_at, l.note as last_note
+    select p.*, coalesce(a.n, 0)::int as activity_count, coalesce(a.contacts, 0)::int as contact_count,
+           l.kind as last_kind, l.at as last_at, l.note as last_note
       from app.prospects p
-      left join (select prospect_id, count(*) as n from app.prospect_activities group by prospect_id) a
+      left join (select prospect_id, count(*) as n,
+                        -- Notizen aus dem Import zählen nicht als Kontakt („ohne Aktivität“)
+                        count(*) filter (where created_by not like ${'%' + IMPORT_ACTOR}) as contacts
+                   from app.prospect_activities group by prospect_id) a
              on a.prospect_id = p.id
       left join lateral (select kind, at, note from app.prospect_activities x
                           where x.prospect_id = p.id order by at desc, created_at desc limit 1) l on true
@@ -81,7 +90,9 @@ export async function listProspects(sql: Sql): Promise<Prospect[]> {
 }
 
 export async function getProspect(sql: Sql, id: string) {
-  const [p] = await sql<Prospect[]>`select *, 0 as activity_count from app.prospects where id = ${id}`;
+  const [p] = await sql<
+    Prospect[]
+  >`select *, 0 as activity_count, 0 as contact_count from app.prospects where id = ${id}`;
   if (!p) return undefined;
   const acts = await sql<Activity[]>`
     select id, kind, at, note, created_by from app.prospect_activities
@@ -253,4 +264,215 @@ export async function importLegacyProspects(sql: Sql, rows: Record<string, unkno
     }
   }
   return { n, acts };
+}
+
+// ---------------------------------------------------------------------------
+// Import (Ahmed 08.11.): CSV/Excel – auch die eigene Export-Datei. Spalten über die Kopfzeile, feste IDs aus
+// Firma + Ort → erneut importieren legt nichts doppelt an; vorhandene nur mit „aktualisieren“.
+// ---------------------------------------------------------------------------
+
+type ImportField =
+  | 'company'
+  | 'contact'
+  | 'phone'
+  | 'email'
+  | 'city'
+  | 'object'
+  | 'source'
+  | 'status'
+  | 'followup'
+  | 'reason'
+  | 'note';
+
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+/** Kopfzeilen-Namen → Feld (genaue Treffer nach Normalisierung). */
+const HEADERS: Record<string, ImportField> = {
+  firma: 'company',
+  firmenname: 'company',
+  unternehmen: 'company',
+  kunde: 'company',
+  name: 'company',
+  ansprechpartner: 'contact',
+  kontakt: 'contact',
+  kontaktperson: 'contact',
+  telefon: 'phone',
+  tel: 'phone',
+  telefonnummer: 'phone',
+  handy: 'phone',
+  mobil: 'phone',
+  email: 'email',
+  mail: 'email',
+  ort: 'city',
+  stadt: 'city',
+  plzort: 'city',
+  objekt: 'object',
+  quelle: 'source',
+  status: 'status',
+  wiedervorlage: 'followup',
+  wiedervorlageam: 'followup',
+  grundwiedervorlage: 'reason',
+  wiedervorlagegrund: 'reason',
+  notiz: 'note',
+  bemerkung: 'note',
+  letztenotiz: 'note',
+  kommentar: 'note',
+};
+
+/** Spalten aus unserem eigenen Export, die beim Import bewusst nicht übernommen werden. */
+const EXPORT_ONLY = new Set(['aktivitaten', 'letzteaktivitat', 'letzteaktivitatam', 'angelegtam']);
+
+/** Status aus Text („Starkes Interesse“, „interesse_stark“, „kalt“ …). Unbekannt/leer → Erstkontakt. */
+export function statusFromText(t: string): ProspectStatus | null {
+  const n = norm(t);
+  if (!n || n === 'kalt' || n === 'neu') return 'erstkontakt';
+  for (const [k, v] of Object.entries(PROSPECT_STATUS))
+    if (norm(k) === n || norm(v.label) === n) return k as ProspectStatus;
+  return null;
+}
+
+/** Datum TT.MM.JJJJ, JJJJ-MM-TT oder Excel-Seriennummer → JJJJ-MM-TT; leer → null; ungültig → undefined. */
+export function dateFromText(t: string): string | null | undefined {
+  const s = t.trim();
+  if (!s) return null;
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/.exec(s);
+  if (m) {
+    const y = m[3]!.length === 2 ? `20${m[3]}` : m[3]!;
+    return `${y}-${m[2]!.padStart(2, '0')}-${m[1]!.padStart(2, '0')}`;
+  }
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(s)) * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+  return undefined;
+}
+
+export interface ProspectImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: { row: number; text: string }[];
+  unknownColumns: string[];
+}
+
+export async function importProspects(
+  sql: Sql,
+  rows: string[][],
+  opts: { update: boolean },
+  actor: string,
+): Promise<ProspectImportResult> {
+  const hi = rows.findIndex((r) => r.some((c) => HEADERS[norm(c)] === 'company'));
+  if (hi < 0) throw new BusinessError('Keine Kopfzeile mit „Firma“ gefunden');
+  const head = rows[hi]!;
+  const col = new Map<ImportField, number>();
+  const unknown: string[] = [];
+  head.forEach((h, i) => {
+    const f = HEADERS[norm(h)];
+    if (f && !col.has(f)) col.set(f, i);
+    else if (h.trim() && !f && !EXPORT_ONLY.has(norm(h))) unknown.push(h.trim());
+  });
+  const get = (r: string[], f: ImportField) => {
+    const i = col.get(f);
+    return i == null ? '' : (r[i] ?? '').trim();
+  };
+  const res: ProspectImportResult = {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    errors: [],
+    unknownColumns: unknown,
+  };
+  const seen = new Set<string>();
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i]!;
+    if (r.every((c) => !c.trim())) continue;
+    const line = i + 1;
+    const company = get(r, 'company');
+    if (!company) {
+      res.errors.push({ row: line, text: 'Firma fehlt' });
+      continue;
+    }
+    const statusText = get(r, 'status');
+    const status = statusFromText(statusText);
+    if (!status) {
+      res.errors.push({ row: line, text: `Status „${statusText}“ unbekannt` });
+      continue;
+    }
+    const followupOn = dateFromText(get(r, 'followup'));
+    if (followupOn === undefined) {
+      res.errors.push({ row: line, text: `Wiedervorlage „${get(r, 'followup')}“ ist kein Datum` });
+      continue;
+    }
+    const city = get(r, 'city');
+    const key = `${company.toLowerCase()}|${city.toLowerCase()}`;
+    if (seen.has(key)) {
+      res.skipped++;
+      continue;
+    }
+    seen.add(key);
+    const [ex] = await sql<{ id: string; version: number }[]>`
+      select id, version from app.prospects
+       where lower(company) = lower(${company}) and lower(coalesce(city, '')) = lower(${city}) limit 1`;
+    if (ex && !opts.update) {
+      res.skipped++;
+      continue;
+    }
+    const id = ex?.id ?? uuidOf(`akquise-import:${key}`);
+    // Aktualisieren: leere Zellen überschreiben nichts (Spalte fehlt oder Feld leer → bisheriger Wert bleibt)
+    const [old] = ex
+      ? await sql<Record<string, string | null>[]>`
+          select contact, phone, email, source, object, status, followup_on::text as followup_on, followup_reason
+            from app.prospects where id = ${ex.id}`
+      : [];
+    const keep = (f: ImportField, o: string | null | undefined) => get(r, f) || o || null;
+    const input: ProspectInput = {
+      company,
+      contact: keep('contact', old?.contact),
+      phone: keep('phone', old?.phone),
+      email: keep('email', old?.email),
+      city: city || null,
+      source: keep('source', old?.source) ?? 'Import',
+      object: keep('object', old?.object),
+      status: statusText || !old ? status : (old.status as string),
+      followupOn: followupOn ?? old?.followup_on ?? null,
+      followupReason: keep('reason', old?.followup_reason),
+      expectedVersion: null,
+    };
+    try {
+      await saveProspect(sql, id, input, actor);
+      const note = get(r, 'note');
+      if (note && !ex)
+        await addActivity(
+          sql,
+          id,
+          {
+            id: uuidOf(`akquise-import:${key}:notiz`),
+            kind: 'notiz',
+            at: new Date()
+              .toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' })
+              .slice(0, 16)
+              .replace(' ', 'T'),
+            note: `Import: ${note}`,
+            newStatus: null,
+            followupOn: null,
+          },
+          `${actor}${IMPORT_ACTOR}`,
+        );
+      if (ex) res.updated++;
+      else res.created++;
+    } catch (e) {
+      res.errors.push({ row: line, text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'import', 'prospect', null,
+                    ${sql.json({ neu: res.created, aktualisiert: res.updated, uebersprungen: res.skipped, fehler: res.errors.length })})`;
+  return res;
 }

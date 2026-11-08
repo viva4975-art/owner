@@ -548,7 +548,7 @@ summary.gear{list-style:none;cursor:pointer}summary.gear::-webkit-details-marker
 .ak-stage.ok{background:var(--ok-50);border-color:#bfe3cd;color:var(--ok)}
 .ak-arrow{color:var(--faint);font-size:12px}
 .ak-funnel-f{display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line-2);font-size:13px}
-.pill.pill-err{border-color:var(--err);color:var(--err)}
+.pill.pill-err{border-color:var(--err);color:var(--err)}.pill.pill-warn{border-color:var(--warn);color:var(--warn)}
 .list-cards{flex-direction:column}
 .ak-over{color:var(--err);font-weight:600}.ak-today{color:var(--warn);font-weight:600}
 .ak-types{display:grid;grid-template-columns:repeat(3,1fr);margin-bottom:6px}.ak-types>label>span{display:block;text-align:center}

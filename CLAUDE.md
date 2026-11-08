@@ -5250,3 +5250,13 @@ Testadresse.
   BOM (Excel), Formel-Schutz wie die übrigen CSV-Exporte (`toCsv`). Recht wie die Akquise-Seite.
   Nachtrag (Ahmed): Kachel **„Ohne Aktivität“** (Filter `ohne`) = offene Leads (nicht gewonnen/verloren/kein Interesse) ohne
   eine einzige Aktivität; in der Liste gelbes Schild „noch keine Aktivität“. Der CSV-Export übernimmt auch diesen Filter.
+- 2026-11-08: **Akquise importieren** (Ahmed: „Kachel sehe ich nicht“ – lokal da, Server hatte das Update noch nicht;
+  „Import auch möglich machen“): Kunden → Akquise → „Importieren“ (aufklappbar, `/akquise/import`, `importProspects` in
+  `prospects.ts`): CSV oder Excel, Kopfzeile mit **Firma** (Pflicht), Ansprechpartner, Telefon, E-Mail, Ort, Objekt,
+  Quelle, Status (Text wie „Starkes Interesse“, leer/„kalt“ = Erstkontakt), Wiedervorlage (TT.MM.JJJJ, JJJJ-MM-TT oder
+  Excel-Datum), Grund Wiedervorlage, Notiz (→ Notiz-Aktivität „Import: …“). Die eigene Export-Datei passt direkt.
+  Gleiche Firma + Ort = vorhanden → übersprungen (feste ID, erneut importieren legt nichts doppelt an); Häkchen
+  „vorhandene aktualisieren“ (leere Zellen ändern nichts). Fehlerzeilen (Firma fehlt, Status/Datum unbekannt) und
+  nicht erkannte Spalten stehen in der Meldung, der Rest wird übernommen. „Ohne Aktivität“ jetzt auch als Filter-Chip;
+  Notizen aus dem Import zählen dabei nicht als Kontakt (`contact_count`, Ersteller „… (Import)“), Liste und CSV zeigen
+  die Zahl der echten Aktivitäten. Test `prospects-import.db.test.ts`, `e2e:kasse` 69.

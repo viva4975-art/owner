@@ -11,11 +11,14 @@ import {
   deleteProspect,
   dueState,
   getProspect,
+  importProspects,
   isClosed,
   listProspects,
   saveProspect,
 } from '../services/prospects.js';
 import { toCsv } from '../services/reports.js';
+import { BusinessError } from '../services/errors.js';
+import { SheetError, readSheet } from '../domain/sheet/sheet.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { dateDe } from './layout.js';
@@ -28,7 +31,7 @@ const dtDe = (d: Date) =>
   d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 
 /** Offener Lead ohne eine einzige Aktivität (Ahmed 08.11.: „die ohne Aktivität direkt sehen“). */
-const noActivity = (p: Prospect) => p.activity_count === 0 && !isClosed(p.status);
+const noActivity = (p: Prospect) => p.contact_count === 0 && !isClosed(p.status);
 const matchFilter = (p: Prospect, f: string, isDue: (p: Prospect) => boolean) =>
   f === 'due' ? isDue(p) : f === 'ohne' ? noActivity(p) : f ? p.status === f : true;
 
@@ -81,7 +84,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         PROSPECT_STATUS[p.status]?.label ?? p.status,
         p.followup_on ? dateDe(p.followup_on) : '',
         p.followup_reason ?? '',
-        p.activity_count,
+        p.contact_count,
         p.last_kind ? ACTIVITY_KIND[p.last_kind] : '',
         p.last_at ? dtDe(p.last_at) : '',
         (p.last_note ?? '').replace(/\s+/g, ' ').trim(),
@@ -92,6 +95,37 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="akquise_${today}.csv"`,
       'Cache-Control': 'no-store',
+    });
+  });
+
+  app.post('/akquise/import', async (c) => {
+    const b = await c.req.parseBody();
+    const file = b.datei;
+    if (!(file instanceof File) || !file.size)
+      throw new BusinessError('Bitte eine CSV- oder Excel-Datei wählen');
+    if (file.size > 10 * 1024 * 1024) throw new BusinessError('Datei zu groß (max. 10 MB)');
+    let rows: string[][];
+    try {
+      rows = readSheet(new Uint8Array(await file.arrayBuffer())).rows;
+    } catch (e) {
+      if (e instanceof SheetError) throw new BusinessError(e.message);
+      throw e;
+    }
+    const r = await importProspects(sql, rows, { update: b.aktualisieren === '1' }, c.get('actor'));
+    const parts = [
+      `${r.created} neu`,
+      r.updated ? `${r.updated} aktualisiert` : '',
+      r.skipped ? `${r.skipped} schon vorhanden (übersprungen)` : '',
+    ].filter(Boolean);
+    const errs = r.errors.length
+      ? ` · ${r.errors.length} Zeile(n) nicht übernommen: ${r.errors
+          .slice(0, 8)
+          .map((e) => `Zeile ${e.row}: ${e.text}`)
+          .join('; ')}${r.errors.length > 8 ? ' …' : ''}`
+      : '';
+    const unk = r.unknownColumns.length ? ` · nicht übernommene Spalten: ${r.unknownColumns.join(', ')}` : '';
+    return back(c, '/akquise', {
+      [r.errors.length ? 'fehler' : 'ok']: `Import: ${parts.join(', ')}${errs}${unk}`,
     });
   });
 
@@ -155,6 +189,9 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
           <div class="acts">
+            <a class="btn sec" href="/akquise?import=1#import">
+              Importieren
+            </a>
             <a class="btn sec" href={link({ filter: f }).replace('/akquise', '/akquise.csv')}>
               CSV exportieren
             </a>
@@ -179,6 +216,28 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
             placeholder="Suche nach Firma, Ansprechpartner, Ort…"
           />
         </form>
+        <details class="card ak-import" id="import" open={c.req.query('import') === '1'}>
+          <summary>
+            <b>Importieren (CSV oder Excel)</b>
+          </summary>
+          <form method="post" action="/akquise/import" enctype="multipart/form-data" data-noback>
+            <p class="small mut" style="margin-top:6px">
+              Erste Zeile = Spaltenüberschriften. Erkannt werden: <b>Firma</b> (Pflicht), Ansprechpartner,
+              Telefon, E-Mail, Ort, Objekt, Quelle, Status (z. B. Erstkontakt, Leichtes/Starkes Interesse,
+              Kein Interesse, Gewonnen, Verloren – leer = Erstkontakt), Wiedervorlage (TT.MM.JJJJ), Grund
+              Wiedervorlage, Notiz. Die Datei aus „CSV exportieren“ passt direkt. Gleiche Firma + Ort wird
+              nicht doppelt angelegt.
+            </p>
+            <input type="file" name="datei" accept=".csv,.xlsx,text/csv" required aria-label="Datei" />
+            <label class="chk" style="margin-top:8px">
+              <input type="checkbox" name="aktualisieren" value="1" /> vorhandene Einträge mit den Angaben aus
+              der Datei aktualisieren (leere Zellen ändern nichts)
+            </label>
+            <div class="actions" style="margin-bottom:0">
+              <button class="btn">Importieren</button>
+            </div>
+          </form>
+        </details>
         <div class="ak-funnel">
           <div class="ak-funnel-h">
             <span>Pipeline · Funnel</span>
@@ -217,6 +276,12 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
           >
             Heute / Überfällig <span>{overdue + todayN}</span>
           </a>
+          <a
+            class={`pill${f === 'ohne' ? ' on' : ''}${noAct ? ' pill-warn' : ''}`}
+            href={link({ filter: 'ohne' })}
+          >
+            Ohne Aktivität <span>{noAct}</span>
+          </a>
           {STATUSES.map((s) => (
             <a class={`pill${f === s ? ' on' : ''}`} href={link({ filter: s })}>
               {PROSPECT_STATUS[s].label} <span>{n(s)}</span>
@@ -245,9 +310,9 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
                     {p.phone && <span>{p.phone}</span>}
                     {p.object && <span>{p.object}</span>}
                     {noActivity(p) && <span class="badge warn">noch keine Aktivität</span>}
-                    {p.activity_count > 0 && (
+                    {p.contact_count > 0 && (
                       <span>
-                        {p.activity_count} Aktivität{p.activity_count === 1 ? '' : 'en'}
+                        {p.contact_count} Aktivität{p.contact_count === 1 ? '' : 'en'}
                       </span>
                     )}
                     {p.followup_on && (

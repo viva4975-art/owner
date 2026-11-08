@@ -209,6 +209,13 @@ export const CLIENT_JS = String.raw`
   }
   openHash();
   window.addEventListener('hashchange', openHash);
+  // Menüeintrag mit Sprungmarke (z. B. „Dokument erstellen ▾“): Ziel aufklappen, Menü schließen – auch beim zweiten Klick
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href^="#"]');
+    if (!a || a.getAttribute('href').length < 2) return;
+    var dd = a.closest('details.dd'); if (dd) dd.open = false;
+    setTimeout(function () { openHash(); var t = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start' }); }, 0);
+  });
 
   // ---- „Speichern & zurück“ (Ahmed 22.10.): neben dem einen Speichern-Knopf im Formularfuß; Ziel = Zurück-Knopf oben.
   // Der Server leitet nach erfolgreichem Speichern dorthin weiter (?_zurueck=…), bei Fehlern bleibt das Formular offen.
@@ -294,6 +301,87 @@ export const CLIENT_JS = String.raw`
   document.addEventListener('change', function (e) {
     var el = e.target;
     if (el && el.matches && el.matches('select[data-autosubmit]') && el.form) el.form.submit();
+  });
+  // ---- Filterzeilen einheitlich (Ahmed 08.11.): Auswahl filtert sofort, Suche mit Enter, „Filter zurücksetzen“ ----
+  // Gilt für GET-Formulare mit einem Knopf „Filtern/Anzeigen/Aktualisieren/Suchen“ (keine Export-Formulare).
+  // Mit Datumsfeldern bleibt der Knopf sichtbar (sonst würde schon beim ersten Datum neu geladen).
+  var FILTER_BTN = /^(Filtern|Anzeigen|Aktualisieren|Suchen|Filter anwenden)$/;
+  Array.prototype.forEach.call(document.querySelectorAll('form'), function (f) {
+    if ((f.getAttribute('method') || 'get').toLowerCase() !== 'get' || f.target || f.hasAttribute('data-export')) return;
+    if (/\.(pdf|csv|xlsx)$/.test(f.getAttribute('action') || '') || f.querySelector('[name=pdf],[name=format],[name=export],#q')) return;
+    var btns = Array.prototype.filter.call(f.querySelectorAll('button:not([type=button]),input[type=submit]'), function (b) {
+      return FILTER_BTN.test((b.textContent || b.value || '').trim());
+    });
+    var isFilter = btns.length > 0 || f.classList.contains('ls-bar');
+    if (!isFilter || f.hasAttribute('data-noauto')) return;
+    var hasDate = !!f.querySelector('input[type=date],input[type=datetime-local],input[type=time]');
+    f.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.matches || t.form !== f && !f.contains(t)) return;
+      if (t.matches('input[type=text],input[type=search],input:not([type]),input[type=number],input[type=date],input[type=datetime-local],input[type=time],textarea')) return;
+      if (t.hasAttribute('onchange') || t.hasAttribute('data-autosubmit') || t.hasAttribute('data-noauto')) return;
+      if (t.type === 'month' && hasDate) return;
+      f.submit();
+    });
+    // Auswahl-Chips (mehrere Objekte): × entfernt und filtert sofort neu
+    f.addEventListener('click', function (e) {
+      if (e.target && e.target.closest && e.target.closest('[data-multi] .chip button')) setTimeout(function () { f.submit(); }, 0);
+    });
+    if (!hasDate) btns.forEach(function (b) { b.classList.add('vh'); b.setAttribute('tabindex', '-1'); });
+    // „Filter zurücksetzen“: nur sichtbare Filterfelder leeren, versteckte (Reiter, Ansicht) bleiben
+    var txt = (f.textContent || '') + ((f.parentElement && f.parentElement.textContent) || '');
+    if (/zurücksetzen/i.test(txt)) return;
+    var sp = new URLSearchParams(location.search), keep = new URLSearchParams(), active = false;
+    var hidden = {};
+    Array.prototype.forEach.call(f.querySelectorAll('input[type=hidden][name]'), function (h) { hidden[h.name] = 1; });
+    sp.forEach(function (v, k) {
+      if (k === 'seite' || k === 'sort' || k === 'dir') return;
+      if (hidden[k]) { keep.append(k, v); return; }
+      var el = f.querySelector('[name="' + k.replace(/"/g, '') + '"]');
+      if (el && v !== '' && !(el.tagName === 'SELECT' && el.options.length && el.options[0].value === v)) active = true;
+    });
+    if (!active) return;
+    var a = document.createElement('a');
+    a.className = 'btn ghost sm filter-reset';
+    a.textContent = 'Filter zurücksetzen';
+    var ks = keep.toString();
+    a.href = (f.getAttribute('action') || location.pathname) + (ks ? '?' + ks : '');
+    f.appendChild(a);
+  });
+  // ---- Pflichtfelder einheitlich mit * (Ahmed 08.11.) ----
+  function reqMark(el) {
+    if (el.type === 'hidden' || el.type === 'radio' || el.closest('[hidden]')) return;
+    var lab = (el.id && document.querySelector('label[for="' + el.id.replace(/"/g, '') + '"]')) || el.closest('label');
+    if (!lab || lab.querySelector('.req') || /\*\s*$/.test(lab.textContent || '')) return;
+    if (lab.contains(el) && el.type !== 'checkbox') return; // Feld in der Beschriftung (Tabellen-Kopf o. ä.)
+    var m = document.createElement('span'); m.className = 'req'; m.setAttribute('aria-hidden', 'true'); m.textContent = ' *';
+    lab.appendChild(m);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[required],select[required],textarea[required]'), reqMark);
+
+  // ---- Warnung bei ungespeicherten Änderungen (Ahmed 08.11.) ----
+  // Nur echte Eingaben in Formularen, die speichern (POST); nicht Filter, nicht Auswahl-Häkchen in Listen, nicht beim Speichern.
+  var dirty = false, leaving = false;
+  function editable(t) {
+    var f = t && t.form;
+    if (!f || (f.getAttribute('method') || 'get').toLowerCase() !== 'post' || f.hasAttribute('data-nodirty')) return false;
+    if (t.type === 'hidden' || t.type === 'file' || t.type === 'submit' || t.type === 'button') return false;
+    if ((t.type === 'checkbox' || t.type === 'radio') && (t.closest('table,.bs-sel,.tx-row,.chips') || /^(ids|sel|tx|id)$/.test(t.name || ''))) return false;
+    if (!t.name) return false;
+    return true;
+  }
+  ['input', 'change'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (e.isTrusted && editable(e.target)) dirty = true; }, true);
+  });
+  document.addEventListener('submit', function () { leaving = true; dirty = false; }, true);
+  var nativeSubmit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function () { leaving = true; return nativeSubmit.call(this); };
+  window.addEventListener('pageshow', function () { leaving = false; dirty = false; });
+  window.addEventListener('beforeunload', function (e) {
+    if (!dirty || leaving) return;
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
   });
   // ---- Rückfrage per data-confirm (Knopf oder Link) ----
   // Capture-Phase: vor allen anderen Klick-Behandlungen; abgebrochen = kein Absenden.
@@ -643,17 +731,40 @@ export const CLIENT_JS = String.raw`
         });
       });
     }
+    // Listen mit Seitenzahlen: der Server sortiert alle Einträge (?sort=&dir=, zurück auf Seite 1)
+    var server = table.hasAttribute('data-sort-server');
+    var norm = function (t) { return (t || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, ''); };
+    var cur = new URLSearchParams(location.search);
     Array.prototype.forEach.call(head.cells, function (th, i) {
       if (!th.textContent.trim() || th.querySelector('input,button,select')) return;
       th.classList.add('sortable');
       th.title = 'Sortieren';
-      th.addEventListener('click', function () {
+      // per Tastatur erreichbar (Tab, Enter/Leertaste), für Vorleseprogramme mit aria-sort
+      th.tabIndex = 0;
+      th.setAttribute('aria-sort', 'none');
+      var label = (th.textContent || '').trim();
+      if (server && cur.get('sort') && norm(cur.get('sort')) === norm(label)) {
+        th.classList.add(cur.get('dir') === 'desc' ? 'desc' : 'asc');
+        th.setAttribute('aria-sort', cur.get('dir') === 'desc' ? 'descending' : 'ascending');
+      }
+      function go() {
         var dir = th.classList.contains('asc') ? -1 : 1;
+        if (server) {
+          var u = new URL(location.href);
+          u.searchParams.set('sort', label); u.searchParams.set('dir', dir > 0 ? 'asc' : 'desc'); u.searchParams.delete('seite');
+          location.assign(u.pathname + u.search);
+          return;
+        }
         apply(i, dir);
+        Array.prototype.forEach.call(head.cells, function (c) { if (c.hasAttribute('aria-sort')) c.setAttribute('aria-sort', 'none'); });
+        th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending');
         try { ss && ss.setItem(key, JSON.stringify([i, dir])); } catch (e) {}
-      });
+      }
+      th.addEventListener('click', go);
+      th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
-    try { var saved = ss && JSON.parse(ss.getItem(key) || 'null'); if (saved && saved[0] < cols) apply(saved[0], saved[1]); } catch (e) {}
+    if (server) return;
+    try { var saved = ss && JSON.parse(ss.getItem(key) || 'null'); if (saved && saved[0] < cols) { apply(saved[0], saved[1]); head.cells[saved[0]].setAttribute('aria-sort', saved[1] > 0 ? 'ascending' : 'descending'); } } catch (e) {}
   }
   Array.prototype.forEach.call(document.querySelectorAll('table'), sortable);
 

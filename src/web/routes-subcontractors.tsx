@@ -67,6 +67,7 @@ import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js'
 import { arr, centsToInput, str } from './forms.js';
 import { CSS as MOBILE_CSS } from './m/routes-mobile.js';
 import { HandoverTable } from './routes-handovers.js';
+import { sortListByRequest } from '../domain/export-sort.js';
 import { PageHead, Pager, Tabs, dateDe, euro, type Tab, anz } from './layout.js';
 import { FileArea } from './files.js';
 import {
@@ -274,6 +275,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         filter,
         q: search || null,
         inaktiv: showInactive ? '1' : null,
+        sort: q.sort || null,
+        dir: q.sort ? q.dir || null : null,
         ...over,
       };
       for (const [k, v] of Object.entries(all)) if (v) p.set(k, v);
@@ -287,9 +290,19 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       inaktiv: ['muted', 'Inaktiv'],
     };
     const PER_PAGE = 25;
-    const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+    const sorted = sortListByRequest(rows, {
+      Firma: (s) => s.name,
+      Kontakt: (s) => s.contact_name ?? s.phone ?? s.email,
+      Nachweise: (s) => {
+        const r = comp.get(s.id);
+        return r?.requiredTotal ? r.requiredOk / r.requiredTotal : null;
+      },
+      'Offene Bestell.': (s) => orders.get(s.id) ?? 0,
+      Status: (s) => rank[statusOf(s)] ?? 9,
+    });
+    const pages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
-    const shown = rows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const shown = sorted.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
     const inactiveCount = suppliers.filter((s) => !s.active).length;
     const TABS: [Overall | null, string, number][] = nuMode
       ? [
@@ -383,7 +396,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         </form>
         <div class="card" style="padding:0">
           <div class="tbl stack-m">
-            <table class="sup-tbl sup2">
+            <table class="sup-tbl sup2" data-sort-server>
               <thead>
                 <tr>
                   <th>Firma</th>

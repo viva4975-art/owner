@@ -1359,15 +1359,22 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     Alle als ZIP herunterladen
                   </a>
                 )}
-                <a class="btn sm sec" href={`/brief?an=kunde&id=${cust.id}`}>
-                  Freien Brief schreiben
-                </a>
-                <a class="btn sm sec" href={`/kunden/${cust.id}/vertrag?art=reinigung`}>
-                  Reinigungsvertrag erstellen
-                </a>
-                <a class="btn sm sec" href={`/kunden/${cust.id}/vertrag?art=aue`}>
-                  Arbeitnehmerüberlassungsvertrag erstellen
-                </a>
+                {/* alle Erstellen-Funktionen in einem Menü (Ahmed 08.11.), darunter nur die Ablage-Ordner */}
+                <details class="dd">
+                  <summary class="btn sm">
+                    Dokument erstellen <Icon name="chevron" size={14} />
+                  </summary>
+                  <div class="drop">
+                    <a href={`/brief?an=kunde&id=${cust.id}`}>Freien Brief schreiben</a>
+                    <a href={`/kunden/${cust.id}/vertrag?art=reinigung`}>Reinigungsvertrag</a>
+                    <a href={`/kunden/${cust.id}/vertrag?art=aue`}>Arbeitnehmerüberlassungsvertrag</a>
+                    <a href="#dok-uebersicht">Objekt- und Personalübersicht (PDF)</a>
+                    <a href="#dok-anwesenheit">Anwesenheitsliste</a>
+                    {allowed === null && attSites.length > 0 && (
+                      <a href="#dok-gbu">Wirksamkeitskontrolle eintragen</a>
+                    )}
+                  </div>
+                </details>
                 {files.length > 0 && (
                   <a class="btn sm sec" href={`/kunden/${cust.id}/dokumente/uebertragen`}>
                     Auf Objekte übertragen
@@ -1375,7 +1382,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 )}
                 <DocFoldAll />
               </div>
-              <details class="card doc-cat">
+              <details class="card tool-box" id="dok-uebersicht">
                 <summary>
                   <b>Objekt- und Personalübersicht für den Kunden (PDF)</b>{' '}
                   <span class="mut small">
@@ -1413,7 +1420,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                 </form>
               </details>
               {allowed === null && attSites.length > 0 && (
-                <details class="card doc-cat">
+                <details class="card tool-box" id="dok-gbu">
                   <summary>
                     <b>Gefährdungsbeurteilung: Wirksamkeitskontrolle eintragen</b>{' '}
                     <span class="mut small">
@@ -1461,7 +1468,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                   </form>
                 </details>
               )}
-              <details class="card doc-cat">
+              <details class="card tool-box" id="dok-anwesenheit">
                 <summary>
                   <b>Anwesenheitsliste drucken</b>{' '}
                   <span class="mut small">

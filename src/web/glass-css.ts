@@ -371,6 +371,32 @@ html.glas table.perm input[type=checkbox]{width:18px;height:18px;cursor:pointer}
 html.glas table.perm td.perm-c label{justify-content:center;padding:4px 8px;border-radius:6px}
 /* Lesbarkeit vor Glas: schwebende Listen fast deckend, Hintergrund nur noch als Unschärfe */
 html.glas :is(.drop,.cbx-pop,details.dd>.drop),html.glas .menu-top .appside nav.menu .sub{background:rgba(253,253,254,.96)!important}
+/* ===== Fassung 8: Bedienlogik (Ahmed 08.11.) ===== */
+html.glas .vh{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;border:0!important;white-space:nowrap!important}
+html.glas .req{color:var(--brand,#811d40);font-weight:600}
+html.glas th.sortable:focus-visible,html.glas a.sorth:focus-visible{outline:2px solid var(--brand,#811d40);outline-offset:-2px;border-radius:4px}
+html.glas a.sorth{color:inherit;text-decoration:none;cursor:pointer;white-space:nowrap}
+html.glas a.sorth:hover{color:var(--brand,#811d40)}
+html.glas a.sorth.asc,html.glas a.sorth.desc{color:var(--brand,#811d40);text-decoration:underline;text-underline-offset:4px}
+html.glas .chips.in-status{margin:12px 0 10px}
+html.glas .filter-reset{white-space:nowrap}
+html.glas details.doc-cat.drop-over{outline:2px dashed var(--brand,#811d40);outline-offset:2px;background:#f7edf1}
+html.glas details.doc-cat.drop-over>summary::after{content:'Datei hier ablegen';margin-left:auto;font-size:13px;color:var(--brand,#811d40);font-weight:600}
+html.glas details.more-filters{display:inline-block;position:relative}
+html.glas details.more-filters>summary{list-style:none;cursor:pointer}
+html.glas details.more-filters>summary::-webkit-details-marker{display:none}
+html.glas details.more-filters[open]>.mf-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+html.glas .actstack>details>.act-menu{display:flex;flex-direction:column;padding:4px!important;background:rgba(255,255,255,.7)!important;border-radius:12px!important}
+html.glas .act-menu>a,html.glas .act-menu>form>button{display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:transparent;color:#1d1d1f;font:inherit;font-size:14px;font-weight:500;border-radius:8px;text-decoration:none;cursor:pointer;box-shadow:none;min-height:0;height:auto}
+html.glas .act-menu>a:hover,html.glas .act-menu>form>button:hover{background:rgba(0,0,0,.05);color:var(--brand,#811d40);text-decoration:none}
+html.glas .act-menu>form{margin:0}
+html.glas .act-menu>form>button.quiet{color:#b42318}
+html.glas .issued-flash{align-items:center;justify-content:space-between;flex-wrap:wrap;white-space:normal}
+html.glas .issued-flash form{margin:0}
+html.glas details.tool-box:not([open]){display:none}
+html.glas details.fold-sec>summary{cursor:pointer;padding:2px 0}
+html.glas details.fold-sec[open]>summary{margin-bottom:10px}
+html.glas details.poster-box.fold-sec:not([open]){padding-top:12px;padding-bottom:12px}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

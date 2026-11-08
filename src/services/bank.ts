@@ -132,7 +132,15 @@ export async function importStatement(
 export type TxFilter = BankTx['status'] | 'alle' | 'erledigt';
 export async function listTransactions(
   sql: Sql,
-  f: { status?: TxFilter; account?: string | null; limit?: number; offset?: number } = {},
+  f: {
+    status?: TxFilter;
+    account?: string | null;
+    limit?: number;
+    offset?: number;
+    /** Sortierung der Liste (Klick auf die Spaltenüberschrift); Standard: neueste zuerst */
+    order?: 'datum' | 'betrag' | 'name';
+    dir?: 'asc' | 'desc';
+  } = {},
 ) {
   const st = f.status ?? 'offen';
   const where = sql`${
@@ -141,7 +149,19 @@ export async function listTransactions(
   const [rows, [cnt]] = await Promise.all([
     sql<BankTx[]>`
       select * from app.bank_transactions where ${where}
-       order by booking_date desc, value_date desc nulls last, created_at desc, id limit ${f.limit ?? 500} offset ${f.offset ?? 0}`,
+       order by ${
+         f.order === 'betrag'
+           ? f.dir === 'asc'
+             ? sql`amount_cents asc,`
+             : sql`amount_cents desc,`
+           : f.order === 'name'
+             ? f.dir === 'desc'
+               ? sql`lower(counterparty_name) desc nulls last,`
+               : sql`lower(counterparty_name) asc nulls last,`
+             : f.order === 'datum' && f.dir === 'asc'
+               ? sql`booking_date asc,`
+               : sql``
+       } booking_date desc, value_date desc nulls last, created_at desc, id limit ${f.limit ?? 500} offset ${f.offset ?? 0}`,
     sql<{ n: number }[]>`select count(*)::int as n from app.bank_transactions where ${where}`,
   ]);
   return Object.assign(rows, { total: cnt!.n });

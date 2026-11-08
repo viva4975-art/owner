@@ -42,6 +42,7 @@ export const UPLOADER_JS = String.raw`
     ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('over'); }); });
     zone.addEventListener('drop', function (e) { Array.prototype.forEach.call(e.dataTransfer.files, add); });
     input.addEventListener('change', function () { Array.prototype.forEach.call(input.files, add); input.value = ''; });
+    box._vdAdd = add;
 
     function add(file) {
       var key = 'vd-up:' + link.type + ':' + link.id + ':' + file.name + ':' + file.size + ':' + file.lastModified;
@@ -132,7 +133,41 @@ export const UPLOADER_JS = String.raw`
       }
     }
   }
-  function setupAll() { Array.prototype.forEach.call(document.querySelectorAll('[data-uploader]'), setup); }
+  // Datei direkt auf einen Dokument-Ordner (details.doc-cat) ziehen (Ahmed 08.11.): mit eigenem Upload-Bereich darin
+  // dorthin, sonst (data-cat, z. B. Personalakte) in den Upload-Bereich der Seite mit dieser Kategorie
+  function folder(d) {
+    if (d.dataset.dropReady) return; d.dataset.dropReady = '1';
+    function target() {
+      var inner = d.querySelector('[data-uploader]');
+      if (inner) return inner;
+      if (!d.dataset.cat) return null;
+      return document.querySelector('[data-uploader]');
+    }
+    if (!target()) return;
+    var n = 0;
+    d.addEventListener('dragenter', function (e) { if (!e.dataTransfer || Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return; n++; d.classList.add('drop-over'); });
+    d.addEventListener('dragleave', function () { if (--n <= 0) { n = 0; d.classList.remove('drop-over'); } });
+    d.addEventListener('dragover', function (e) { if (e.defaultPrevented) return; if (Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    d.addEventListener('drop', function (e) {
+      n = 0; d.classList.remove('drop-over');
+      if (e.defaultPrevented) return; // Ablagefeld selbst hat es schon übernommen
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      e.preventDefault();
+      var t = target(); if (!t || !t._vdAdd) return;
+      if (!d.querySelector('[data-uploader]') && d.dataset.cat) {
+        t.dataset.category = d.dataset.cat;
+        var sel = document.getElementById('kategorie');
+        if (sel && sel.value !== d.dataset.cat) { sel.value = d.dataset.cat; sel.dispatchEvent(new Event('change')); }
+      }
+      d.open = true;
+      Array.prototype.forEach.call(files, t._vdAdd);
+    });
+  }
+  function setupAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-uploader]'), setup);
+    Array.prototype.forEach.call(document.querySelectorAll('details.doc-cat'), folder);
+  }
   setupAll();
   // weitere Upload-Bereiche weiter unten auf der Seite (Skript läuft schon beim ersten Bereich)
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupAll);

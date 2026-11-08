@@ -1066,7 +1066,7 @@ export const InvoiceDetail: FC<{
               >
                 <button class="btn danger">Stornieren</button>
               </form>
-              <a class="btn sec" href={`/rechnungen/${inv.id}/korrektur`}>
+              <a class="btn sec" href={`/rechnungen/${inv.id}/verrechnung`}>
                 Rechnungskorrektur
               </a>
             </>

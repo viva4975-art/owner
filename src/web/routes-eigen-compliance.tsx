@@ -248,7 +248,8 @@ export function registerEigenComplianceRoutes({ app, deps, page, back }: Ctx) {
               ? 'warn'
               : 'ok';
           return (
-            <details class="ec-group" open>
+            // nur Gruppen mit Kritisch/Läuft ab offen, bei Suche/Filter alle (Ahmed 08.11.)
+            <details class="ec-group" open={dot !== 'ok' || !!q || !!f}>
               <summary>
                 <span class="ec-cat">{cat}</span>
                 <span class={`ec-dot ${dot}`} />

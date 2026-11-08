@@ -282,41 +282,52 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
               </a>
             ))}
           </span>
-          <select
-            name="gruppe"
-            onchange="this.form.submit()"
-            style="width:auto"
-            data-nosearch
-            aria-label="Einsatzgruppe"
-          >
-            <option value="">Alle Einsatzgruppen</option>
-            {groups.map((g) => (
-              <option value={g || '-'} selected={(g || '-') === group}>
-                {g || 'Keine Einsatzgruppe'}
-              </option>
-            ))}
-          </select>
-          <details class="ma-filter">
-            <summary>{selected.size ? `${selected.size} Mitarbeiter gewählt` : 'Mitarbeiterfilter'}</summary>
-            <div class="pop">
-              <input type="search" placeholder="Mitarbeiterfilter" data-filter-list=".ma-filter label" />
-              <div class="list">
-                {emps.map((e) => (
-                  <label>
-                    <input type="checkbox" name="ma" value={e.id} checked={selected.has(e.id)} />{' '}
-                    {e.last_name}, {e.first_name} ({e.personnel_no})
-                  </label>
-                ))}
-              </div>
-              <div class="foot">
-                <a href={self({}).replace(/([?&])ma=[^&]*/g, '$1')}>Alle Mitarbeiter</a>
-                <button class="btn sm">Anwenden</button>
-              </div>
-            </div>
-          </details>
           <a class="toggle" href={self({ alle: q.alle === '1' ? null : '1' })}>
             <span class={`sw${q.alle === '1' ? ' on' : ''}`} /> auch ohne Einsatz
           </a>
+          {/* seltene Filter eingeklappt, bleiben offen solange einer aktiv ist (Ahmed 08.11.) */}
+          <details class="more-filters" open={!!group || selected.size > 0}>
+            <summary class="btn sec sm">
+              Weitere Filter{group || selected.size ? ` (${(group ? 1 : 0) + (selected.size ? 1 : 0)})` : ''}{' '}
+              ▾
+            </summary>
+            <div class="mf-body">
+              <select
+                name="gruppe"
+                onchange="this.form.submit()"
+                style="width:auto"
+                data-nosearch
+                aria-label="Einsatzgruppe"
+              >
+                <option value="">Alle Einsatzgruppen</option>
+                {groups.map((g) => (
+                  <option value={g || '-'} selected={(g || '-') === group}>
+                    {g || 'Keine Einsatzgruppe'}
+                  </option>
+                ))}
+              </select>
+              <details class="ma-filter">
+                <summary>
+                  {selected.size ? `${selected.size} Mitarbeiter gewählt` : 'Mitarbeiterfilter'}
+                </summary>
+                <div class="pop">
+                  <input type="search" placeholder="Mitarbeiterfilter" data-filter-list=".ma-filter label" />
+                  <div class="list">
+                    {emps.map((e) => (
+                      <label>
+                        <input type="checkbox" name="ma" value={e.id} checked={selected.has(e.id)} />{' '}
+                        {e.last_name}, {e.first_name} ({e.personnel_no})
+                      </label>
+                    ))}
+                  </div>
+                  <div class="foot">
+                    <a href={self({}).replace(/([?&])ma=[^&]*/g, '$1')}>Alle Mitarbeiter</a>
+                    <button class="btn sm">Anwenden</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </details>
         </form>
         {noShift > 0 && (
           <a

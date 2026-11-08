@@ -219,7 +219,15 @@ export const TaskBox: FC<{ tasks: Task[]; title?: string; doneLink?: string }> =
       </div>
     ) : (
       <div class="tbl">
-        <table>
+        <table class="task-tbl">
+          <thead>
+            <tr>
+              <th style="width:40px" aria-label="Erledigt" />
+              <th>Aufgabe</th>
+              <th class="r">Fällig · zuständig</th>
+              <th style="width:40px" aria-label="Bearbeiten" />
+            </tr>
+          </thead>
           <tbody>
             {tasks.map((t) => (
               <tr>

@@ -76,12 +76,8 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               <div>
                 <h3 style="margin:0">Objektordner für {s.name}</h3>
                 <div class="small mut">
-                  Ein PDF zum Ausdrucken: Deckblatt, Inhaltsverzeichnis, Objektstammblatt mit Kontakten,
-                  Gefährdungsbeurteilung, Revierplan, Leistungsverzeichnis und Raumbuch aus den eingescannten
-                  Unterlagen (Reiter „Dokumente“), die Aushänge für den Putzraum (mit Piktogrammen), die
-                  Anweisungen aus dem Objektordner-Paket – fertig ausgefüllt, ohne Unterschriftsfelder –,
-                  Sicherheitsdatenblätter und die Anwesenheitsliste. Register-Nummern am Rand wie bei einem
-                  Ordner.
+                  Ein PDF zum Ausdrucken mit allen Unterlagen, Aushängen und der Anwesenheitsliste – fertig
+                  ausgefüllt, Register-Nummern am Rand.
                 </div>
               </div>
               <div class="actions" style="margin:0">
@@ -94,16 +90,16 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
               </div>
             </div>
             {posters.length > 0 && (
-              <div class="poster-box">
+              <details class="poster-box fold-sec">
+                <summary>
+                  <b>Aushänge für den Putzraum</b>{' '}
+                  <span class="small mut">({posters.length} Aushänge mit Skizzen)</span>
+                </summary>
                 <div class="poster-head">
-                  <div>
-                    <b>Aushänge für den Putzraum</b>
-                    <div class="small mut">
-                      {posters.length} Aushänge mit Skizzen, mit den Angaben dieses Objekts – gesamt oder
-                      einzeln zum Aushängen.
-                    </div>
+                  <div class="small mut">
+                    Mit den Angaben dieses Objekts – gesamt oder einzeln zum Aushängen.
                   </div>
-                  <a class="btn" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
+                  <a class="btn sec" href={`/objekte/${s.id}/aushang/alle.pdf`} target="_blank">
                     <Icon name="download" /> Alle Aushänge ({posters.length} Seiten)
                   </a>
                 </div>
@@ -144,7 +140,7 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                     </a>
                   )}
                 </div>
-              </div>
+              </details>
             )}
             {posters.length === 0 && sdbCount > 0 && (
               <div class="actions">
@@ -153,10 +149,17 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                 </a>
               </div>
             )}
-            <div class="poster-box">
+            <details class="poster-box fold-sec" open={!f.info.gbu_am}>
+              <summary>
+                <b>Gefährdungsbeurteilung</b>{' '}
+                <span class="small mut">
+                  {f.info.gbu_am
+                    ? `(Kontrolle am ${formatDateDe(f.info.gbu_am)})`
+                    : '(Wirksamkeitskontrolle noch nicht eingetragen)'}
+                </span>
+              </summary>
               <div class="poster-head">
                 <div>
-                  <b>Gefährdungsbeurteilung</b>
                   <div class="small mut">
                     Automatisch aus den Leistungen des Objekts – steht als eigener Abschnitt im
                     Objektordner-PDF. Beurteilte Tätigkeiten:{' '}
@@ -201,8 +204,13 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
                     : 'Noch nicht eingetragen – nach der Begehung Datum und Person eintragen, dann steht es in der Gefährdungsbeurteilung (ohne Unterschrift).'}
                 </div>
               </form>
-            </div>
-            <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
+            </details>
+            <details class="poster-box fold-sec">
+              <summary>
+                <b>Anwesenheitsliste</b> <span class="small mut">(zwei Monate je Seite)</span>
+              </summary>
+              <AttendanceForm action={`/objekte/${s.id}/anwesenheit.pdf`} />
+            </details>
             {!pkg && (
               <div class="flash warn" style="margin-bottom:0">
                 Das Vorlagenpaket (ZIP „Objektordner-Komplettpaket“) ist noch nicht hochgeladen – unter{' '}
@@ -226,68 +234,75 @@ export function registerSiteExtraRoutes({ app, deps, shells, back }: Ctx) {
           ) : (
             <div class="flash ok">Alle Angaben für den Objektordner sind vorhanden.</div>
           )}
-          <form method="post" action={`/objekte/${s.id}/objektordner`} class="card">
-            <h3 style="margin-top:0">Angaben für den Objektordner</h3>
-            {asks.length > 0 && (
-              <p class="small" style="margin-top:0;color:var(--err)">
-                Bitte ausfüllen: {asks.map((m) => m.label).join(', ')}
-              </p>
-            )}
-            {['Kontakte', 'Notfall- und Meldeplan', 'Abfall', 'Sonstiges'].map((g) => (
-              <>
-                <div class="group-title">{g}</div>
-                <div class="grid">
-                  {FOLDER_QUESTIONS.filter((q) => (q.group ?? 'Kontakte') === g).map((q) => (
-                    <div>
-                      <label for={`fi-${q.key}`}>
-                        {q.label}
-                        {q.required && !f.info[q.key] && asks.some((m) => m.key === q.key) ? ' *' : ''}
-                      </label>
-                      <input
-                        id={`fi-${q.key}`}
-                        name={q.key}
-                        value={f.info[q.key] ?? ''}
-                        placeholder={
-                          q.key === 'ansprechpartner' && f.contact
-                            ? `aus Kontakten: ${f.contact.name}`
-                            : q.key === 'ansprechpartner_tel' && f.contact?.phone
-                              ? `aus Kontakten: ${f.contact.phone}`
-                              : q.hint
-                        }
-                        style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
-                      />
-                      {q.key === 'krankenhaus' && (
-                        <button
-                          class="btn ghost sm"
-                          type="submit"
-                          formaction={`/objekte/${s.id}/objektordner/krankenhaus`}
-                          formnovalidate
-                        >
-                          {f.info.krankenhaus ? 'Neu ermitteln' : 'Automatisch ermitteln'}
-                        </button>
-                      )}
-                      {q.key === 'ersthelfer' && (
-                        <div class="small">
-                          Ersthelfer ist automatisch die Objektleitung
-                          {f.manager ? ` (${f.manager.name})` : ' – noch keine Objektleitung zugeordnet'}.
-                        </div>
-                      )}
-                      {q.key === 'ersthelfer' && (
-                        <div class="small mut">
-                          {anz(workers, 'Reinigungskraft', 'Reinigungskräfte')} eingeplant. Ein Ersthelfer ist
-                          Pflicht, sobald 2 oder mehr Beschäftigte gleichzeitig arbeiten (bis 20 Personen 1,
-                          darüber 10 %; § 26 DGUV Vorschrift 1) – sonst reicht der Notruf 112.
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            ))}
-            <div class="formfoot">
-              <button class="btn">Speichern</button>
-            </div>
-          </form>
+          <details class="card fold-sec" open={asks.length > 0} id="angaben">
+            <summary>
+              <b>Angaben für den Objektordner</b>{' '}
+              <span class="small mut">
+                {asks.length > 0 ? `(${asks.length} fehlen)` : '(Kontakte, Notfall, Abfall, Sonstiges)'}
+              </span>
+            </summary>
+            <form method="post" action={`/objekte/${s.id}/objektordner`}>
+              {asks.length > 0 && (
+                <p class="small" style="margin-top:0;color:var(--err)">
+                  Bitte ausfüllen: {asks.map((m) => m.label).join(', ')}
+                </p>
+              )}
+              {['Kontakte', 'Notfall- und Meldeplan', 'Abfall', 'Sonstiges'].map((g) => (
+                <>
+                  <div class="group-title">{g}</div>
+                  <div class="grid">
+                    {FOLDER_QUESTIONS.filter((q) => (q.group ?? 'Kontakte') === g).map((q) => (
+                      <div>
+                        <label for={`fi-${q.key}`}>
+                          {q.label}
+                          {q.required && !f.info[q.key] && asks.some((m) => m.key === q.key) ? ' *' : ''}
+                        </label>
+                        <input
+                          id={`fi-${q.key}`}
+                          name={q.key}
+                          value={f.info[q.key] ?? ''}
+                          placeholder={
+                            q.key === 'ansprechpartner' && f.contact
+                              ? `aus Kontakten: ${f.contact.name}`
+                              : q.key === 'ansprechpartner_tel' && f.contact?.phone
+                                ? `aus Kontakten: ${f.contact.phone}`
+                                : q.hint
+                          }
+                          style={asks.some((m) => m.key === q.key) ? 'border-color:var(--err)' : ''}
+                        />
+                        {q.key === 'krankenhaus' && (
+                          <button
+                            class="btn ghost sm"
+                            type="submit"
+                            formaction={`/objekte/${s.id}/objektordner/krankenhaus`}
+                            formnovalidate
+                          >
+                            {f.info.krankenhaus ? 'Neu ermitteln' : 'Automatisch ermitteln'}
+                          </button>
+                        )}
+                        {q.key === 'ersthelfer' && (
+                          <div class="small">
+                            Ersthelfer ist automatisch die Objektleitung
+                            {f.manager ? ` (${f.manager.name})` : ' – noch keine Objektleitung zugeordnet'}.
+                          </div>
+                        )}
+                        {q.key === 'ersthelfer' && (
+                          <div class="small mut">
+                            {anz(workers, 'Reinigungskraft', 'Reinigungskräfte')} eingeplant. Ein Ersthelfer
+                            ist Pflicht, sobald 2 oder mehr Beschäftigte gleichzeitig arbeiten (bis 20
+                            Personen 1, darüber 10 %; § 26 DGUV Vorschrift 1) – sonst reicht der Notruf 112.
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ))}
+              <div class="formfoot">
+                <button class="btn">Speichern</button>
+              </div>
+            </form>
+          </details>
           <div class="card small">
             <b>Bereits aus der App übernommen:</b> Objekt, Adresse, Kunde, Objektleitung
             {f.manager

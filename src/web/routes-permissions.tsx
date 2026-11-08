@@ -52,7 +52,7 @@ export function registerPermissionRoutes(ctx: Ctx) {
           </details>
           <form method="post" action="/einstellungen/rechte">
             <div class="tablewrap">
-              <table class="keep perm">
+              <table class="keep perm" data-nosort>
                 <thead>
                   <tr>
                     <th>Bereich</th>

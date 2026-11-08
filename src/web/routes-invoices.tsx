@@ -984,6 +984,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
           }))}
           open={openRow[0]?.open_cents ?? null}
           notice={<CustomerNotice c={customer!} />}
+          justIssued={c.req.query('ausgestellt') === '1'}
           detailsOpen={c.req.query('details') === '1' || !!c.req.query('ok') || !!c.req.query('fehler')}
           uploadSlot={
             <FileArea
@@ -1055,10 +1056,8 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/rechnungen/:id{${UUID}}/ausstellen`, async (c) => {
     const id = c.req.param('id');
     await issueInvoice(deps, id, c.get('actor'));
-    const data = await getInvoice(sql, id);
-    return back(c, `/rechnungen/${id}`, {
-      ok: `Rechnung ${data!.invoice.number} ausgestellt, geprüft und archiviert.`,
-    });
+    // Meldung mit „Jetzt versenden“ direkt darin (Ahmed 08.11.) – zeigt die Rechnungsseite
+    return back(c, `/rechnungen/${id}?ausgestellt=1`, {});
   });
 
   app.post(`/rechnungen/:id{${UUID}}/geprueft`, async (c) => {

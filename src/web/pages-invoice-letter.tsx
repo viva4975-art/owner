@@ -725,6 +725,8 @@ export const IssuedLetter: FC<{
   detailsOpen: boolean;
   /** Objekte mit geschwärztem Stundennachweis und ob er schon als Anlage hängt */
   timesheets?: { count: number; missing: number };
+  /** gerade fertiggestellt: Meldung mit „Jetzt versenden“ */
+  justIssued?: boolean;
 }> = (p) => {
   const { inv, doc } = p;
   const s = doc.seller;
@@ -795,6 +797,29 @@ export const IssuedLetter: FC<{
     <>
       <style dangerouslySetInnerHTML={{ __html: LETTER_CSS + ISSUED_CSS }} />
       {p.notice}
+      {p.justIssued && (
+        <div class="flash ok issued-flash">
+          <span>
+            {KIND_TITLES[inv.kind] ?? 'Rechnung'} {inv.number} ausgestellt, geprüft und archiviert.
+            {p.sent
+              ? ' Bereits versendet.'
+              : p.portal != null
+                ? ' Jetzt im Portal hochladen und unter „Versand“ vermerken.'
+                : p.billing.emails.length === 0
+                  ? ' Keine Rechnungs-E-Mail hinterlegt – Versand unter „Versand“ vermerken.'
+                  : ''}
+          </span>
+          {!p.sent && p.portal == null && p.billing.emails.length > 0 && (
+            <form
+              method="post"
+              action={`/rechnungen/${inv.id}/versenden`}
+              onsubmit={`return confirm(${JSON.stringify(`Jetzt per E-Mail an ${p.billing.emails.join(', ')} versenden?`)})`}
+            >
+              <button class="btn sm">Jetzt versenden</button>
+            </form>
+          )}
+        </div>
+      )}
       <div class="lt-grid">
         <div>
           <div class="lt-paper">
@@ -981,64 +1006,74 @@ export const IssuedLetter: FC<{
               </a>
             )}
             {!isCredit && !paid && <a href="?details=1#zahlungen">Als bezahlt markieren / Zahlung</a>}
-            {xr && xr.valid !== false && (
-              <a href={`/dokumente/${xr.id}?download=1`} download={xr.filename}>
-                X-Rechnung
-              </a>
+            {((xr && xr.valid !== false) || (zf && zf.valid !== false)) && (
+              <details>
+                <summary>E-Rechnung (XRechnung / ZUGFeRD) ▾</summary>
+                <div class="act-menu">
+                  {xr && xr.valid !== false && (
+                    <a href={`/dokumente/${xr.id}?download=1`} download={xr.filename}>
+                      XRechnung (XML) herunterladen
+                    </a>
+                  )}
+                  {zf && zf.valid !== false && (
+                    <a href={`/dokumente/${zf.id}?download=1`} download={zf.filename}>
+                      ZUGFeRD (PDF) herunterladen
+                    </a>
+                  )}
+                </div>
+              </details>
             )}
-            {zf && zf.valid !== false && (
-              <a href={`/dokumente/${zf.id}?download=1`} download={zf.filename}>
-                ZUGFeRD
-              </a>
-            )}
-            {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
-              <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
-                <input type="hidden" name="new_id" value={p.newId} />
-                <button>Kopieren</button>
-              </form>
-            )}
-            <a href="?details=1#adresse">Name / Adresse ändern</a>
-            <a href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
-              Lieferschein
-            </a>
-            {!!p.timesheets?.count && (
-              <a href={`/rechnungen/${inv.id}/stundennachweis.pdf`} target="_blank">
-                Stundennachweis
-              </a>
-            )}
-            {!!p.timesheets?.count && !cancelled && (
-              <a href={`/rechnungen/${inv.id}/stundennachweis/bearbeiten`}>Stundennachweis bearbeiten</a>
-            )}
-            {!!p.timesheets?.missing && !cancelled && (
-              <form method="post" action={`/rechnungen/${inv.id}/stundennachweis`}>
-                <button>Stundennachweis als Anlage anhängen</button>
-              </form>
-            )}
-            {!!p.timesheets?.count && !p.timesheets.missing && !cancelled && (
-              <form
-                method="post"
-                action={`/rechnungen/${inv.id}/stundennachweis`}
-                onsubmit="return confirm('Neuen (berichtigten) Stundennachweis mit dem jetzigen Stand anhängen? Der bisherige bleibt im Archiv.')"
-              >
-                <input type="hidden" name="revision" value={revisionStamp()} />
-                <button>Neuen Stundennachweis anhängen</button>
-              </form>
-            )}
-            {!isCredit && !cancelled && (
-              <>
-                <a href={`/rechnungen/${inv.id}/korrektur`}>Rechnungskorrektur</a>
-                {!paid && (
-                  <a href={`/rechnungen/${inv.id}/verrechnung`}>Betrag mindern (Rechnungskorrektur)</a>
+            <details>
+              <summary>Weitere Aktionen ▾</summary>
+              <div class="act-menu">
+                {['invoice', 'partial'].includes(inv.kind) && !cancelled && (
+                  <form method="post" action={`/rechnungen/${inv.id}/kopieren`}>
+                    <input type="hidden" name="new_id" value={p.newId} />
+                    <button>Kopieren</button>
+                  </form>
                 )}
-                <form
-                  method="post"
-                  action={`/rechnungen/${inv.id}/storno`}
-                  onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
-                >
-                  <button class="quiet">Stornieren</button>
-                </form>
-              </>
-            )}
+                <a href="?details=1#adresse">Name / Adresse ändern</a>
+                <a href={`/rechnungen/${inv.id}/lieferschein.pdf`} target="_blank">
+                  Lieferschein
+                </a>
+                {!!p.timesheets?.count && (
+                  <a href={`/rechnungen/${inv.id}/stundennachweis.pdf`} target="_blank">
+                    Stundennachweis
+                  </a>
+                )}
+                {!!p.timesheets?.count && !cancelled && (
+                  <a href={`/rechnungen/${inv.id}/stundennachweis/bearbeiten`}>Stundennachweis bearbeiten</a>
+                )}
+                {!!p.timesheets?.missing && !cancelled && (
+                  <form method="post" action={`/rechnungen/${inv.id}/stundennachweis`}>
+                    <button>Stundennachweis als Anlage anhängen</button>
+                  </form>
+                )}
+                {!!p.timesheets?.count && !p.timesheets.missing && !cancelled && (
+                  <form
+                    method="post"
+                    action={`/rechnungen/${inv.id}/stundennachweis`}
+                    onsubmit="return confirm('Neuen (berichtigten) Stundennachweis mit dem jetzigen Stand anhängen? Der bisherige bleibt im Archiv.')"
+                  >
+                    <input type="hidden" name="revision" value={revisionStamp()} />
+                    <button>Neuen Stundennachweis anhängen</button>
+                  </form>
+                )}
+                {!isCredit && !cancelled && (
+                  <>
+                    {/* Rechnungskorrektur = Betrag mindern oder Positionen korrigieren (Ahmed 08.11.: ein Weg) */}
+                    <a href={`/rechnungen/${inv.id}/verrechnung`}>Rechnungskorrektur</a>
+                    <form
+                      method="post"
+                      action={`/rechnungen/${inv.id}/storno`}
+                      onsubmit="return confirm('Stornorechnung als Entwurf anlegen?')"
+                    >
+                      <button class="quiet">Stornieren</button>
+                    </form>
+                  </>
+                )}
+              </div>
+            </details>
           </div>
           <div class="card">
             <h3>Anhänge</h3>

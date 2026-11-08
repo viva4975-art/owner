@@ -5180,3 +5180,35 @@ Testadresse.
   - Reduzierte Animationen (`prefers-reduced-motion`) und Fokusring waren schon vorhanden.
   - Tests: tsc, eslint, prettier; e2e menu, rechte 48, planung 26, auswertung 14, zeit 28, nachunternehmer 32, einkauf 21;
     Seiten-Rundgang 484 Seiten ohne Fehler (9 Kontrast-Meldungen = Häkchen „erledigt“, erscheint gewollt erst beim Darüberfahren).
+- 2026-11-08: **Bedienlogik nach Vorher/Nachher-Freigabe** (Ahmed: 1–11, 14, 17–21 ja; 12, 13, 15, 16 bleiben wie vorher):
+  - **Sortieren:** Spaltenköpfe per Tastatur (Tab, Enter/Leertaste, `aria-sort`), Aussehen unverändert. Listen mit
+    Seitenzahlen sortieren über alle Seiten: Klick lädt `?sort=<Spalte>&dir=` (zurück auf Seite 1), der Server sortiert
+    vor dem Aufteilen (`sortListByRequest` in `src/domain/export-sort.ts`, Tabellen mit `data-sort-server`): Angebote,
+    Rechnungseingang, Nachunternehmer/Lieferanten; Bestellungen (Raster) und Kontoumsätze (Datum, Betrag, Name; in der
+    Datenbank sortiert) mit Sortier-Links in der Kopfzeile. Aufgaben-Tabelle hat Spaltenköpfe, Rechte-Tabelle ist nicht
+    mehr sortierbar.
+  - **Filter einheitlich** (`client.ts`): In GET-Filterformularen (Knopf Filtern/Anzeigen/Aktualisieren/Suchen oder
+    `ls-bar`) filtert jede Auswahl sofort, Suche mit Enter; der Knopf ist dann unsichtbar (mit Datumsfeldern bleibt er).
+    „Filter zurücksetzen“ erscheint automatisch, sobald ein sichtbarer Filter gesetzt ist (Reiter/versteckte Felder
+    bleiben). „Weitere Filter ▾“ (eingeklappt, offen solange aktiv): Planung (Einsatzgruppe, Mitarbeiterfilter),
+    Nach-/Plan-Kalkulation (Objektleitung, nur Verlust).
+  - **Kunde → Dokumente:** ein Menü „Dokument erstellen ▾“ (Brief, Reinigungs-/AÜ-Vertrag, Personalübersicht,
+    Anwesenheitsliste, Wirksamkeitskontrolle); die Werkzeug-Kästen erscheinen erst beim Wählen, darunter nur die Ordner.
+  - **Ausgestellte Rechnung:** sichtbar Jetzt versenden, Anzeigen (PDF), Zahlung; „E-Rechnung ▾“ (XRechnung/ZUGFeRD) und
+    „Weitere Aktionen ▾“ (Kopieren, Adresse, Lieferschein, Stundennachweis, Rechnungskorrektur, Stornieren).
+    **Rechnungskorrektur und „Betrag mindern“ sind ein Weg** (Ahmed): ein Eintrag „Rechnungskorrektur“ →
+    `/rechnungen/:id/verrechnung` mit „Betrag mindern“ (Minderung brutto + Grund) und „Oder: einzelne Positionen
+    korrigieren“ (bisheriger Editor). Storno bleibt eigener Weg. Nach „Fertigstellen“ steht „Jetzt versenden“ direkt in
+    der Erfolgsmeldung (`?ausgestellt=1`).
+  - **Objektordner:** kurzer Kopf mit Hauptknopf, Aushänge/Gefährdungsbeurteilung/Anwesenheitsliste/Angaben aufklappbar
+    (offen, wenn etwas fehlt). **Eigen-Compliance:** nur Gruppen mit Kritisch/Läuft ab offen.
+  - **Rechnungseingang:** oben Bereiche Rechnungen · Vorschüsse · Zahlungsliste · Wiederkehrende Zahlungen, darunter der
+    Status als Filter: Rechnung erwartet · Zu prüfen · Freigegeben · Bezahlt · Abgelehnt · Alle („Rechnung erwartet“
+    gehört zu den Rechnungen, Ahmed).
+  - „Weitere ▾“ heißt überall „Weitere Aktionen ▾“. Pflichtfelder bekommen automatisch „*“. Warnung beim Verlassen eines
+    geänderten Formulars (nur echte Eingaben in POST-Formularen, nicht Filter/Auswahl-Häkchen, nicht beim Speichern).
+    Dateien lassen sich direkt auf einen Dokument-Ordner ziehen (Kunde, Objekt, Personalakte – dort wechselt
+    „Hochladen als“ auf den Ordner).
+  - Tests: tsc/eslint/prettier; e2e einkauf, angebot, planung, auswertung, transfer, rechte 48, nachunternehmer, login,
+    uebergabe, kasse, leistungen, auftrag grün. `e2e:vorfaktura` bricht auch mit dem alten Stand ab (Zurück/Vor-Test),
+    `e2e:menu` ist fest auf Port 3000; vitest: nur die bekannten roten Resturlaub-Übertrag und Arbeitstage.

@@ -1,5 +1,6 @@
 import type { Child, FC } from 'hono/jsx';
 import { contactGreeting } from '../domain/letter/greeting.js';
+import { sortListByRequest } from '../domain/export-sort.js';
 import { SiteOptions } from './site-options.js';
 import type { Customer, Site } from '../services/masterdata.js';
 import { UNIT_LABELS } from '../domain/invoice/types.js';
@@ -92,7 +93,7 @@ export const OfferTable: FC<{ rows: OfferListRow[]; showCustomer?: boolean; ret?
   ret,
 }) => (
   <div class="tbl offer-list">
-    <table>
+    <table data-sort-server={ret ? '' : undefined}>
       <thead>
         <tr>
           <th>Angebot</th>
@@ -219,6 +220,12 @@ export const OfferList: FC<{
   page?: number;
 }> = ({ rows, all, active, title, stats, tenders, period = '12m', ret = '/angebote', q = '', page = 1 }) => {
   const PER = 25;
+  rows = sortListByRequest(rows, {
+    Angebot: (o) => o.number,
+    'Kunde / Leistung': (o) => `${o.customer_name} ${o.title}`,
+    Netto: (o) => o.net_cents,
+    Status: (o) => o.status,
+  });
   const pages = Math.max(1, Math.ceil(rows.length / PER));
   const cur = Math.min(Math.max(1, page), pages);
   const shown = rows.slice((cur - 1) * PER, cur * PER);

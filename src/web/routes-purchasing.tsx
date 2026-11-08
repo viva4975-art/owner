@@ -104,6 +104,7 @@ import {
 } from '../services/cost-centers.js';
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
+import { sortListByRequest } from '../domain/export-sort.js';
 import { PageHead, Pager, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
@@ -1080,12 +1081,22 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       .filter((r) => inView(r, view))
       .filter((r) => view !== 'alle' || !stage || stageOf(r) === stage);
     const PER_PAGE = 25;
-    const pages = Math.max(1, Math.ceil(allRows.length / PER_PAGE));
+    const sortedRows = sortListByRequest(allRows, {
+      'Nr.': (r) => r.number,
+      'Lieferant · Objekt · Zeitraum': (r) => `${r.supplier} ${r.what}`,
+      'Betrag netto': (r) => r.net,
+      'Stand · was ist offen': (r) => r.status,
+    });
+    const pages = Math.max(1, Math.ceil(sortedRows.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
-    const rows = allRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const rows = sortedRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const sortQ = c.req.query('sort') ?? '';
+    const dirQ = c.req.query('dir') === 'desc' ? 'desc' : 'asc';
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
       const st: Record<string, string | null> = {
+        sort: sortQ || null,
+        dir: sortQ ? dirQ : null,
         monat: month || null,
         ansicht: view === 'offen' ? null : view,
         stufe: stage || null,
@@ -1348,10 +1359,29 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               onchange="document.querySelectorAll('input[name=ids][form=bs-del]').forEach(function(x){x.checked=this.checked}.bind(this))"
             />
             <div class="bs-tr bs-th">
-              <span>Nr.</span>
-              <span>Lieferant · Objekt · Zeitraum</span>
-              <span class="r">Betrag netto</span>
-              <span>Stand · was ist offen</span>
+              {(
+                [
+                  ['Nr.', ''],
+                  ['Lieferant · Objekt · Zeitraum', ''],
+                  ['Betrag netto', 'r'],
+                  ['Stand · was ist offen', ''],
+                ] as const
+              ).map(([lab, cls]) => {
+                const on = sortQ === lab;
+                const next = on && dirQ === 'asc' ? 'desc' : 'asc';
+                return (
+                  <span class={cls}>
+                    <a
+                      class={`sorth${on ? ` ${dirQ}` : ''}`}
+                      href={link({ sort: lab, dir: next, seite: null })}
+                      title="Sortieren"
+                      aria-sort={on ? (dirQ === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      {lab}
+                    </a>
+                  </span>
+                );
+              })}
             </div>
           </div>
           {rows.map((r) => (
@@ -1885,20 +1915,14 @@ export function registerPurchasingRoutes(ctx: Ctx) {
   // ================================================================== Rechnungseingang
 
   /** Reiter des Rechnungseingangs; die Zahlungsliste ist ein Reiter davon (nicht separat). */
+  // Bereiche des Rechnungseingangs (Ahmed 08.11.): oben nur Bereiche, der Status steht als Filter in der Liste
   const incomingTabs = (all: { status: IncomingStatus }[], expected?: number, advances?: number): Tab[] => [
     {
-      key: 'erwartet',
-      label: 'Rechnung erwartet',
-      href: '/rechnungseingang?status=erwartet',
-      ...(expected !== undefined ? { count: expected } : {}),
+      key: 'rechnungen',
+      label: 'Rechnungen',
+      href: '/rechnungseingang',
+      count: all.filter((i) => i.status === 'erfasst').length + (expected ?? 0),
     },
-    ...(['erfasst', 'freigegeben', 'bezahlt', 'abgelehnt'] as IncomingStatus[]).map((s) => ({
-      key: s,
-      label: INCOMING_STATUS[s][0]!.toUpperCase() + INCOMING_STATUS[s].slice(1),
-      href: `/rechnungseingang?status=${s}`,
-      count: all.filter((i) => i.status === s).length,
-    })),
-    { key: 'alle', label: 'Alle', href: '/rechnungseingang?status=alle', count: all.length },
     {
       key: 'vorschuss',
       label: 'Vorschüsse',
@@ -1907,6 +1931,15 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     },
     { key: 'zahlung', label: 'Zahlungsliste', href: '/zahlungsliste' },
     { key: 'wiederkehrend', label: 'Wiederkehrende Zahlungen', href: '/zahlungsliste/wiederkehrend' },
+  ];
+  const incomingStatusChips = (all: { status: IncomingStatus }[], expected: number) => [
+    { key: 'erwartet', label: 'Rechnung erwartet', count: expected },
+    ...(['erfasst', 'freigegeben', 'bezahlt', 'abgelehnt'] as IncomingStatus[]).map((s) => ({
+      key: s as string,
+      label: INCOMING_STATUS[s][0]!.toUpperCase() + INCOMING_STATUS[s].slice(1),
+      count: all.filter((i) => i.status === s).length,
+    })),
+    { key: 'alle', label: 'Alle', count: all.length },
   ];
   const openAdvanceCount = async () => {
     const [r] = await sql<{ n: number }[]>`
@@ -2049,9 +2082,16 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     if (st === 'alle' || st === 'bezahlt' || st === 'abgelehnt')
       filtered.sort((a, b) => b.invoice_date.localeCompare(a.invoice_date));
     const PER_PAGE = 25;
-    const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+    const sorted = sortListByRequest(filtered, {
+      Rechnung: (i) => `${i.supplier_name} ${i.invoice_no}`,
+      'Datum · fällig': (i) => i.invoice_date,
+      'Kostenart · Objekt': (i) => `${COST_CATEGORY[i.category]} ${i.site_name ?? ''}`,
+      Brutto: (i) => i.gross_cents,
+      Status: (i) => INCOMING_STATUS[i.status],
+    });
+    const pages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
     const cur = Math.min(pages, Math.max(1, Number(qs.seite) || 1));
-    const rows = filtered.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const rows = sorted.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
     const sups = [...new Map(all.map((i) => [i.supplier_id, i.supplier_name])).entries()].sort((a, b) =>
       a[1].localeCompare(b[1], 'de'),
     );
@@ -2061,12 +2101,15 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         status: st,
         q: search || null,
         lieferant: supF || null,
+        sort: qs.sort || null,
+        dir: qs.sort ? qs.dir || null : null,
         ...over,
       };
       for (const [k, x] of Object.entries(v)) if (x) p.set(k, x);
       return `/rechnungseingang?${p.toString()}`;
     };
     const tabs = incomingTabs(all, expected.length, await openAdvanceCount());
+    const chips = incomingStatusChips(all, expected.length);
     const open = all.filter((i) => i.status === 'freigegeben');
     return page(
       c,
@@ -2154,7 +2197,21 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </div>
           </div>
         </div>
-        <Tabs tabs={tabs} active={st} />
+        <Tabs tabs={tabs} active="rechnungen" />
+        <div class="chips in-status" role="group" aria-label="Status">
+          {chips.map((ch) => (
+            <a
+              class={st === ch.key ? 'on' : ''}
+              href={
+                ch.key === 'erwartet'
+                  ? '/rechnungseingang?status=erwartet'
+                  : listUrl({ status: ch.key, seite: null })
+              }
+            >
+              {ch.label} <span class="n">{ch.count}</span>
+            </a>
+          ))}
+        </div>
         {st === 'erwartet' ? (
           <ExpectedList rows={expected} />
         ) : (
@@ -2194,7 +2251,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </form>
             <div class="card" style="padding:0">
               <div class="tbl stack-m">
-                <table class="in-tbl">
+                <table class="in-tbl" data-sort-server>
                   <thead>
                     <tr>
                       <th>Rechnung</th>
@@ -4327,10 +4384,15 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             ))}
           </select>
           <SiteMulti sites={all.filter((r) => !fKunde || r.customer_id === fKunde)} chosen={fObjekte} />
-          <OlSelect managers={managers} value={fOl} />
-          <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
-            <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
-          </label>
+          <details class="more-filters" open={!!fOl || fVerlust}>
+            <summary class="btn sec sm">Weitere Filter ▾</summary>
+            <div class="mf-body">
+              <OlSelect managers={managers} value={fOl} />
+              <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
+                <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
+              </label>
+            </div>
+          </details>
           <button class="btn sec sm">Anzeigen</button>
         </form>
         <PdfExport
@@ -4887,20 +4949,25 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             ))}
           </select>
           <SiteMulti sites={withData.filter((r) => !fKunde || r.customer_id === fKunde)} chosen={fObjekte} />
-          <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
-            <option value="">Alle Objektleitungen</option>
-            {managers.map((m) => (
-              <option value={m.user_id} selected={m.user_id === fOl}>
-                {m.name}
-              </option>
-            ))}
-            <option value="ohne" selected={fOl === 'ohne'}>
-              ohne Objektleitung
-            </option>
-          </select>
-          <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
-            <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
-          </label>
+          <details class="more-filters" open={!!fOl || fVerlust}>
+            <summary class="btn sec sm">Weitere Filter ▾</summary>
+            <div class="mf-body">
+              <select name="ol" aria-label="Objektleitung" style="max-width:200px" data-nosearch>
+                <option value="">Alle Objektleitungen</option>
+                {managers.map((m) => (
+                  <option value={m.user_id} selected={m.user_id === fOl}>
+                    {m.name}
+                  </option>
+                ))}
+                <option value="ohne" selected={fOl === 'ohne'}>
+                  ohne Objektleitung
+                </option>
+              </select>
+              <label class="small" style="margin:0;display:flex;gap:4px;align-items:center">
+                <input type="checkbox" name="verlust" value="1" checked={fVerlust} /> nur Verlust
+              </label>
+            </div>
+          </details>
           <button class="btn sec sm">Anzeigen</button>
           {(filtered || fVerlust) && (
             <a class="small" href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}`}>

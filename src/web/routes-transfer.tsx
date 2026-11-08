@@ -66,6 +66,9 @@ const TX_CSS = `
 .tx-list{padding:0}
 .tx-row{display:grid;grid-template-columns:minmax(0,1.35fr) 110px 24px minmax(0,1.3fr) 230px;gap:14px;align-items:start;padding:14px 18px;border-bottom:1px solid var(--line,#e5e5e5)}
 .tx-row:last-child{border-bottom:0}
+.tx-head{padding:9px 18px;font-size:13px;color:var(--mut);font-weight:500}
+.tx-head .r{text-align:right}
+@media (max-width:900px){.tx-head{display:none}}
 .tx-iban{color:#9a9a9a;font-size:12.5px}
 .tx-purpose{white-space:pre-wrap;word-break:break-word;font-size:13px;margin-top:2px}
 .tx-amt{text-align:right;font-weight:600;padding-top:20px;white-space:nowrap}
@@ -157,9 +160,17 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       : 'offen';
     const konto = c.req.query('konto') ?? '';
     const seite = Math.max(1, Number(c.req.query('seite') ?? 1) || 1);
+    const sortCol = (['datum', 'betrag', 'name'] as const).find((x) => x === c.req.query('sort')) ?? null;
+    const sortDir = c.req.query('dir') === 'asc' ? 'asc' : 'desc';
     const role = c.get('user').role;
     const [rows, accounts, feed, cfg, imports] = await Promise.all([
-      listTransactions(sql, { status, account: konto || null, limit: PAGE, offset: (seite - 1) * PAGE }),
+      listTransactions(sql, {
+        status,
+        account: konto || null,
+        limit: PAGE,
+        offset: (seite - 1) * PAGE,
+        ...(sortCol ? { order: sortCol, dir: sortDir } : {}),
+      }),
       accountOverview(sql),
       feedStatus(sql),
       feedConfigInfo(sql),
@@ -187,11 +198,26 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       const p = new URLSearchParams({
         status,
         ...(konto ? { konto } : {}),
+        ...(sortCol ? { sort: sortCol, dir: sortDir } : {}),
         ...Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])),
       });
       return `${BACK}?${p}`;
     };
     const pages = Math.max(1, Math.ceil(rows.total / PAGE));
+    // Spaltenköpfe sortieren über alle Seiten (Standard: Datum, neueste zuerst)
+    const sortLink = (k: 'datum' | 'betrag' | 'name', l: string) => {
+      const on = (sortCol ?? 'datum') === k;
+      const d = on ? (sortDir === 'desc' ? 'asc' : 'desc') : k === 'name' ? 'asc' : 'desc';
+      return (
+        <a
+          class={`sorth${on && (sortCol || k === 'datum') ? ` ${sortDir}` : ''}`}
+          href={q({ sort: k, dir: d, seite: 1 })}
+          title="Sortieren"
+        >
+          {l}
+        </a>
+      );
+    };
     return shell(
       c,
       'konto',
@@ -312,6 +338,17 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
         </div>
         <script dangerouslySetInnerHTML={{ __html: INLINE_JS }} />
         <div class="card tx-list">
+          {rows.length > 1 && (
+            <div class="tx-row tx-head">
+              <span>
+                {sortLink('name', 'Auftraggeber / Empfänger')} · {sortLink('datum', 'Datum')}
+              </span>
+              <span class="r">{sortLink('betrag', 'Betrag')}</span>
+              <span />
+              <span>Zuordnung</span>
+              <span />
+            </div>
+          )}
           {rows.map((t, i) => (
             <TxRow t={t} s={sugg[i]!} />
           ))}

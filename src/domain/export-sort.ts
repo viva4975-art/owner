@@ -61,3 +61,33 @@ export function sortByRequest<T>(header: string[], rows: T[], text: (row: T, col
     .sort((a, b) => cmpKey(a.k, b.k) * f || a.i - b.i)
     .map((x) => x.r);
 }
+
+type SortVal = string | number | bigint | null | undefined;
+
+/**
+ * Listen mit Seitenzahlen (Ahmed 08.11.): Klick auf die Spaltenüberschrift lädt die Liste mit ?sort=&dir= neu, der Server
+ * sortiert alle Einträge (nicht nur die sichtbare Seite). `keys` = Spaltenname → Sortierwert; passt keine Spalte, bleibt
+ * die Reihenfolge. Leere Werte stehen immer am Ende.
+ */
+export function sortListByRequest<T>(rows: T[], keys: Record<string, (r: T) => SortVal>): T[] {
+  const s = currentExportSort();
+  if (!s || rows.length < 2) return rows;
+  const names = Object.keys(keys);
+  const col = matchColumn(names, s.label);
+  if (col < 0) return rows;
+  const fn = keys[names[col]!]!;
+  const f = s.dir === 'desc' ? -1 : 1;
+  const key = (v: SortVal): Key | null => {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return [0, v];
+    if (typeof v === 'bigint') return [0, Number(v)];
+    return sortKey(v);
+  };
+  return rows
+    .map((r, i) => ({ r, i, k: key(fn(r)) }))
+    .sort((a, b) => {
+      if (!a.k || !b.k) return a.k === b.k ? a.i - b.i : a.k ? -1 : 1;
+      return cmpKey(a.k, b.k) * f || a.i - b.i;
+    })
+    .map((x) => x.r);
+}

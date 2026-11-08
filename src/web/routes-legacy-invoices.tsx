@@ -171,9 +171,9 @@ export async function legacyInvoicePage(sql: Sql, page: Ctx['page'], c: Context<
           )}
           {inv.gross_cents > 0n && inv.customer_id && open && open.open_cents > 0n && (
             <div class="card">
-              <h3 style="margin-top:0">Betrag mindern</h3>
+              <h3 style="margin-top:0">Rechnungskorrektur</h3>
               <p class="small mut" style="margin-top:0">
-                Rechnungskorrektur mit Minusbetrag – eigene Nummer, Verweis auf diese Rechnung.
+                Betrag mindern – eigene Nummer, Verweis auf diese Rechnung.
               </p>
               <a class="btn sec" style="width:100%" href={`/rechnungen/${id}/verrechnung`}>
                 Rechnungskorrektur erstellen …
@@ -276,14 +276,16 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
       'rechnungen',
       <>
         <PageHead
-          title={`Betrag mindern – Rechnungskorrektur zu ${inv.number}`}
+          title={`Rechnungskorrektur zu ${inv.number}`}
           crumbs={[[`Rechnung ${inv.number}`, `/rechnungen/${id}`]]}
         />
         <p class="mut" style="margin-top:0">
           Rechnung vom {dateDe(inv.issue_date ?? '')} · netto {euro(inv.net_cents)} · brutto{' '}
           {euro(inv.gross_cents)} · <b>offen {euro(open)}</b>
         </p>
+        {/* Ein Weg für Korrekturen (Ahmed 08.11.): Betrag mindern oder einzelne Positionen korrigieren */}
         <div class="card" style="max-width:640px">
+          <h3 style="margin-top:0">Betrag mindern</h3>
           <p class="small" style="margin-top:0">
             Es entsteht eine <b>Rechnungskorrektur</b> mit eigener Nummer und Verweis auf {inv.number}: eine
             Position „Minderung zur Rechnung {inv.number}“ mit Minusbetrag und Grund, Umsatzsteuer wie in der
@@ -315,6 +317,18 @@ export function registerLegacyInvoiceRoutes(ctx: Ctx) {
             sollte der Kunde bekommen, damit er seine Vorsteuer berichtigt (§ 17 UStG).
           </p>
         </div>
+        {own && (
+          <div class="card" style="max-width:640px">
+            <h3 style="margin-top:0">Oder: einzelne Positionen korrigieren</h3>
+            <p class="small" style="margin-top:0">
+              Der Entwurf übernimmt alle Positionen der Rechnung mit Minus beim Preis. Nicht betroffene
+              Positionen entfernen, Menge oder Preis anpassen.
+            </p>
+            <a class="btn sec" href={`/rechnungen/${id}/korrektur`}>
+              Positionen korrigieren …
+            </a>
+          </div>
+        )}
         {done.length > 0 && (
           <div class="card" style="max-width:640px">
             <h3 style="margin-top:0">Bisherige Rechnungskorrekturen</h3>

@@ -2178,8 +2178,8 @@ const NewMenu: FC<{
       </a>
       {rest.length > 0 && (
         <details class="dd newmore">
-          <summary class="btn sec" aria-label="Weitere anlegen" title="Weitere anlegen">
-            Weitere <Icon name="chevron" size={14} />
+          <summary class="btn sec" aria-label="Weitere Aktionen" title="Weitere Aktionen">
+            Weitere Aktionen <Icon name="chevron" size={14} />
           </summary>
           <div class="drop right">
             {rest.map(([v, l]) => (

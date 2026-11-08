@@ -190,6 +190,7 @@ export function registerHrRoutes(ctx: Ctx) {
                 {groups.map(({ k, now, old }) => (
                   <details
                     class="doc-cat"
+                    data-cat={k}
                     open={docOpen(now.length) || (k === category && !!c.req.query('kategorie'))}
                   >
                     <summary>

@@ -397,6 +397,11 @@ html.glas details.tool-box:not([open]){display:none}
 html.glas details.fold-sec>summary{cursor:pointer;padding:2px 0}
 html.glas details.fold-sec[open]>summary{margin-bottom:10px}
 html.glas details.poster-box.fold-sec:not([open]){padding-top:12px;padding-bottom:12px}
+html.glas .actstack>details>summary::before{content:none!important;display:none!important}
+html.glas details.fold-sec>summary,html.glas details.tool-box>summary{list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;user-select:none}
+html.glas details.fold-sec>summary::-webkit-details-marker,html.glas details.tool-box>summary::-webkit-details-marker{display:none}
+html.glas details.fold-sec>summary::before,html.glas details.tool-box>summary::before{content:"";width:7px;height:7px;flex:none;border-right:1.7px solid var(--mut);border-bottom:1.7px solid var(--mut);transform:rotate(-45deg);transition:transform .15s;margin:0 3px 0 1px}
+html.glas details.fold-sec[open]>summary::before,html.glas details.tool-box[open]>summary::before{transform:rotate(45deg) translate(-1px,-1px)}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

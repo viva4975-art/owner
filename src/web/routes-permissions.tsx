@@ -39,19 +39,20 @@ export function registerPermissionRoutes(ctx: Ctx) {
         <div class="card" style="max-width:980px">
           <p style="margin-top:0">
             Haken = die Gruppe darf den Bereich öffnen und dort arbeiten (Menüpunkt erscheint). Admin darf
-            immer alles. <b>Fett</b> = von der Vorgabe abweichend.
+            immer alles. <span class="perm-key">Hinterlegt</span> = von der Vorgabe abweichend.
           </p>
-          <p class="small mut">
+          <details class="small mut" style="margin:0 0 12px">
+            <summary>Was ist nicht einstellbar?</summary>
             Nicht einstellbar (immer nur Admin): Benutzer, Firmendaten, Nummernkreise, Bankabruf,
             E-Mail-Versand, Systemzustand, Archiv und diese Seite. Einzelne Knöpfe in den Seiten (z. B.
             „endgültig löschen“) bleiben Admin vorbehalten. <b>Objektleitung:</b> In Objekte, Zeiterfassung,
             Planung, Arbeitsscheine, Schlüssel und Geräte sieht sie nur ihre Objekte – in anderen
             freigegebenen Bereichen (z. B. Rechnungen, Kunden) gibt es diese Einschränkung nicht, sie sieht
             dort alles.
-          </p>
+          </details>
           <form method="post" action="/einstellungen/rechte">
             <div class="tablewrap">
-              <table class="keep">
+              <table class="keep perm">
                 <thead>
                   <tr>
                     <th>Bereich</th>
@@ -63,10 +64,8 @@ export function registerPermissionRoutes(ctx: Ctx) {
                 <tbody>
                   {PERM_GROUPS.map((g) => (
                     <>
-                      <tr>
-                        <td colspan={PERM_ROLES.length + 1} style="background:var(--tint-2);font-weight:600">
-                          {g.label}
-                        </td>
+                      <tr class="perm-grp">
+                        <td colspan={PERM_ROLES.length + 1}>{g.label}</td>
                       </tr>
                       {g.areas.map((a) => (
                         <tr>
@@ -76,9 +75,9 @@ export function registerPermissionRoutes(ctx: Ctx) {
                             const o = permissionOverride(r, a.key);
                             const on = o ?? def;
                             return (
-                              <td style="text-align:center">
+                              <td class={`perm-c${o !== undefined && o !== def ? ' dev' : ''}`}>
                                 <label
-                                  style={`display:inline-flex;gap:4px;align-items:center;${o !== undefined && o !== def ? 'font-weight:700' : ''}`}
+                                  style="display:inline-flex;gap:4px;align-items:center"
                                   title={`Vorgabe: ${def ? 'erlaubt' : 'gesperrt'}`}
                                 >
                                   <input
@@ -102,7 +101,7 @@ export function registerPermissionRoutes(ctx: Ctx) {
                 </tbody>
               </table>
             </div>
-            <div class="formfoot">
+            <div class="formfoot perm-foot">
               <button class="btn">Rechte speichern</button>
             </div>
           </form>

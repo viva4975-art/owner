@@ -264,7 +264,7 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
             </select>
           </div>
           <div style="align-self:end">
-            <button class="btn">Aktualisieren</button>
+            <button class="btn sec">Aktualisieren</button>
           </div>
           <div class="stat-presets">
             <a href={presetHref('')}>Letzte 12 Monate</a>
@@ -523,7 +523,7 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
             </select>
           </div>
           <div style="align-self:end">
-            <button class="btn">Aktualisieren</button>
+            <button class="btn sec">Aktualisieren</button>
           </div>
           <div class="stat-presets">
             <a href={presetHref('')}>Letzte 12 Monate</a>

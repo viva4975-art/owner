@@ -154,7 +154,7 @@ function Row({
             Ansehen
           </a>
         )}
-        <UploadBtn k={e.dt.id} slot={slot} label={cur ? 'Ersetzen' : 'Hochladen'} primary={!cur} />
+        <UploadBtn k={e.dt.id} slot={slot} label={cur ? 'Ersetzen' : 'Hochladen'} primary={false} />
         {sub && (
           <form method="post" action={`/eigen-compliance/${e.dt.id}/eintrag-entfernen`} class="inline-form">
             <input type="hidden" name="name" value={slot} />

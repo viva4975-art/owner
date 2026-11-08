@@ -4435,14 +4435,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                       ▸ Kosten aufschlüsseln
                     </a>
                     {r.revenue === 0n && r.labor + r.subcontractor + r.material > 0n && (
-                      <div class="small" style="color:var(--warn)">
-                        Kosten ohne Erlös
-                      </div>
+                      <div class="cost-flag">Kosten ohne Erlös</div>
                     )}
                     {r.revenue > 0n && r.minutes === 0 && r.subcontractor === 0n && (
-                      <div class="small" style="color:var(--warn)">
-                        keine Einsätze geplant
-                      </div>
+                      <div class="cost-flag">keine Einsätze geplant</div>
                     )}
                   </td>
                   <td class="r">{eur(r.revenue)}</td>
@@ -4455,13 +4451,19 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     <b>{eur(r.margin)}</b>
                   </td>
                   <td class="r">
-                    <span
-                      class={`badge ${r.margin_bp === null ? '' : r.margin_bp < 0 ? 'err' : r.margin_bp < acct.target_margin_bp ? 'warn' : 'ok'}`}
-                    >
-                      {pct(r.margin_bp)}
-                    </span>
+                    {r.margin_bp === null ? (
+                      <span class="mut">–</span>
+                    ) : (
+                      <span
+                        class={`badge ${r.margin_bp < 0 ? 'err' : r.margin_bp < acct.target_margin_bp ? 'warn' : 'ok'}`}
+                      >
+                        {pct(r.margin_bp)}
+                      </span>
+                    )}
                   </td>
-                  <td class="r">{r.minutes > 0 ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}</td>
+                  <td class="r">
+                    {r.minutes > 0 && r.revenue > 0n ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -4726,9 +4728,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             ▸ Kosten aufschlüsseln
           </a>
           {r.revenue === 0n && r.material + r.subcontractor + r.equipment + r.other + r.labor > 0n && (
-            <div class="small" style="color:var(--warn)">
-              Kosten ohne Erlös
-            </div>
+            <div class="cost-flag">Kosten ohne Erlös</div>
           )}
         </td>
         <td class="r">
@@ -4805,13 +4805,17 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
           <b>{euro(r.margin)}</b>
         </td>
         <td class="r">
-          <span
-            class={`badge ${r.margin_bp === null ? '' : r.margin_bp < 0 ? 'err' : r.margin_bp < targetBp ? 'warn' : 'ok'}`}
-          >
-            {pct(r.margin_bp)}
-          </span>
+          {r.margin_bp === null ? (
+            <span class="mut">–</span>
+          ) : (
+            <span class={`badge ${r.margin_bp < 0 ? 'err' : r.margin_bp < targetBp ? 'warn' : 'ok'}`}>
+              {pct(r.margin_bp)}
+            </span>
+          )}
         </td>
-        <td class="r">{r.actual_minutes > 0 ? euro((r.revenue * 60n) / BigInt(r.actual_minutes)) : '–'}</td>
+        <td class="r">
+          {r.actual_minutes > 0 && r.revenue > 0n ? euro((r.revenue * 60n) / BigInt(r.actual_minutes)) : '–'}
+        </td>
       </tr>
     );
     return page(
@@ -4898,13 +4902,14 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               Filter zurücksetzen
             </a>
           )}
-          <span class="small mut" style="flex-basis:100%">
+          <details class="small mut calc-how" style="flex-basis:100%">
+            <summary>So wird gerechnet</summary>
             Lohn = laut Lohnarten (erfasste Zeit, sonst geplante; Urlaub, Krank, Feiertag, Zuschläge;
             Festgehalt; fehlt die Vergütung: niedrigster Tariflohn), nach Stunden auf die Objekte verteilt, +
             Zuschlag (Minijob {pct(overhead.minijob)}, Teilzeit {pct(overhead.parttime)}, über 30 Std.{' '}
             {pct(overhead.fulltime)}; Geschäftsführer ohne Zuschlag) · Nachunternehmer = Eingangsrechnungen,
             sonst Monatspauschale laut Bestellung · Ziel {pct(targetBp)} · <a href="/datev">Werte ändern</a>
-          </span>
+          </details>
         </form>
         <PdfExport
           action="/auswertungen/nachkalkulation"

@@ -270,7 +270,7 @@ export const EmployeeList: FC<{
             {ohne && <input type="hidden" name="einsatz" value="ohne" />}
             <button class="btn sec sm">Filtern</button>
             {canExport && (
-              <a class="btn sm" href="/personal/export.csv" style="margin-left:auto">
+              <a class="btn sec sm" href="/personal/export.csv" style="margin-left:auto">
                 Export Lexware Lohn (CSV)
               </a>
             )}

@@ -166,7 +166,7 @@ const PlanTable: FC<{ plans: ShiftPlanRow[]; show: 'employee' | 'site' | 'both';
                   onsubmit="return confirm('Einsatz löschen? Schon erfasste Zeiten bleiben erhalten.')"
                 >
                   {ret && <input type="hidden" name="zurueck" value={ret} />}
-                  <button class="btn sm sec">Löschen</button>
+                  <button class="btn sm danger">Löschen</button>
                 </form>
               </td>
             </tr>
@@ -534,7 +534,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                         onsubmit="return confirm('Abwesenheit stornieren?')"
                       >
                         <input type="hidden" name="status" value="storniert" />
-                        <button class="btn sm ghost">Stornieren</button>
+                        <button class="btn sm danger">Stornieren</button>
                       </form>
                     )}
                   </div>
@@ -1332,7 +1332,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                               action={`/personal/${e.id}/zusatzurlaub/${x.id}/loeschen`}
                               data-confirm="Zusätzlichen Urlaub wirklich löschen?"
                             >
-                              <button class="btn sm ghost">Löschen</button>
+                              <button class="btn sm danger">Löschen</button>
                             </form>
                           </td>
                         )}

@@ -329,6 +329,35 @@ html.glas main .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 html.glas main :is(.kpi,.skpi,.bs-kpi){min-width:0;overflow-wrap:anywhere}
 html.glas main form[method=get] :is(select,input[type=text],input[type=search],input[type=date],input:not([type])):not(.mpick-s){width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}
 html.glas main form[method=get] .cbx{width:100%!important;max-width:none!important;margin-left:0!important}}
+/* Fassung 6 – gezielte Verbesserungen (08.11.): Kalender, Kalkulation, Rechte, Formulare, Status */
+html.glas a.plain{color:inherit!important;text-decoration:none;border-bottom:1px dotted transparent}
+html.glas a.plain:hover{color:var(--g-acc)!important;border-bottom-color:var(--g-acc)}
+html.glas main td.r,html.glas main td.num,html.glas main th.r,html.glas main th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+html.glas main td.r .small,html.glas main td.r div{white-space:normal}
+html.glas .cost-flag{display:table;margin-top:5px;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#fff6e5;color:#8a5a00;box-shadow:inset 0 0 0 1px #f1dcae}
+html.glas details.calc-how>summary{cursor:pointer;color:var(--mut);font-weight:500;list-style-position:inside}
+html.glas details.calc-how[open]{background:var(--c-soft);border-radius:10px;padding:8px 12px;line-height:1.5}
+html.glas .pb-legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 6px}
+html.glas .pb-legend .pb-ev{display:inline-block;font-size:12px;padding:3px 10px;cursor:default}
+html.glas .pb-legend .pb-lh{font-size:12px;color:var(--mut);padding:3px 10px;border-radius:6px;background:#e8f0f8}
+html.glas .pb-ev .m{font-variant-numeric:tabular-nums}
+html.glas .ec .ev .tm{color:inherit}
+html.glas .eg .blk div{font-variant-numeric:tabular-nums}
+@media (max-width:700px){html.glas .ec .ev .tm{display:inline!important;font-weight:600}html.glas .ec .ev .t{display:none}html.glas .ec .ev .ic{display:none}html.glas .ec .dc .hn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px}html.glas .ec .ev{justify-content:center;padding:2px 2px}}
+/* Rechte: kompakte Matrix, Abweichung hinterlegt, Speichern immer sichtbar */
+html.glas table.perm td,html.glas table.perm th{padding:7px 12px!important}
+html.glas table.perm th:not(:first-child),html.glas table.perm td.perm-c{text-align:center;width:150px}
+html.glas table.perm tr.perm-grp td{background:var(--c-soft)!important;font-weight:650;color:var(--ink);padding-top:12px!important;font-size:13px;letter-spacing:.02em;text-transform:uppercase}
+html.glas table.perm tbody tr:not(.perm-grp):hover td{background:#faf7f8}
+html.glas table.perm td.perm-c.dev,html.glas .perm-key{background:#f7edf1!important;box-shadow:inset 0 0 0 1px #ead2db}
+html.glas .perm-key{padding:0 6px;border-radius:6px;font-weight:600;color:#5a1229}
+html.glas .perm-foot{position:sticky;bottom:0;z-index:4;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line-c);margin:0 -24px -24px;padding:12px 24px!important;border-radius:0 0 16px 16px}
+/* Formulare: Abbrechen rechts, verständliche Fehlerfelder */
+html.glas .cancel-back{margin-left:auto}
+html.glas main :is(input,select,textarea):user-invalid{border-color:#d9534f!important;box-shadow:0 0 0 3px rgba(217,83,79,.12)!important}
+/* Leere Zustände: Hinweis mit kleinem Symbol */
+html.glas main div:is(.empty,.empty-line),html.glas main p:is(.empty,.empty-line){position:relative;padding-left:44px!important}
+html.glas main div:is(.empty,.empty-line)::before,html.glas main p:is(.empty,.empty-line)::before{content:'';position:absolute;left:16px;top:calc(50% - 9px);width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#fff 0 3px,transparent 3.5px),#c7c7cc;box-shadow:inset 0 0 0 1px #b8b8bf}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}

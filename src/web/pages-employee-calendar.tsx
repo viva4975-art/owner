@@ -65,7 +65,7 @@ const CSS = `
 .ec{display:grid;border:1px solid #dfe3e8;background:#fff}
 .ec .dc{border-right:1px solid #e6e9ed;border-bottom:1px solid #e6e9ed;padding:0 2px 6px;min-height:104px;min-width:0}
 .ec .dc .n{display:block;text-align:center;font-weight:700;font-size:13px;padding:5px 0 4px;color:var(--ink);text-decoration:none}
-.ec .dc.out{background:#ececec}.ec .dc.out .n{color:#8a8f98}
+.ec .dc.out{background:#f7f7f8}.ec .dc.out .n{color:#9a9aa1}
 .ec .dc.today{background:#fff6c7}
 .ec .dc.hol .n{background:#e7e4e5;color:#3f3a3c}.ec .dc .hn{display:block;text-align:center;font-size:11px;color:#3f3a3c;background:#e7e4e5;font-weight:600;line-height:1.2;padding:0 2px 3px;margin:-4px -2px 3px}
 .ec .dc.absd{background:repeating-linear-gradient(135deg,#f3f4f6 0 6px,#fff 6px 12px)}
@@ -85,7 +85,8 @@ ${absenceCss(
 )}
 .ev{display:flex;align-items:center;gap:4px;padding:3px 6px;margin:0 0 2px;font-size:12.5px;line-height:1.25;text-decoration:none;cursor:pointer;min-width:0;border:1px solid transparent;border-radius:2px}
 .ev .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.ev .tm{font-variant-numeric:tabular-nums;opacity:.9}
+.ev .tm{flex:none;font-variant-numeric:tabular-nums;font-weight:500;opacity:.85}
+.ev-more{display:block;margin:2px 2px 0;padding:2px 4px;border-radius:6px;text-align:center;font-size:12px;font-weight:600;color:var(--mut);text-decoration:none}.ev-more:hover{background:#f2f2f4;color:var(--ink)}
 .ev .ic{flex:none;width:14px;height:14px}
 .ev.plan,.ev.run,.ev.req,.ev.hol{background:#fff;color:#3f3a3c;border-color:#d4cfd1}
 .ev.run{border-left:3px solid #7d1435}.ev.req{border-left:3px solid #7d1435;font-style:italic}
@@ -341,6 +342,7 @@ export const EmployeeCalendarView: FC<{
         data-ev={dataOf(s)}
         title={`${s.plan.site_name} · ${s.plan.start_time}–${s.plan.end_time} · ${st.label}`}
       >
+        <span class="tm">{s.plan.start_time.slice(0, 5)}</span>
         <span class="t">{s.plan.site_name}</span>
         {st.clock && <Clock />}
       </a>
@@ -375,20 +377,21 @@ export const EmployeeCalendarView: FC<{
             {ab.half_day ? ' (½)' : ''}
           </span>
         )}
-        {list.slice(0, 4).map((s) => (
+        {list.slice(0, list.length + ex.length > 3 ? 2 : 3).map((s) => (
           <Ev s={s} />
         ))}
-        {list.length > 4 && (
-          <a class="small" href={q('tag', d)} style="display:block;text-align:center">
-            + {list.length - 4} weitere
-          </a>
-        )}
-        {ex.map((e) => (
+        {ex.slice(0, Math.max(0, (list.length + ex.length > 3 ? 2 : 3) - list.length)).map((e) => (
           <a class="ev extra" href={entryHref(e)} data-ev={dataOfExtra(e)} title="ohne Einsatz gearbeitet">
+            <span class="tm">{clock(e.start_at)}</span>
             <span class="t">{e.site_name}</span>
             <Clock />
           </a>
         ))}
+        {list.length + ex.length > 3 && (
+          <a class="ev-more" href={q('tag', d)}>
+            + {list.length + ex.length - 2} weitere
+          </a>
+        )}
       </div>
     );
   };

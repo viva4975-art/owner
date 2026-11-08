@@ -267,7 +267,7 @@ export const CustomerList: FC<{
             ))}
           </select>
           <button
-            class="btn"
+            class="btn sec"
             disabled={!filtered}
             onclick={`return confirm('Serienbrief an ${filtered} Kunden erstellen?')`}
           >

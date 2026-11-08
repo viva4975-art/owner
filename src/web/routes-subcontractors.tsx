@@ -617,7 +617,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               <div class="actions" style="margin-bottom:0">
                 {s.email && (
                   <a
-                    class="btn sm"
+                    class="btn sec sm"
                     href={`mailto:${s.email}?subject=${encodeURIComponent('Nachweise für die Zusammenarbeit')}&body=${encodeURIComponent(requestText(s, data.rows, url))}`}
                   >
                     Als E-Mail öffnen
@@ -652,9 +652,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   action={`/lieferanten/${id}/portal`}
                   onsubmit="return confirm('Neuen Link und PIN erzeugen? Der alte Zugang gilt dann nicht mehr.')"
                 >
-                  <button class={`btn ${url ? 'sec ' : ''}sm`}>
-                    {url ? 'Neuen Link + PIN' : 'Zugang einrichten'}
-                  </button>
+                  <button class="btn sec sm">{url ? 'Neuen Link + PIN' : 'Zugang einrichten'}</button>
                 </form>
                 {url && (
                   <form method="post" action={`/lieferanten/${id}/portal/sperren`}>

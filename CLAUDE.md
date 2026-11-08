@@ -5138,3 +5138,30 @@ Testadresse.
   - **Offen/Vorschläge:** Dashboard-Reihenfolge nach Dringlichkeit (z. B. überfällige Aufgaben vor Hinweisen) wäre eine
     inhaltliche Änderung – nicht gemacht; Ladeanzeigen gibt es nur beim Hochladen (Fortschrittsbalken), Seiten werden
     serverseitig fertig ausgeliefert; Häkchen „erledigt“ an Aufgaben erscheint bewusst erst beim Darüberfahren.
+- 2026-11-08: **Gezielte UI/UX-Verbesserungen, kein Redesign** (Ahmed: Prüfliste aus 73 Seitenansichten). Zuerst
+  gemessen (72 Seiten automatisch: Hauptknöpfe je Seite, Beträge als Links, Ausrichtung, Lösch-Knöpfe, Leer-Hinweise),
+  nur Auffälliges geändert; neue Regeln im Block „Fassung 6“ in `src/web/glass-css.ts`. Keine Logik/DB geändert.
+  - **Kalender:** Monatsansicht (Mitarbeiter → Kalender & Zeiten, Meine Zeiten, Zeiterfassung je Mitarbeiter) zeigt je
+    Einsatz zuerst die Uhrzeit, dann das Objekt („05:00 Grundschule …“); höchstens 3 Einträge je Tag, sonst „+ n weitere“
+    (Einsätze und „ohne Einsatz“ zusammen gezählt, vorher 4 + beliebig viele); Tage außerhalb des Monats hell statt
+    grau. Am Handy nur die Uhrzeit (Farbe zeigt den Status), Feiertagsname gekürzt. **Planung:** Legende als farbige
+    Muster wie die Einsätze (vorher Text mit falscher Angabe „Rot = abwesend“).
+  - **Fund:** Die Regel `a.plain` stand in `layout.tsx` innerhalb eines CSS-Kommentars und galt nie – Beträge in der
+    Nachkalkulation waren deshalb alle Bordeaux (sahen aus wie Fehler/Links). Jetzt Textfarbe, Bordeaux erst beim
+    Darüberfahren. **Nach-/Plan-Kalkulation:** Erklärung „So wird gerechnet“ eingeklappt, „Kosten ohne Erlös“ /
+    „keine Einsätze geplant“ als kleines gelbes Schild, Marge ohne Erlös als „–“ statt leerem Schild, Erlös/Std. ohne
+    Erlös „–“ statt 0,00 €. Beträge in `td.r`/`.num` überall rechtsbündig mit gleich breiten Ziffern.
+  - **Rechte der Benutzergruppen:** kompakte Matrix (Zeilen halb so hoch), Bereiche als Zwischenüberschrift,
+    abweichende Felder hell-bordeaux hinterlegt statt fett, Nebentext eingeklappt, „Rechte speichern“ bleibt unten
+    sichtbar.
+  - **Formulare:** Wo „Speichern & zurück“ erscheint, steht jetzt rechts einheitlich „Abbrechen“ (zur Liste, ohne
+    Speichern; nur wenn das Formular noch kein Abbrechen hat). Felder, die der Browser als ungültig erkennt, werden nach
+    der Eingabe rot umrandet.
+  - **Eine Hauptaktion je Bereich:** zu Nebenknöpfen (weiß) wurden: Eigen-Compliance „Hochladen“ (23× Bordeaux),
+    Mitarbeiterliste „Export Lexware Lohn“, Kundenliste Serienbrief „Jetzt erstellen“, Filterknopf „Aktualisieren“
+    (Statistiken, Ausgaben, Kontoauszug), Nachunternehmer „Als E-Mail öffnen“/„Zugang einrichten“, Mitarbeiter-Übersicht
+    „+ Einsatz planen“. **Gefährliche Aktionen** jetzt roter Umriss: Raumbuch „Markierte löschen“, Einsatz „Löschen“
+    (Mitarbeiter → Einsätze, Einsatzliste), Abwesenheit „Stornieren“.
+  - **Leere Zustände** mit kleinem Symbol links. Geprüft: tsc, eslint, prettier, e2e menu, rechte (48), planung (26),
+    auswertung (14), zeit (28), nachunternehmer (32); Seiten-Rundgang PC + Handy. `e2e:objektseiten` scheitert wie
+    vorher (Zurück nach Raumbuch-Import, Folge des Zurück-Sprungs vom 02.11.) – noch zu klären.

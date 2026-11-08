@@ -390,7 +390,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
               <label for="q">Filtern</label>
               <input id="q" name="q" value={q} placeholder="Name, Verwendungszweck, Betrag" />
             </div>
-            <button class="btn">Aktualisieren</button>
+            <button class="btn sec">Aktualisieren</button>
             <button type="button" class="btn sec" onclick="window.print()">
               Drucken / PDF
             </button>

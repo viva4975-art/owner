@@ -245,6 +245,14 @@ export const CLIENT_JS = String.raw`
       nb.textContent = /speichern$/i.test(label) ? 'Speichern & zurück' : label + ' & zurück';
       nb.setAttribute('formaction', act + (act.indexOf('?') < 0 ? '?' : '&') + '_zurueck=' + encodeURIComponent(backTo));
       b.parentNode.insertBefore(nb, b.nextSibling);
+      // einheitlich: „Abbrechen“ ganz rechts im Fuß (geht ohne Speichern zur Liste zurück), falls nicht schon da
+      if (!/abbrechen/i.test(foot.textContent || '')) {
+        var ca = document.createElement('a');
+        ca.className = 'btn ghost cancel-back';
+        ca.href = backTo;
+        ca.textContent = 'Abbrechen';
+        foot.appendChild(ca);
+      }
     });
   })();
 

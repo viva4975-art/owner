@@ -1304,7 +1304,7 @@ export function registerModuleRoutes(ctx: Ctx) {
             <div class="actions" style="margin:0 0 8px;justify-content:space-between">
               <h2 style="margin:0">Aktuelle Einsätze</h2>
               <a
-                class="btn sm"
+                class="btn sec sm"
                 href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${e.id}&zurueck=${encodeURIComponent(`/personal/${e.id}`)}`}
               >
                 + Einsatz planen

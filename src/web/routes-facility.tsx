@@ -271,7 +271,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 />{' '}
                 alle markieren
               </label>
-              <button class="btn sec sm" name="umfang" value="markierte">
+              <button class="btn danger sm" name="umfang" value="markierte">
                 <Icon name="trash" /> Markierte löschen
               </button>
               <button

@@ -402,10 +402,27 @@ html.glas details.fold-sec>summary,html.glas details.tool-box>summary{list-style
 html.glas details.fold-sec>summary::-webkit-details-marker,html.glas details.tool-box>summary::-webkit-details-marker{display:none}
 html.glas details.fold-sec>summary::before,html.glas details.tool-box>summary::before{content:"";width:7px;height:7px;flex:none;border-right:1.7px solid var(--mut);border-bottom:1.7px solid var(--mut);transform:rotate(-45deg);transition:transform .15s;margin:0 3px 0 1px}
 html.glas details.fold-sec[open]>summary::before,html.glas details.tool-box[open]>summary::before{transform:rotate(45deg) translate(-1px,-1px)}
+/* Fassung 9 (Ahmed 09.11.: „Bordeaux bei der Menüleiste und leicht im Hintergrund mit dem Glas-Design wieder“):
+   Menüleiste als Bordeaux-Glas mit weißer Schrift, aktiver Punkt weiß unterstrichen; Hintergrund mit leichtem
+   Bordeaux-Schimmer oben und zarten Farbflächen, Karten bleiben weiß. Klappmenüs bleiben hell. */
+html.glas body,html.glas body.shell,html.glas body.appmode,html.glas body.mshell,html.glas body.bare{background:#f6f3f5!important;background-image:radial-gradient(1100px 520px at 12% -8%,color-mix(in srgb,var(--g-acc) 16%,transparent),transparent 70%),radial-gradient(900px 480px at 100% 0%,color-mix(in srgb,var(--g-acc) 9%,transparent),transparent 70%),radial-gradient(1000px 600px at 85% 105%,color-mix(in srgb,var(--g-acc) 7%,transparent),transparent 70%),radial-gradient(800px 500px at 0% 100%,color-mix(in srgb,var(--g-acc) 5%,transparent),transparent 70%)!important;background-attachment:fixed!important}
+@media (min-width:1025px){
+html.glas .menu-top .appside,html.glas:not(.scrolled) .menu-top .appside{background:color-mix(in srgb,var(--g-acc) 92%,transparent)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 6px 22px -10px color-mix(in srgb,var(--g-acc) 60%,transparent)!important}
+html.glas.scrolled .menu-top .appside{background:color-mix(in srgb,var(--g-acc) 80%,transparent)!important}
+html.glas .menu-top .appside>nav.menu>a.item,html.glas .menu-top .appside>nav.menu>.grp>summary,html.glas .menu-top .appside>nav.menu>.grp>summary .ic{color:rgba(255,255,255,.9)!important}
+html.glas .menu-top .appside>nav.menu>a.item:hover,html.glas .menu-top .appside>nav.menu>.grp>summary:hover{background:rgba(255,255,255,.12)!important;color:#fff!important}
+html.glas .menu-top .appside>nav.menu>a.item.on,html.glas .menu-top .appside>nav.menu>.grp.on>summary{color:#fff!important;background:rgba(255,255,255,.14)!important;box-shadow:inset 0 -2.5px 0 #fff!important}
+html.glas .menu-top .appside>nav.menu>.grp[open]>summary,html.glas .menu-top .appside>nav.menu>.grp[open]>summary .ic{color:#fff!important}
+html.glas .menu-top .appside>nav.menu>.grp[open]:not(.on)>summary{color:#fff!important;background:rgba(255,255,255,.12)!important}
+html.glas .menu-top .appside>nav.menu>.grp>summary .ic{background:transparent!important}
+html.glas .menu-top .appside>nav.menu>.grp[open]:not(.on)>summary .ic{color:#fff!important}
+}
 /* Ohne backdrop-filter: deckend weiß */
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .shell .top,html.glas .menu-top .appside,html.glas .sdrop,html.glas .drop,html.glas .cbx-pop,html.glas dialog,html.glas .menu-top .appside nav.menu .sub{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 @media (prefers-reduced-motion:reduce){html.glas *{transition:none!important;animation:none!important}}
 @media (prefers-reduced-transparency:reduce){html.glas .card,html.glas .panel,html.glas .kpi,html.glas .shell .top,html.glas .menu-top .appside,html.glas .apptabs,html.glas .tabbar{background:rgba(255,255,255,.96)!important;-webkit-backdrop-filter:none;backdrop-filter:none}}
-@media print{html.glas body{background:#fff!important}html.glas .card,html.glas .panel{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}}
+@media (prefers-reduced-transparency:reduce) and (min-width:1025px){html.glas .menu-top .appside{background:var(--g-acc)!important}}
+@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){@media (min-width:1025px){html.glas .menu-top .appside{background:var(--g-acc)!important}}}
+@media print{html.glas body{background:#fff!important;background-image:none!important}html.glas .card,html.glas .panel{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}}
 `;

@@ -5313,3 +5313,9 @@ Testadresse.
   (Objekte der Person zuerst) und ist über die Such-Auswahl nach Nr., Name, Straße, Ort und Kunde durchsuchbar. Ins
   Dokument kommt „Objekt, Straße, PLZ Ort“ (gleichnamige Objekte unterscheidbar), auch bei der Vorbelegung mit genau einem
   Objekt. Die Freigabe in der App (an alle eines Objekts) nutzte schon die Auswahl mit Adresse.
+- 2026-11-09: **Bordeaux zurück** (Ahmed: „Bordeaux bei der Menüleiste und leicht im Hintergrund mit dem Glas-Design hat
+  besser gefallen“): Block „Fassung 9“ in `src/web/glass-css.ts`: Menüleiste oben (PC) als Bordeaux-Glas (92 %, beim
+  Scrollen 80 % durchsichtig) mit weißer Schrift, aktiver Punkt weiß unterstrichen, offener Punkt hell hinterlegt;
+  Klappmenüs bleiben hell. Hintergrund mit leichtem Bordeaux-Schimmer oben links/rechts und zarten Flächen unten (folgt
+  der Farbe aus Mein Konto → Darstellung), Karten bleiben weiß. Kopfzeile mit Logo bleibt weiß. Ohne Glas-Unterstützung
+  bzw. „Transparenz reduzieren“ deckend Bordeaux.

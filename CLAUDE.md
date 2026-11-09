@@ -5281,3 +5281,30 @@ Testadresse.
   nach „Aktualisieren“. Browser-Test mit Handy-Emulation (offline → online) durchgespielt.
   Nachtrag (Ahmed: „da steht Arbeitstage 0“): Die Abwesenheitsliste (Urlaub & Abwesenheiten, Startseite, Mitarbeiter)
   zählte nur Mo–Fr. Ergibt das 0, zählen jetzt die Tage mit geplantem Einsatz (`listAbsences` → `leaveDaysOf`).
+- 2026-11-09: **Arbeitsschein: unterschriebene Fassung bleibt abrufbar** (Ahmed: „durch Kopieren/Wieder bearbeiten wieder
+  Entwurf – Unterschrift als PDF immer speichern“): Das unterschriebene PDF wurde bei „Wieder bearbeiten“ schon write-once
+  archiviert, war aber nirgends mehr zu öffnen. Jetzt Kasten **„Frühere Fassungen“** am Arbeitsschein (Entwurf und
+  abgeschlossen): Fassung 1, 2 … mit Unterschrift (Name, Zeitpunkt) bzw. „ohne Unterschrift“, wann/wer wieder bearbeitet,
+  PDF über `/arbeitsscheine/:id/fassung/:n.pdf` (`workReportVersions` aus dem Protokoll `reopen`; gilt auch für schon
+  wieder bearbeitete Scheine). Kopie: Hinweis „Kopie von AS-… – dort bleibt die Unterschrift unverändert“ mit Link aufs
+  unterschriebene PDF; die Kopie ist ein neuer Schein und muss selbst unterschrieben werden (Original bleibt unverändert).
+- 2026-11-09: **Verdiensterhebung (Statistisches Bundesamt) als CSV** (Ahmed, Beispieldateien IDEV/CORE):
+  Verwaltung → Lohn & DATEV → „Verdiensterhebung (Statistik)“ (`/personal/lohnabrechnungen/verdiensterhebung`,
+  Admin/Personal/Buchhaltung, `src/services/wage-statistics.ts`, `routes-wage-stat.tsx`). Berichtsmonat wählen,
+  Betriebsangaben (Tarifbindung 1–4, Statistik-Betriebsnummer für CORE; `app.wage_stat_settings`), Kästchen Fusion/
+  Kurzarbeit/Streik/sonstige Gründe + Bemerkung, Tabelle je Beschäftigtem (im Monat beschäftigt) zum Prüfen/Ändern.
+  Datei laut Vorlage: ohne Kopfzeile, Semikolon, Dezimalkomma, ISO-8859-1; Zeile `B;Tarifbindung;Fusion;KonjKurz;
+  SaisonKurz;Streik;Sonstige;Bemerkung`, je Person `P;Personalnr;Geschlecht;GebMMJJJJ;Staatsang.;EintrittMMJJJJ;
+  Personengruppe;Tätigkeitsschl.;Berufsschl.;Std;Überstd;Brutto;SonstBez;Überstd€;Zuschläge;Entgeltumw.`; CORE mit
+  BerichtseinheitID als erster Zeile. Geschlecht aus Anrede (ohne = 4), Stunden/Brutto aus Stundenliste & Lohnarten
+  („Ist, sonst Plan“; Festgehalt: Sollzeit = Wochenstunden × 4,33), Überstunden = Mehrarbeit über der Wochenschwelle,
+  Zuschläge = Nacht/Sonn-/Feiertag. Schlüssel je Mitarbeiter gespeichert (`employees.deuev_group/activity_key/
+  nationality_key`, Migration `20270121000001`): Vorschlag Personengruppe 101/109 Minijob/110 Aushilfe/106 Werkstudent/
+  900 Geschäftsführer, Tätigkeitsschlüssel 54101 (Reinigung) bzw. 54193 (Objektleitung/Vorarbeit) + 99 (Abschlüsse
+  unbekannt) + 1 (keine AÜ) + 1/2 (Vollzeit/Teilzeit unbefristet), Staatsangehörigkeitsschlüssel aus einer Liste
+  häufiger Staaten (`NATIONALITY_KEYS`, sonst eintragen). Bei 800/900 geht der Schlüssel als Berufsschlüssel raus.
+  **Ahmed: Statistik-Betriebsnummer eintragen; Tätigkeitsschlüssel/Personengruppe einmal mit den SV-Meldungen in
+  Lexware abgleichen; Brutto, sonstige Bezüge (Weihnachts-/Urlaubsgeld) und Entgeltumwandlung vor dem Senden mit der
+  Lohnabrechnung prüfen** – die App kennt Einmalzahlungen/Sachbezüge nicht. Staatsangehörigkeitsschlüssel aus dem
+  Gedächtnis eingetragen (destatis hier nicht erreichbar) – einmal gegen die destatis-Liste prüfen. Test
+  `wage-statistics.db.test.ts`.

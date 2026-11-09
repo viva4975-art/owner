@@ -1,4 +1,5 @@
 import { registerPayslipRoutes } from './routes-payslips.js';
+import { registerWageStatRoutes } from './routes-wage-stat.js';
 import { syncExitReturnTasks } from '../services/exit-returns.js';
 import { registerLetterRoutes } from './routes-letters.js';
 import { registerMaterialRoutes } from './routes-material.js';
@@ -667,6 +668,7 @@ export function createApp(deps: Deps) {
   registerLetterRoutes(ctx);
   registerPermissionRoutes(ctx);
   registerPrivacyRoutes(ctx);
+  registerWageStatRoutes(ctx);
   registerPayslipRoutes(ctx);
   registerCashbookRoutes(ctx);
   registerLegacyRoutes(ctx);

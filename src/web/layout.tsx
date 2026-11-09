@@ -1723,6 +1723,7 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
   [
     { label: 'DATEV-Export', href: '/datev' },
     { label: 'Lohnabrechnungen einlesen', href: '/personal/lohnabrechnungen' },
+    { label: 'Verdiensterhebung (Statistik)', href: '/personal/lohnabrechnungen/verdiensterhebung' },
     { label: 'Mitarbeiter-Export Lexware (CSV)', href: '/personal/export.csv' },
   ],
   [

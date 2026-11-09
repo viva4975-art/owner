@@ -5328,3 +5328,10 @@ Testadresse.
   Übergaben. Geräteliste gruppiert je Objekt (Lager zuletzt), Filter „Objekt“. **Reinigungswagen ohne Prüfung nach
   DGUV V3** (`NO_INSPECTION_KINDS`): kein Prüfdatum im Formular/Detail/Objekt, keine „Prüfung fällig“-Warnung, Datum wird
   beim Speichern geleert. **Druck: im Druckdialog „Tatsächliche Größe/100 %“, erst Probe auf Normalpapier.**
+- 2026-11-09: **Geräte-Etiketten: „noch nicht gedruckt“ und Druck nach Objektleitung** (Ahmed): `devices.label_printed_at/
+  label_printed_by` (Migration `20270122000001`). Etikettenseite: Knopf „Als gedruckt vermerken“ (nach dem Drucken fragt
+  der Browser auch selbst), `markLabelsPrinted` mit Protokoll `label_printed`. Geräteliste: Filter „Etikett noch nicht
+  gedruckt (n)“, je Gerät „Etikett fehlt“ bzw. „Etikett TT.MM.JJJJ“, Filter „Objektleitung“ (auch „ohne“), Liste nach
+  Objektleitung → Objekt gruppiert mit Knopf „Etiketten für alle Objekte dieser Objektleitung“ (`?ol=`, bei Filter
+  „noch nicht gedruckt“ mit `nur=neu`). Druck immer in der Reihenfolge Objektleitung → Objekt → Gerät, lückenlos
+  hintereinander (Seiten werden aufgefüllt, kein Seitenumbruch je Objekt; `labelOrder`).

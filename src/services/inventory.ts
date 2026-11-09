@@ -349,11 +349,17 @@ export type DeviceListRow = Device & {
   seen_lat: string | null;
   seen_lng: string | null;
   seen_days: number | null;
+  /** Objektleitung des Standort-Objekts */
+  manager_user_id: string | null;
+  manager_name: string | null;
+  /** Etikett zuletzt gedruckt (null = noch nie) */
+  label_printed_at: Date | null;
 };
 
 export async function listDevices(sql: Sql) {
   return sql<DeviceListRow[]>`
-    select d.*, s.name as site_name, s.site_no,
+    select d.*, s.name as site_name, s.site_no, s.manager_user_id,
+           (select p.display_name from app.profiles p where p.user_id = s.manager_user_id) as manager_name,
            case when d.kind = 'reinigungswagen' then null else d.next_inspection end as next_inspection,
            case when d.kind = 'reinigungswagen' then null
                 else (d.next_inspection - (now() at time zone 'Europe/Berlin')::date)::int end as days,
@@ -365,6 +371,18 @@ export async function listDevices(sql: Sql) {
          where x.device_id = d.id and x.action in ('hier', 'mitgenommen', 'lager', 'defekt')
          order by x.created_at desc limit 1) e on true
      order by d.active desc, s.site_no nulls last, d.name`;
+}
+
+/** Etiketten als gedruckt vermerken (nur Vermerk, ändert sonst nichts am Gerät) */
+export async function markLabelsPrinted(sql: Sql, ids: string[], actor: string) {
+  const list = ids.filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 1000);
+  if (!list.length) return 0;
+  const rows = await sql`
+    update app.devices set label_printed_at = now(), label_printed_by = ${actor}
+     where id = any(${sql.array(list)}::uuid[]) returning id`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, 'label_printed', 'devices', null, ${sql.json({ ids: list })})`;
+  return rows.length;
 }
 
 export async function getDevice(sql: Sql, id: string) {

@@ -24,7 +24,13 @@ import {
 } from '../services/device-tracking.js';
 import { verifySession } from '../services/employee-auth.js';
 import { BusinessError } from '../services/errors.js';
-import { type DeviceListRow, getDevice, listDevices, needsInspection } from '../services/inventory.js';
+import {
+  type DeviceListRow,
+  getDevice,
+  listDevices,
+  markLabelsPrinted,
+  needsInspection,
+} from '../services/inventory.js';
 import { listSites } from '../services/masterdata.js';
 import { type FileRow, filePath } from '../services/uploads.js';
 import { fullName, getUser } from '../services/users.js';
@@ -55,6 +61,18 @@ const mapsLink = (lat: string, lng: string) =>
 
 const isStale = (d: DeviceListRow) => d.active && (d.seen_days == null || d.seen_days > STALE_DAYS);
 
+/** Etiketten-Reihenfolge: Objektleitung (ohne zuletzt) → Objekt → Gerät, Lager ganz am Ende – Seiten werden lückenlos gefüllt */
+const labelOrder = (a: DeviceListRow, b: DeviceListRow) =>
+  (a.site_id ? 0 : 1) - (b.site_id ? 0 : 1) ||
+  (a.manager_name ? 0 : 1) - (b.manager_name ? 0 : 1) ||
+  (a.manager_name ?? '').localeCompare(b.manager_name ?? '', 'de') ||
+  (a.site_no ?? '').localeCompare(b.site_no ?? '', 'de') ||
+  a.name.localeCompare(b.name, 'de');
+/** Filter Objekt / Objektleitung / nur noch nicht gedruckte (gleich in Liste und Etikettendruck) */
+const matchPlace = (d: DeviceListRow, objekt: string, ol: string) =>
+  (!objekt || (objekt === 'lager' ? !d.site_id : d.site_id === objekt)) &&
+  (!ol || (ol === 'ohne' ? !!d.site_id && !d.manager_user_id : d.manager_user_id === ol));
+
 export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
   const cfg = { dir: env.FILES_DIR, maxBytes: env.UPLOAD_MAX_BYTES };
@@ -77,11 +95,13 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
     const art = c.req.query('art') ?? '';
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const objekt = c.req.query('objekt') ?? '';
+    const ol = c.req.query('ol') ?? '';
     const active = all.filter((d) => d.active);
     const counts = {
       lange: active.filter(isStale).length,
       defekt: active.filter((d) => d.status !== 'ok').length,
       pruefung: active.filter((d) => d.days !== null && d.days <= 30).length,
+      neu: active.filter((d) => !d.label_printed_at).length,
     };
     const rows = all.filter(
       (d) =>
@@ -95,7 +115,7 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                 ? !d.active
                 : d.active) &&
         (!art || d.kind === art) &&
-        (!objekt || (objekt === 'lager' ? !d.site_id : d.site_id === objekt)) &&
+        matchPlace(d, objekt, ol) &&
         (!q ||
           `${d.inventory_no} ${d.name} ${d.manufacturer ?? ''} ${d.serial_no ?? ''} ${d.site_name ?? ''}`
             .toLowerCase()
@@ -114,6 +134,18 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
         e.n++;
         siteMap.set(d.site_id, e);
       }
+    const olMap = new Map<string, { id: string; name: string; n: number }>();
+    for (const d of active)
+      if (d.manager_user_id) {
+        const e = olMap.get(d.manager_user_id) ?? {
+          id: d.manager_user_id,
+          name: d.manager_name ?? '–',
+          n: 0,
+        };
+        e.n++;
+        olMap.set(d.manager_user_id, e);
+      }
+    const olChoices = [...olMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
     const siteChoices = [...siteMap.values()].sort((a, b) => a.site_no.localeCompare(b.site_no, 'de'));
     const groups = new Map<string, DeviceListRow[]>();
     for (const d of rows) {
@@ -121,15 +153,14 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(d);
     }
-    const groupList = [...groups.entries()].sort((a, b) =>
-      !a[0] ? 1 : !b[0] ? -1 : (a[1][0]!.site_no ?? '').localeCompare(b[1][0]!.site_no ?? '', 'de'),
-    );
+    const groupList = [...groups.entries()].sort((a, b) => labelOrder(a[1][0]!, b[1][0]!));
     const href = (p: Record<string, string>) => {
       const u = new URLSearchParams({
         ...(f ? { f } : {}),
         ...(art ? { art } : {}),
         ...(q ? { q } : {}),
         ...(objekt ? { objekt } : {}),
+        ...(ol ? { ol } : {}),
         ...p,
       });
       for (const [k, v] of [...u]) if (!v) u.delete(k);
@@ -162,6 +193,9 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
             <a href={href({ f: 'lange' })} class={f === 'lange' ? 'on' : ''}>
               Lange nicht gescannt ({counts.lange})
             </a>
+            <a href={href({ f: 'ungedruckt' })} class={f === 'ungedruckt' ? 'on' : ''}>
+              Etikett noch nicht gedruckt ({counts.neu})
+            </a>
             <a href={href({ f: 'defekt' })} class={f === 'defekt' ? 'on' : ''}>
               Defekt / Reparatur ({counts.defekt})
             </a>
@@ -185,6 +219,22 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                 {v}
               </option>
             ))}
+          </select>
+          <select
+            name="ol"
+            aria-label="Objektleitung"
+            onchange="this.form.submit()"
+            style="width:auto;min-width:200px"
+          >
+            <option value="">alle Objektleitungen</option>
+            {olChoices.map((m) => (
+              <option value={m.id} selected={m.id === ol}>
+                {m.name} ({m.n})
+              </option>
+            ))}
+            <option value="ohne" selected={ol === 'ohne'}>
+              ohne Objektleitung
+            </option>
           </select>
           <select
             name="objekt"
@@ -243,8 +293,31 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                     </td>
                   </tr>
                 )}
-                {groupList.map(([sid, list]) => (
+                {groupList.map(([sid, list], gi) => (
                   <>
+                    {sid &&
+                      (gi === 0 ||
+                        groupList[gi - 1]![1][0]!.manager_user_id !== list[0]!.manager_user_id ||
+                        !groupList[gi - 1]![0]) && (
+                        <tr class="grp-row">
+                          <td colspan={5} style="padding:12px 10px 6px;border-bottom:0">
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                              <span class="small mut" style="text-transform:uppercase;letter-spacing:.05em">
+                                Objektleitung
+                              </span>
+                              <b style="font-size:15px">{list[0]!.manager_name ?? 'ohne Objektleitung'}</b>
+                              <a
+                                class="btn sm"
+                                style="margin-left:auto"
+                                target="_blank"
+                                href={`/geraete/etiketten?ol=${list[0]!.manager_user_id ?? 'ohne'}${f === 'ungedruckt' ? '&nur=neu' : ''}`}
+                              >
+                                Etiketten für alle Objekte dieser Objektleitung
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     <tr class="grp-row">
                       <td colspan={5} style="background:var(--tint-2,#f8eff2);padding:8px 10px">
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -262,7 +335,7 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                             class="btn sm sec"
                             style="margin-left:auto"
                             target="_blank"
-                            href={`/geraete/etiketten?objekt=${sid || 'lager'}`}
+                            href={`/geraete/etiketten?objekt=${sid || 'lager'}${f === 'ungedruckt' ? '&nur=neu' : ''}`}
                           >
                             Etiketten für dieses Objekt
                           </a>
@@ -274,7 +347,17 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                         <td>
                           <input type="checkbox" name="id" value={d.id} aria-label={`${d.name} markieren`} />
                         </td>
-                        <td>{d.inventory_no}</td>
+                        <td>
+                          {d.inventory_no}
+                          <div
+                            class="small"
+                            style={d.label_printed_at ? 'color:var(--mut)' : 'color:var(--err)'}
+                          >
+                            {d.label_printed_at
+                              ? `Etikett ${dateDe(todayBerlin(d.label_printed_at))}`
+                              : 'Etikett fehlt'}
+                          </div>
+                        </td>
                         <td>
                           <a href={`/geraete/${d.id}`}>
                             <b>{d.name}</b>
@@ -356,19 +439,16 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
     const fallback = (c.req.query('alle') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/.test(x));
     const ids = new Set(picked.length ? picked : fallback);
     const objekt = c.req.query('objekt') ?? '';
+    const ol = c.req.query('ol') ?? '';
+    const nurNeu = c.req.query('nur') === 'neu';
     const all = inScope(c, await listDevices(sql));
     const list = (
       ids.size
         ? all.filter((d) => ids.has(d.id))
-        : all.filter((d) => d.active && (!objekt || (objekt === 'lager' ? !d.site_id : d.site_id === objekt)))
+        : all.filter((d) => d.active && matchPlace(d, objekt, ol) && (!nurNeu || !d.label_printed_at))
     )
-      // je Objekt zusammen (Objektnummer, dann Bezeichnung) – Lager zuletzt
-      .sort(
-        (a, b) =>
-          (a.site_no ? 0 : 1) - (b.site_no ? 0 : 1) ||
-          (a.site_no ?? '').localeCompare(b.site_no ?? '', 'de') ||
-          a.name.localeCompare(b.name, 'de'),
-      )
+      // Objektleitung → Objekt → Gerät, ohne Leerräume zwischen Objekten (Seiten werden aufgefüllt)
+      .sort(labelOrder)
       .slice(0, 400);
     // Formate: avery = Avery Zweckform Sicherheits-Etiketten 63,5 × 29,6 mm, 3 × 9 je A4 (Ahmed 09.11.)
     const fmt =
@@ -439,11 +519,24 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
               }}
             />
             <script dangerouslySetInnerHTML={{ __html: ADJUST_JS }} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.addEventListener('afterprint',function(){var f=document.getElementById('printed-form');if(f&&confirm('Wurden die Etiketten richtig gedruckt? Dann als gedruckt vermerken.'))f.submit()});`,
+              }}
+            />
           </head>
           <body>
             <div class="bar">
               <b>{list.length} Etiketten</b>
               <button onclick="window.print()">Drucken</button>
+              {labels.length > 0 && (
+                <form method="post" action="/geraete/etiketten/gedruckt" id="printed-form" style="margin:0">
+                  {labels.map(({ d }) => (
+                    <input type="hidden" name="id" value={d.id} />
+                  ))}
+                  <button>Als gedruckt vermerken</button>
+                </form>
+              )}
               <span style="color:#666">{fmtText}</span>
               <form method="get" action="/geraete/etiketten" style="display:flex;gap:6px;align-items:center">
                 {[...new URL(c.req.url).searchParams.entries()]
@@ -508,6 +601,20 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
         </html>
       ).toString()}`,
     );
+  });
+
+  app.post('/geraete/etiketten/gedruckt', async (c) => {
+    const body = await c.req.parseBody({ all: true });
+    const raw = body['id'];
+    const wanted = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(String);
+    // nur Geräte, die die Person sehen darf
+    const allowed = new Set(inScope(c, await listDevices(sql)).map((d) => d.id));
+    const n = await markLabelsPrinted(
+      sql,
+      wanted.filter((x) => allowed.has(x)),
+      fullName(c.get('user')),
+    );
+    return back(c, '/geraete', { ok: `${anz(n, 'Etikett', 'Etiketten')} als gedruckt vermerkt.` });
   });
 
   // ------------------------------------------------------------------ Scan im Büro (Objektleitung, Büro)

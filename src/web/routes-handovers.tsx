@@ -2077,7 +2077,8 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
           seen_at: string | null;
         }[]
       >`
-        select d.id, d.name, d.inventory_no, d.kind, d.status, d.next_inspection::text,
+        select d.id, d.name, d.inventory_no, d.kind, d.status,
+               case when d.kind = 'reinigungswagen' then null else d.next_inspection::text end as next_inspection,
                (select max(e.created_at at time zone 'Europe/Berlin')::date::text from app.device_events e where e.device_id = d.id) as seen_at
           from app.devices d where d.site_id = ${st.id} and d.active order by d.name`;
       return (
@@ -2092,6 +2093,11 @@ export function registerHandoverRoutes({ app, deps, page, back, shells }: Ctx) {
                   href={`/geraete/${randomUUID()}/bearbeiten?objekt=${st.id}`}
                 >
                   + Gerät für dieses Objekt anlegen
+                </a>
+              )}
+              {devices.length > 0 && (
+                <a class="btn sm sec" target="_blank" href={`/geraete/etiketten?objekt=${st.id}`}>
+                  Etiketten drucken ({devices.length})
                 </a>
               )}
             </div>

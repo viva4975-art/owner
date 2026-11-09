@@ -309,6 +309,10 @@ export interface Device {
   qr_token: string;
 }
 
+/** Arten ohne Prüfung nach DGUV V3 (nicht elektrisch) – keine Prüftermine/-warnungen (Ahmed 09.11.) */
+export const NO_INSPECTION_KINDS: readonly string[] = ['reinigungswagen'];
+export const needsInspection = (kind: string) => !NO_INSPECTION_KINDS.includes(kind);
+
 export const deviceInput = z.object({
   inventory_no: z.string().trim().min(1, 'Inventarnummer fehlt'),
   name: z.string().trim().min(1, 'Bezeichnung fehlt'),
@@ -350,7 +354,9 @@ export type DeviceListRow = Device & {
 export async function listDevices(sql: Sql) {
   return sql<DeviceListRow[]>`
     select d.*, s.name as site_name, s.site_no,
-           (d.next_inspection - (now() at time zone 'Europe/Berlin')::date)::int as days,
+           case when d.kind = 'reinigungswagen' then null else d.next_inspection end as next_inspection,
+           case when d.kind = 'reinigungswagen' then null
+                else (d.next_inspection - (now() at time zone 'Europe/Berlin')::date)::int end as days,
            e.created_at as seen_at, e.by_name as seen_by, e.lat::text as seen_lat, e.lng::text as seen_lng,
            ((now() at time zone 'Europe/Berlin')::date - (e.created_at at time zone 'Europe/Berlin')::date)::int as seen_days
       from app.devices d left join app.sites s on s.id = d.site_id
@@ -358,7 +364,7 @@ export async function listDevices(sql: Sql) {
         select x.created_at, x.by_name, x.lat, x.lng from app.device_events x
          where x.device_id = d.id and x.action in ('hier', 'mitgenommen', 'lager', 'defekt')
          order by x.created_at desc limit 1) e on true
-     order by d.active desc, d.next_inspection nulls last, d.name`;
+     order by d.active desc, s.site_no nulls last, d.name`;
 }
 
 export async function getDevice(sql: Sql, id: string) {
@@ -373,7 +379,10 @@ export async function saveDevice(
   expectedVersion: number | null,
   actor: string,
 ) {
-  await upsert(sql, 'devices', id, parse(deviceInput, body), expectedVersion, 'Das Gerät', actor);
+  const v = parse(deviceInput, body);
+  // Reinigungswagen haben keine DGUV-Prüfung (Ahmed 09.11.) – Datum nie speichern
+  if (NO_INSPECTION_KINDS.includes(v.kind)) v.next_inspection = null;
+  await upsert(sql, 'devices', id, v, expectedVersion, 'Das Gerät', actor);
 }
 
 export const suggestInventoryNo = (sql: Sql) => nextNo(sql, 'devices', 'inventory_no', 5001);

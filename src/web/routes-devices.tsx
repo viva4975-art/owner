@@ -24,7 +24,7 @@ import {
 } from '../services/device-tracking.js';
 import { verifySession } from '../services/employee-auth.js';
 import { BusinessError } from '../services/errors.js';
-import { type DeviceListRow, getDevice, listDevices } from '../services/inventory.js';
+import { type DeviceListRow, getDevice, listDevices, needsInspection } from '../services/inventory.js';
 import { listSites } from '../services/masterdata.js';
 import { type FileRow, filePath } from '../services/uploads.js';
 import { fullName, getUser } from '../services/users.js';
@@ -76,6 +76,7 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
     const f = c.req.query('f') ?? '';
     const art = c.req.query('art') ?? '';
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    const objekt = c.req.query('objekt') ?? '';
     const active = all.filter((d) => d.active);
     const counts = {
       lange: active.filter(isStale).length,
@@ -94,16 +95,41 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                 ? !d.active
                 : d.active) &&
         (!art || d.kind === art) &&
+        (!objekt || (objekt === 'lager' ? !d.site_id : d.site_id === objekt)) &&
         (!q ||
           `${d.inventory_no} ${d.name} ${d.manufacturer ?? ''} ${d.serial_no ?? ''} ${d.site_name ?? ''}`
             .toLowerCase()
             .includes(q)),
+    );
+    // Objekte mit Geräten (für Filter und Gruppierung je Objekt)
+    const siteMap = new Map<string, { id: string; site_no: string; name: string; n: number }>();
+    for (const d of active)
+      if (d.site_id) {
+        const e = siteMap.get(d.site_id) ?? {
+          id: d.site_id,
+          site_no: d.site_no ?? '',
+          name: d.site_name ?? '',
+          n: 0,
+        };
+        e.n++;
+        siteMap.set(d.site_id, e);
+      }
+    const siteChoices = [...siteMap.values()].sort((a, b) => a.site_no.localeCompare(b.site_no, 'de'));
+    const groups = new Map<string, DeviceListRow[]>();
+    for (const d of rows) {
+      const k = d.site_id ?? '';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(d);
+    }
+    const groupList = [...groups.entries()].sort((a, b) =>
+      !a[0] ? 1 : !b[0] ? -1 : (a[1][0]!.site_no ?? '').localeCompare(b[1][0]!.site_no ?? '', 'de'),
     );
     const href = (p: Record<string, string>) => {
       const u = new URLSearchParams({
         ...(f ? { f } : {}),
         ...(art ? { art } : {}),
         ...(q ? { q } : {}),
+        ...(objekt ? { objekt } : {}),
         ...p,
       });
       for (const [k, v] of [...u]) if (!v) u.delete(k);
@@ -160,6 +186,22 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
               </option>
             ))}
           </select>
+          <select
+            name="objekt"
+            aria-label="Objekt"
+            onchange="this.form.submit()"
+            style="width:auto;min-width:220px"
+          >
+            <option value="">alle Objekte</option>
+            <option value="lager" selected={objekt === 'lager'}>
+              Lager / Büro
+            </option>
+            {siteChoices.map((st) => (
+              <option value={st.id} selected={st.id === objekt}>
+                {st.site_no} · {st.name} ({st.n})
+              </option>
+            ))}
+          </select>
           <input
             name="q"
             value={q}
@@ -189,7 +231,6 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                   </th>
                   <th>Nr.</th>
                   <th>Gerät</th>
-                  <th>Standort</th>
                   <th>Zuletzt gescannt</th>
                   <th>Nächste Prüfung</th>
                 </tr>
@@ -197,83 +238,105 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colspan={6}>
+                    <td colspan={5}>
                       <div class="empty">Keine Geräte in dieser Auswahl.</div>
                     </td>
                   </tr>
                 )}
-                {rows.map((d) => (
-                  <tr style={d.active ? '' : 'opacity:.55'}>
-                    <td>
-                      <input type="checkbox" name="id" value={d.id} aria-label={`${d.name} markieren`} />
-                    </td>
-                    <td>{d.inventory_no}</td>
-                    <td>
-                      <a href={`/geraete/${d.id}`}>
-                        <b>{d.name}</b>
-                      </a>
-                      <div class="small mut">
-                        {kindLabel(d.kind)}
-                        {d.manufacturer ? ` · ${d.manufacturer}` : ''}
-                      </div>
-                      {d.status !== 'ok' && (
-                        <span class="badge err">{DEVICE_STATUS[d.status as keyof typeof DEVICE_STATUS]}</span>
-                      )}
-                    </td>
-                    <td>
-                      {d.site_id ? (
-                        <a href={`/objekte/${d.site_id}`}>
-                          {d.site_no} · {d.site_name}
-                        </a>
-                      ) : (
-                        'Lager'
-                      )}
-                    </td>
-                    <td class="small">
-                      {d.seen_at ? (
-                        <span style={isStale(d) ? 'color:var(--err)' : ''}>
-                          {dateDe(todayBerlin(d.seen_at))} · {d.seen_by}
-                          {d.seen_lat && d.seen_lng && (
-                            <>
-                              {' '}
-                              ·{' '}
-                              <a
-                                href={mapsLink(d.seen_lat, d.seen_lng)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Karte
+                {groupList.map(([sid, list]) => (
+                  <>
+                    <tr class="grp-row">
+                      <td colspan={5} style="background:var(--tint-2,#f8eff2);padding:8px 10px">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                          <b>
+                            {sid ? (
+                              <a href={`/objekte/${sid}`}>
+                                {list[0]!.site_no} · {list[0]!.site_name}
                               </a>
-                            </>
+                            ) : (
+                              'Lager / Büro'
+                            )}
+                          </b>
+                          <span class="small mut">{anz(list.length, 'Gerät', 'Geräte')}</span>
+                          <a
+                            class="btn sm sec"
+                            style="margin-left:auto"
+                            target="_blank"
+                            href={`/geraete/etiketten?objekt=${sid || 'lager'}`}
+                          >
+                            Etiketten für dieses Objekt
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                    {list.map((d) => (
+                      <tr style={d.active ? '' : 'opacity:.55'}>
+                        <td>
+                          <input type="checkbox" name="id" value={d.id} aria-label={`${d.name} markieren`} />
+                        </td>
+                        <td>{d.inventory_no}</td>
+                        <td>
+                          <a href={`/geraete/${d.id}`}>
+                            <b>{d.name}</b>
+                          </a>
+                          <div class="small mut">
+                            {kindLabel(d.kind)}
+                            {d.manufacturer ? ` · ${d.manufacturer}` : ''}
+                          </div>
+                          {d.status !== 'ok' && (
+                            <span class="badge err">
+                              {DEVICE_STATUS[d.status as keyof typeof DEVICE_STATUS]}
+                            </span>
                           )}
-                        </span>
-                      ) : (
-                        <span style={d.active ? 'color:var(--err)' : ''}>noch nie</span>
-                      )}
-                    </td>
-                    <td>
-                      {d.next_inspection ? (
-                        <span class={`badge ${d.days! < 0 ? 'err' : d.days! <= 30 ? 'warn' : 'ok'}`}>
-                          {dateDe(d.next_inspection)}
-                        </span>
-                      ) : (
-                        '–'
-                      )}
-                    </td>
-                  </tr>
+                        </td>
+                        <td class="small">
+                          {d.seen_at ? (
+                            <span style={isStale(d) ? 'color:var(--err)' : ''}>
+                              {dateDe(todayBerlin(d.seen_at))} · {d.seen_by}
+                              {d.seen_lat && d.seen_lng && (
+                                <>
+                                  {' '}
+                                  ·{' '}
+                                  <a
+                                    href={mapsLink(d.seen_lat, d.seen_lng)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Karte
+                                  </a>
+                                </>
+                              )}
+                            </span>
+                          ) : (
+                            <span style={d.active ? 'color:var(--err)' : ''}>noch nie</span>
+                          )}
+                        </td>
+                        <td>
+                          {d.next_inspection ? (
+                            <span class={`badge ${d.days! < 0 ? 'err' : d.days! <= 30 ? 'warn' : 'ok'}`}>
+                              {dateDe(d.next_inspection)}
+                            </span>
+                          ) : (
+                            '–'
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 ))}
               </tbody>
             </table>
           </div>
           <div class="actions">
-            <button class="btn sec" name="format" value="gross">
-              Etiketten für markierte (groß, 2 × 5 je A4)
+            <button class="btn sec" name="format" value="avery">
+              Etiketten drucken (Avery 63,5 × 29,6 mm, 27 je Bogen)
             </button>
-            <button class="btn sec" name="format" value="klein">
-              Etiketten für markierte (klein, 3 × 8 je A4)
+            <button class="btn ghost sm" name="format" value="gross">
+              groß (2 × 5, Papier)
             </button>
             <span class="small mut">
-              Ohne Markierung: alle {anz(rows.length, 'Gerät', 'Geräte')} dieser Auswahl.
+              Ohne Markierung: alle {anz(rows.length, 'Gerät', 'Geräte')} dieser Auswahl, nach Objekt
+              sortiert.
             </span>
           </div>
           {rows.length > 0 && <input type="hidden" name="alle" value={rows.map((d) => d.id).join(',')} />}
@@ -292,9 +355,27 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
     const picked = c.req.queries('id') ?? [];
     const fallback = (c.req.query('alle') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/.test(x));
     const ids = new Set(picked.length ? picked : fallback);
+    const objekt = c.req.query('objekt') ?? '';
     const all = inScope(c, await listDevices(sql));
-    const list = (ids.size ? all.filter((d) => ids.has(d.id)) : all.filter((d) => d.active)).slice(0, 400);
-    const small = c.req.query('format') === 'klein';
+    const list = (
+      ids.size
+        ? all.filter((d) => ids.has(d.id))
+        : all.filter((d) => d.active && (!objekt || (objekt === 'lager' ? !d.site_id : d.site_id === objekt)))
+    )
+      // je Objekt zusammen (Objektnummer, dann Bezeichnung) – Lager zuletzt
+      .sort(
+        (a, b) =>
+          (a.site_no ? 0 : 1) - (b.site_no ? 0 : 1) ||
+          (a.site_no ?? '').localeCompare(b.site_no ?? '', 'de') ||
+          a.name.localeCompare(b.name, 'de'),
+      )
+      .slice(0, 400);
+    // Formate: avery = Avery Zweckform Sicherheits-Etiketten 63,5 × 29,6 mm, 3 × 9 je A4 (Ahmed 09.11.)
+    const fmt =
+      c.req.query('format') === 'gross' ? 'gross' : c.req.query('format') === 'klein' ? 'klein' : 'avery';
+    const perSheet = fmt === 'avery' ? 27 : fmt === 'klein' ? 24 : 10;
+    // Beginnen bei Etikett Nr. (angebrochene Bögen weiterverwenden)
+    const ab = Math.min(perSheet, Math.max(1, Number(c.req.query('ab') ?? 1) || 1));
     const labels = await Promise.all(
       list.map(async (d) => ({
         d,
@@ -305,14 +386,38 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
         }),
       })),
     );
+    const cells: ((typeof labels)[number] | null)[] = [...Array(ab - 1).fill(null), ...labels];
     const [co] = await sql<
       { name: string; phone: string | null }[]
     >`select legal_name as name, phone from app.company where id = 1`;
-    const css = small
-      ? `.sheet{grid-template-columns:repeat(3,63.5mm);grid-auto-rows:33.9mm;column-gap:2.5mm;padding:13mm 7mm}
-.lab{padding:2.5mm;gap:2.5mm}.qr{width:28mm;height:28mm}.nm{font-size:9.5pt}.k{font-size:6.5pt}.nr{font-size:11pt}.t,.own{font-size:5.8pt}.logo{height:4.5mm}`
-      : `.sheet{grid-template-columns:repeat(2,95mm);grid-auto-rows:54mm;column-gap:4mm;padding:10mm 8mm}
-.lab{padding:4mm;gap:4mm}.qr{width:44mm;height:44mm}.nm{font-size:12pt}.k{font-size:7.5pt}.nr{font-size:16pt}.t{font-size:7.5pt}.own{font-size:6.5pt}.logo{height:7mm}`;
+    const css =
+      fmt === 'avery'
+        ? // A4: 3 × 63,5 mm + 2 × 2,5 mm Abstand = 195,5 → Rand 7,25 mm; 9 × 29,6 mm = 266,4 → oben 15,3 mm
+          `.sheet{grid-template-columns:repeat(3,63.5mm);grid-auto-rows:29.6mm;column-gap:2.5mm;height:297mm;
+padding:calc(15.3mm + var(--dy,0mm)) 0 0 calc(7.25mm + var(--dx,0mm))}
+.lab{padding:1.6mm 2mm;gap:2mm}.qr{width:25mm;height:25mm;flex:none}.nm{font-size:8pt}.k{font-size:5.6pt}
+.nr{font-size:9.5pt}.ob{font-size:6pt}.own{font-size:5pt}.logo{height:3.2mm}.t{display:none}`
+        : fmt === 'klein'
+          ? `.sheet{grid-template-columns:repeat(3,63.5mm);grid-auto-rows:33.9mm;column-gap:2.5mm;padding:13mm 7mm}
+.lab{padding:2.5mm;gap:2.5mm}.qr{width:28mm;height:28mm}.nm{font-size:9.5pt}.k{font-size:6.5pt}.nr{font-size:11pt}.t,.own,.ob{font-size:5.8pt}.logo{height:4.5mm}`
+          : `.sheet{grid-template-columns:repeat(2,95mm);grid-auto-rows:54mm;column-gap:4mm;padding:10mm 8mm}
+.lab{padding:4mm;gap:4mm}.qr{width:44mm;height:44mm}.nm{font-size:12pt}.k{font-size:7.5pt}.nr{font-size:16pt}.t,.ob{font-size:7.5pt}.own{font-size:6.5pt}.logo{height:7mm}`;
+    const fmtText =
+      fmt === 'avery'
+        ? 'Avery Zweckform Sicherheits-Etiketten 63,5 × 29,6 mm (27 je Bogen)'
+        : fmt === 'klein'
+          ? 'klein: 3 × 8 je A4 (63,5 × 33,9 mm)'
+          : 'groß: 2 × 5 je A4 (95 × 54 mm)';
+    const qs = (p: Record<string, string>) => {
+      const u = new URL(c.req.url);
+      for (const [k, v] of Object.entries(p)) u.searchParams.set(k, v);
+      return `${u.pathname}?${u.searchParams.toString()}`;
+    };
+    // Feinjustierung (Drucker verschieben oft 1–2 mm): je Browser gemerkt
+    const ADJUST_JS = `(function(){var k='vd_lab_adj';var a={dx:0,dy:0};try{a=JSON.parse(localStorage.getItem(k))||a}catch(e){}
+function ap(){document.documentElement.style.setProperty('--dx',a.dx+'mm');document.documentElement.style.setProperty('--dy',a.dy+'mm');
+var x=document.getElementById('dx'),y=document.getElementById('dy');if(x)x.value=a.dx;if(y)y.value=a.dy}
+document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach(function(n){var el=document.getElementById(n);if(el)el.addEventListener('input',function(){a[n]=Number(el.value)||0;try{localStorage.setItem(k,JSON.stringify(a))}catch(e){}ap()})})});ap()})();`;
     return c.html(
       `<!doctype html>${(
         <html lang="de">
@@ -322,50 +427,80 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
             <style
               dangerouslySetInnerHTML={{
                 __html: `@page{size:A4;margin:0}body{margin:0;font-family:Inter,system-ui,sans-serif;color:#1a1a1a}
-.sheet{display:grid;box-sizing:border-box;width:210mm;break-after:page}
+.sheet{display:grid;box-sizing:border-box;width:210mm;break-after:page;align-content:start}
 .lab{display:flex;align-items:center;box-sizing:border-box;border:.2mm dashed #bbb;border-radius:2mm;overflow:hidden}
-.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.8mm;min-width:0}
-.k{text-transform:uppercase;letter-spacing:.06em;color:#7D1435;font-weight:700}.nm{font-weight:700;line-height:1.15}
-.nr{font-weight:800;letter-spacing:.02em}.t{color:#333}.own{color:#666}
-.bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:12px;align-items:center;font-size:14px}
-@media print{.bar{display:none}.lab{border-color:#ddd}}${css}`,
+.lab.empty{border-color:#eee}
+.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.6mm;min-width:0}
+.k{text-transform:uppercase;letter-spacing:.06em;color:#7D1435;font-weight:700}.nm{font-weight:700;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.nr{font-weight:800;letter-spacing:.02em}.t{color:#333}.own{color:#666}.ob{color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:14px}
+.bar input{width:60px}
+@media print{.bar{display:none}.lab{border-color:transparent}}${css}`,
               }}
             />
+            <script dangerouslySetInnerHTML={{ __html: ADJUST_JS }} />
           </head>
           <body>
             <div class="bar">
               <b>{list.length} Etiketten</b>
               <button onclick="window.print()">Drucken</button>
+              <span style="color:#666">{fmtText}</span>
+              <form method="get" action="/geraete/etiketten" style="display:flex;gap:6px;align-items:center">
+                {[...new URL(c.req.url).searchParams.entries()]
+                  .filter(([k]) => k !== 'ab')
+                  .map(([k, v]) => (
+                    <input type="hidden" name={k} value={v} />
+                  ))}
+                <label>
+                  Beginnen bei Etikett{' '}
+                  <input type="number" name="ab" min="1" max={String(perSheet)} value={String(ab)} />
+                </label>
+                <button>übernehmen</button>
+              </form>
+              <label>
+                Verschieben → mm <input id="dx" type="number" step="0.5" value="0" />
+              </label>
+              <label>
+                ↓ mm <input id="dy" type="number" step="0.5" value="0" />
+              </label>
               <span style="color:#666">
-                {small ? 'klein: 3 × 8 je A4 (63,5 × 33,9 mm)' : 'groß: 2 × 5 je A4 (95 × 54 mm)'} – auf
-                Etikettenbogen oder Papier drucken, laminieren bzw. wetterfeste Etiketten nehmen.
+                Erst einen Bogen auf Normalpapier drucken und gegen den Etikettenbogen halten. Im Druckdialog
+                „Tatsächliche Größe / 100 %“ und „ohne Ränder“ wählen.
               </span>
+              {fmt !== 'avery' && <a href={qs({ format: 'avery' })}>Avery-Format</a>}
             </div>
-            {Array.from({ length: Math.ceil(labels.length / (small ? 24 : 10)) }, (_, i) =>
-              labels.slice(i * (small ? 24 : 10), (i + 1) * (small ? 24 : 10)),
+            {Array.from({ length: Math.ceil(cells.length / perSheet) }, (_, i) =>
+              cells.slice(i * perSheet, (i + 1) * perSheet),
             ).map((chunk) => (
               <div class="sheet">
-                {chunk.map(({ d, svg }) => (
-                  <div class="lab">
-                    <div class="qr" dangerouslySetInnerHTML={{ __html: svg }} />
-                    <div class="info">
-                      <img
-                        class="logo"
-                        src="/static/logo-transparent.png"
-                        alt="Viva-Deluxe"
-                        style="align-self:flex-start"
-                      />
-                      <div class="k">{kindLabel(d.kind)}</div>
-                      <div class="nm">{d.name}</div>
-                      <div class="nr">Nr. {d.inventory_no}</div>
-                      <div class="t">Mit dem Handy scannen: Standort oder Defekt melden</div>
-                      <div class="own">
-                        Eigentum {co?.name ?? 'Viva-Deluxe'}
-                        {co?.phone ? ` · ${co.phone}` : ''}
+                {chunk.map((cell) =>
+                  cell ? (
+                    <div class="lab">
+                      <div class="qr" dangerouslySetInnerHTML={{ __html: cell.svg }} />
+                      <div class="info">
+                        <img
+                          class="logo"
+                          src="/static/logo-transparent.png"
+                          alt="Viva-Deluxe"
+                          style="align-self:flex-start"
+                        />
+                        <div class="k">{kindLabel(cell.d.kind)}</div>
+                        <div class="nm">{cell.d.name}</div>
+                        <div class="nr">Nr. {cell.d.inventory_no}</div>
+                        <div class="ob">
+                          {cell.d.site_id ? `${cell.d.site_no} · ${cell.d.site_name}` : 'Lager / Büro'}
+                        </div>
+                        <div class="t">Mit dem Handy scannen: Standort oder Defekt melden</div>
+                        <div class="own">
+                          Eigentum {co?.name ?? 'Viva-Deluxe'}
+                          {co?.phone ? ` · ${co.phone}` : ''}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    <div class="lab empty" />
+                  ),
+                )}
               </div>
             ))}
             {!labels.length && <p style="padding:80px 20px">Keine Geräte ausgewählt.</p>}
@@ -622,8 +757,12 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
                 <dd>{d.serial_no ?? '–'}</dd>
                 <dt>Anschaffung</dt>
                 <dd>{d.purchase_date ? dateDe(d.purchase_date) : '–'}</dd>
-                <dt>Nächste Prüfung</dt>
-                <dd>{d.next_inspection ? dateDe(d.next_inspection) : '–'}</dd>
+                {needsInspection(d.kind) && (
+                  <>
+                    <dt>Nächste Prüfung</dt>
+                    <dd>{d.next_inspection ? dateDe(d.next_inspection) : '–'}</dd>
+                  </>
+                )}
               </dl>
               {d.notes && <p class="small">{d.notes}</p>}
               <div style="max-width:150px;margin:8px 0" dangerouslySetInnerHTML={{ __html: qr }} />

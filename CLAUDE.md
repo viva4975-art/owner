@@ -5319,3 +5319,12 @@ Testadresse.
   Klappmenüs bleiben hell. Hintergrund mit leichtem Bordeaux-Schimmer oben links/rechts und zarten Flächen unten (folgt
   der Farbe aus Mein Konto → Darstellung), Karten bleiben weiß. Kopfzeile mit Logo bleibt weiß. Ohne Glas-Unterstützung
   bzw. „Transparenz reduzieren“ deckend Bordeaux.
+- 2026-11-09: **Geräte-Etiketten für Avery-Sicherheitsetiketten, Geräte je Objekt, Reinigungswagen ohne DGUV** (Ahmed hat
+  Avery Zweckform Sicherheits-Etiketten 63,5 × 29,6 mm, 27 je A4-Bogen, gekauft): Etikettendruck (`/geraete/etiketten`)
+  Standardformat `avery` (3 × 9, Rand 7,25 mm seitlich / 15,3 mm oben, 2,5 mm Spaltenabstand – aus den Maßen errechnet,
+  nicht mit dem echten Bogen geprüft), QR 25 mm, Art, Name, Nr., Objekt, Eigentum. „Beginnen bei Etikett n“ für
+  angebrochene Bögen und Feinjustierung → / ↓ in mm (je Browser gemerkt). Groß (2 × 5) bleibt als Nebenformat.
+  Etiketten nach Objekt sortiert; „Etiketten für dieses Objekt“ (`?objekt=`) in der Geräteliste und am Objekt →
+  Übergaben. Geräteliste gruppiert je Objekt (Lager zuletzt), Filter „Objekt“. **Reinigungswagen ohne Prüfung nach
+  DGUV V3** (`NO_INSPECTION_KINDS`): kein Prüfdatum im Formular/Detail/Objekt, keine „Prüfung fällig“-Warnung, Datum wird
+  beim Speichern geleert. **Druck: im Druckdialog „Tatsächliche Größe/100 %“, erst Probe auf Normalpapier.**

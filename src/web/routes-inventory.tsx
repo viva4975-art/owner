@@ -193,7 +193,11 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             <Field name="name" label="Name" value={s.name} required />
             <div>
               <label for="kind">Art</label>
-              <select id="kind" name="kind">
+              <select
+                id="kind"
+                name="kind"
+                onchange="var w=document.querySelector('.insp-wrap');if(w)w.hidden=this.value==='reinigungswagen'"
+              >
                 <option value="lieferant" selected={s.kind === 'lieferant'}>
                   Lieferant (Material, Geräte)
                 </option>
@@ -640,6 +644,8 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
               label="Nächste Prüfung (DGUV V3)"
               value={d?.next_inspection}
               type="date"
+              wrapClass="insp-wrap"
+              hidden={d?.kind === 'reinigungswagen'}
             />
             <div>
               <label for="status">Zustand</label>

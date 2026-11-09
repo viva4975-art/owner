@@ -297,7 +297,11 @@ const dec = (c: bigint) => {
   const a = neg ? -c : c;
   return `${neg ? '-' : ''}${a / 100n},${String(a % 100n).padStart(2, '0')}`;
 };
-const clean = (s: string) => s.replace(/[;\r\n]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+const clean = (s: string) =>
+  s
+    .replace(/[;\r\n]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
 
 export function wageStatCsv(
   rows: WageStatRow[],

@@ -2289,6 +2289,9 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
               <a class="big sec" href="/m">
                 ↻
               </a>
+              <a class="big sec" href="/qm/offline">
+                Qualitätskontrolle offline
+              </a>
             </div>
           </MLayout>,
         ),

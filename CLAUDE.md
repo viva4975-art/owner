@@ -5265,3 +5265,17 @@ Testadresse.
   enthält oder die Person dort einen geplanten Einsatz hat (ohne Feiertag). `leaveDaysOf`: ergibt die übliche Rechnung
   0 Tage, zählt jeder Tag mit geplantem Einsatz als Urlaubstag (Stunden wie gehabt aus dem Einsatz). Test
   `absence-saturday.db.test.ts`.
+- 2026-11-09: **Qualitätskontrolle offline** (Ahmed: „auf dem Handy auch offline durchführen“): Qualität → „Ohne Netz prüfen
+  (Offline-Audits)“ (`/qm/offline`, `src/web/qm-offline.tsx` + Browser-Teil `qm-offline-js.ts`; auch von der
+  Keine-Verbindung-Seite der Mitarbeiter-App erreichbar). Mit Netz Objekte aufs Handy laden (`/qm/offline/paket/:id`:
+  Räume + Kontrollgegenstände mit Skala, nur Objekte der Rolle). Ohne Netz: Audit starten, Raum für Raum bewerten
+  (Regler/Ja-Nein, Überspringen, Bemerkung), Kamera-Fotos (auf 1600 px verkleinert, Aufnahmezeit + Standort) – alles in
+  IndexedDB auf dem Handy. Bei Netz automatisch (beim Wiederverbinden, beim Öffnen, jede Minute) über dieselben Wege wie
+  online übertragen (`POST /qm/audit/neu` mit Datum des Audits ≤ 30 Tage zurück, `POST /qm/audit/:id/raum/:room`, Kopf
+  `X-Offline-Sync` → JSON-Antwort); feste Audit- und Foto-IDs → abgebrochene/wiederholte Übertragung legt nichts doppelt
+  an, Fotos werden nach erfolgreicher Übertragung vom Handy gelöscht. Abschließen/Unterschrift/Bericht danach online
+  („Audit in der App öffnen & abschließen“). Service Worker `/qm/sw.js` (Scope `/qm/`) liefert ohne Netz die Hülle;
+  Hülle und Service Worker sind ohne Anmeldung abrufbar (enthalten keine Daten), Daten nur über angemeldete JSON-Wege.
+  Abgelaufene Sitzung → Meldung „neu anmelden“, Daten bleiben auf dem Handy. **Grenze:** Offline-Fotos tragen die
+  Aufnahmezeit des Handys (nicht Serverzeit) – im Stempel steht diese Zeit; Raumbuch-Änderungen nach dem Laden erst
+  nach „Aktualisieren“. Browser-Test mit Handy-Emulation (offline → online) durchgespielt.

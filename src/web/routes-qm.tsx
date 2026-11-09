@@ -24,6 +24,7 @@ import { SiteOptions } from './site-options.js';
 import type { Context } from 'hono';
 import type { Child, FC } from 'hono/jsx';
 import { hourBerlin, todayBerlin } from '../domain/invoice/calc.js';
+import { addDays } from '../domain/time/holidays.js';
 import { BusinessError } from '../services/errors.js';
 import {
   type QmSite,
@@ -665,6 +666,9 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             ))}
           </>
         )}
+        <a class="big sec" href="/qm/offline" style="margin-top:14px">
+          Ohne Netz prüfen (Offline-Audits)
+        </a>
         <Fab />
       </>,
     );
@@ -821,22 +825,42 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
   });
 
   // ------------------------------------------------------------ Audit Raum für Raum
-  app.post('/qm/audit/neu', async (c) => {
-    const b = await c.req.parseBody({ all: true });
-    const id = str(b, 'id') ?? '';
-    const siteId = str(b, 'site_id') ?? '';
-    if (!/^[0-9a-f-]{36}$/.test(id) || !/^[0-9a-f-]{36}$/.test(siteId))
-      throw new BusinessError('Bitte Objekt wählen');
-    assertSite(c, siteId);
-    const u = c.get('user');
-    await createQualityCheck(
-      sql,
-      id,
-      { siteId, checkDate: todayBerlin(), inspector: u.name || u.login, attendee: null },
-      c.get('actor'),
-    );
-    return c.redirect(`/qm/audit/${id}`, 303);
-  });
+  // Übertragung aus der Offline-Qualitätskontrolle (Kopf X-Offline-Sync): Antwort als JSON statt Weiterleitung
+  const offlineSync = (c: Context<AppEnv>) => c.req.header('x-offline-sync') === '1';
+  const asJson = async (c: Context<AppEnv>, fn: () => Promise<Response>) => {
+    if (!offlineSync(c)) return fn();
+    try {
+      await fn();
+      return c.json({ ok: true });
+    } catch (e) {
+      if (e instanceof BusinessError) return c.json({ ok: false, error: e.message }, 400);
+      throw e;
+    }
+  };
+
+  app.post('/qm/audit/neu', (c) =>
+    asJson(c, async () => {
+      const b = await c.req.parseBody({ all: true });
+      const id = str(b, 'id') ?? '';
+      const siteId = str(b, 'site_id') ?? '';
+      if (!/^[0-9a-f-]{36}$/.test(id) || !/^[0-9a-f-]{36}$/.test(siteId))
+        throw new BusinessError('Bitte Objekt wählen');
+      assertSite(c, siteId);
+      const u = c.get('user');
+      // offline begonnen: Datum des Audits vom Handy (nicht in der Zukunft, höchstens 30 Tage zurück)
+      const today = todayBerlin();
+      const d = str(b, 'datum') ?? '';
+      const checkDate =
+        offlineSync(c) && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today && d >= addDays(today, -30) ? d : today;
+      await createQualityCheck(
+        sql,
+        id,
+        { siteId, checkDate, inspector: u.name || u.login, attendee: null },
+        c.get('actor'),
+      );
+      return c.redirect(`/qm/audit/${id}`, 303);
+    }),
+  );
 
   const loadAudit = async (c: Context<AppEnv>, id: string) => {
     const [qc] = await sql<
@@ -1101,10 +1125,11 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
     );
   });
 
-  app.post(`/qm/audit/:id{${UUID}}/raum/:room{${UUID}}`, async (c) => {
-    const qc = await loadAudit(c, c.req.param('id'));
+  app.post(`/qm/audit/:id{${UUID}}/raum/:room{${UUID}}`, (c) => asJson(c, () => saveRoomPost(c)));
+  const saveRoomPost = async (c: Context<AppEnv>) => {
+    const qc = await loadAudit(c, c.req.param('id') ?? '');
     if (!qc) return c.notFound();
-    const roomId = c.req.param('room');
+    const roomId = c.req.param('room') ?? '';
     const rooms = await auditRooms(sql, qc.id, qc.site_id);
     const room = rooms.find((r) => r.id === roomId);
     if (!room) return c.notFound();
@@ -1152,6 +1177,9 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
       const files = ([] as unknown[])
         .concat(b[`f_${it.id}`] ?? [])
         .filter((f): f is File => f instanceof File && f.size > 0);
+      // offline: feste Foto-IDs und Aufnahmezeit vom Handy (gleiche Reihenfolge wie die Dateien)
+      const pids = ([] as unknown[]).concat(b[`pid_${it.id}`] ?? []).map(String);
+      const fts = ([] as unknown[]).concat(b[`ft_${it.id}`] ?? []).map(String);
       if (!skipped && value == null && !note && !files.length) continue; // nicht bewertet
       // Foto ohne Bewertung ging früher still verloren (Ahmed 04.11.: „nicht alle Bilder im Bericht“)
       if (!skipped && value == null)
@@ -1160,9 +1188,18 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
         );
       if (files.length > 5) throw new BusinessError(`${it.name}: höchstens 5 Fotos`);
       const photoIds: string[] = [];
-      for (const f of files) {
+      for (const [fi, f] of files.entries()) {
         if (!/^image\//.test(f.type)) throw new BusinessError('Nur Fotos (Bilder) hochladen');
-        const fid = randomUUID();
+        const pid = pids[fi] ?? '';
+        const fid = offlineSync(c) && /^[0-9a-f-]{36}$/.test(pid) ? pid : randomUUID();
+        const ft = new Date(fts[fi] ?? '');
+        const takenAt =
+          offlineSync(c) &&
+          !Number.isNaN(ft.getTime()) &&
+          ft.getTime() <= Date.now() + 5 * 60_000 &&
+          ft.getTime() >= Date.now() - 31 * 86_400_000
+            ? ft
+            : new Date();
         // Stempel mit Logo, Objekt, Serverzeit, Standort und Name (Ahmed 18.10.); Original write-once daneben
         await saveStampedPhoto(sql, cfg, {
           id: fid,
@@ -1176,7 +1213,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
           info: {
             site: sg ? `${sg.site_no} · ${sg.name}` : null,
             address: sg ? siteAddress(sg) : null,
-            at: new Date(),
+            at: takenAt,
             by: fullName(c.get('user')),
             geo: judged.status,
             distanceM: judged.distance,
@@ -1205,7 +1242,7 @@ f.querySelectorAll('[data-photos] input[type=file]').forEach(bind);})();`,
     // danach in die Raumübersicht (Ahmed 15.10.) bzw. direkt zum Abschluss
     if (str(b, 'beenden') === '1') return back(c, `/qualitaet/${qc.id}/abschliessen`, { ok: msg });
     return back(c, `/qm/audit/${qc.id}`, { ok: msg });
-  });
+  };
 
   // ------------------------------------------------------------ Foto mit Stempel (Ahmed 18.10.)
   const FOTO_MAX = 50;

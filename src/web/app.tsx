@@ -85,6 +85,7 @@ import { registerPurchasingRoutes } from './routes-purchasing.js';
 import { registerTimeRoutes } from './routes-time.js';
 import { registerTimesheetRoutes } from './routes-timesheet.js';
 import { registerQmRoutes } from './routes-qm.js';
+import { registerQmOfflineRoutes } from './qm-offline.js';
 import { sortCsv } from './csv-sort.js';
 import { exportSortStore } from '../domain/export-sort.js';
 import { registerStartAppRoutes } from './routes-start-app.js';
@@ -295,6 +296,9 @@ export function createApp(deps: Deps) {
     path === '/m' ||
     path.startsWith('/m/') ||
     path.startsWith('/np/') ||
+    // Offline-Qualitätskontrolle: Hülle + Service Worker ohne Daten (Daten nur über die angemeldeten JSON-Wege)
+    path === '/qm/sw.js' ||
+    path === '/qm/offline' ||
     /^\/g\/[0-9a-f]{32}$/.test(path) ||
     path === '/anmelden' ||
     path === '/app' ||
@@ -621,6 +625,7 @@ export function createApp(deps: Deps) {
   registerStartAppRoutes(ctx);
   registerMyTimeRoutes(ctx);
   registerQmTeamRoutes(ctx);
+  registerQmOfflineRoutes(ctx);
   registerQmRoutes(ctx);
   registerTimeRoutes(ctx);
   registerPlanningBoardRoutes(ctx);

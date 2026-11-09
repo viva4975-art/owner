@@ -5260,3 +5260,8 @@ Testadresse.
   nicht erkannte Spalten stehen in der Meldung, der Rest wird übernommen. „Ohne Aktivität“ jetzt auch als Filter-Chip;
   Notizen aus dem Import zählen dabei nicht als Kontakt (`contact_count`, Ersteller „… (Import)“), Liste und CSV zeigen
   die Zahl der echten Aktivitäten. Test `prospects-import.db.test.ts`, `e2e:kasse` 69.
+- 2026-11-09: **Urlaub an Tagen mit Einsatz außerhalb Mo–Fr** (Ahmed: „im Zeitraum liegen keine Arbeitstage, obwohl Einsatz
+  am Samstag hinterlegt ist“): Die Prüfung zählte nur Mo–Fr. Jetzt gilt ein Zeitraum als Arbeitszeit, wenn er Mo–Fr
+  enthält oder die Person dort einen geplanten Einsatz hat (ohne Feiertag). `leaveDaysOf`: ergibt die übliche Rechnung
+  0 Tage, zählt jeder Tag mit geplantem Einsatz als Urlaubstag (Stunden wie gehabt aus dem Einsatz). Test
+  `absence-saturday.db.test.ts`.

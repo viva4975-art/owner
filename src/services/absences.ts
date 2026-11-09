@@ -278,7 +278,11 @@ export async function leaveDaysOf(sql: Sql, employeeId: string, from: string, to
         if (wds.includes(isoWeekday(d)) && !holidayName(d)) sum += 1;
     } else sum += Math.round(((workingDays(seg.from, seg.to) * seg.days) / 5) * 2) / 2;
   }
-  return sum;
+  if (sum > 0) return sum;
+  // Ahmed 09.11.: Urlaub an einem Tag mit Einsatz außerhalb der üblichen Tage (z. B. Samstag) – jeder Tag mit
+  // geplantem Einsatz (ohne Feiertag) zählt als Urlaubstag.
+  const shifts = await plannedShifts(sql, { from, to, employeeId, originalAssignee: true });
+  return new Set(shifts.filter((x) => !x.holiday).map((x) => x.date)).size;
 }
 
 /** Tage (Mo–Fr ohne Feiertage Bayern); halber Tag = 0,5. */
@@ -335,7 +339,8 @@ export async function requestAbsence(
   if (!(p.kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
   if (
     p.kind === 'urlaub' &&
-    absenceDays({ start_date: p.start, end_date: p.end, half_day: p.halfDay }) === 0
+    absenceDays({ start_date: p.start, end_date: p.end, half_day: p.halfDay }) === 0 &&
+    (await leaveDaysOf(sql, p.employeeId, p.start, p.end, p.halfDay)) === 0
   ) {
     throw new BusinessError('Im Zeitraum liegen keine Arbeitstage', 'no_workdays');
   }

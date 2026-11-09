@@ -14,6 +14,7 @@ import {
   invoiceWorkReports,
   listWorkReports,
   reopenWorkReport,
+  workReportVersions,
   orderToInvoice,
   reportsToInvoice,
   previewOrderInvoicePdf,
@@ -317,6 +318,10 @@ describe.skipIf(!available)(
       const [log] = await sql<{ details: { signed_by_name: string } }[]>`
         select details from app.audit_log where entity_id = ${wr} and action = 'reopen'`;
       expect(log!.details.signed_by_name).toBe('Frau Alt');
+      // alte unterschriebene Fassung bleibt abrufbar
+      const vers = await workReportVersions(sql, wr);
+      expect(vers.map((v) => [v.n, v.signedBy])).toEqual([[1, 'Frau Alt']]);
+      expect((await deps.archive.get(vers[0]!.pdfPath)).byteLength).toBeGreaterThan(1000);
     });
   },
 );

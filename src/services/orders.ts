@@ -1091,6 +1091,35 @@ async function archiveWorkReportPdf(deps: Deps, id: string) {
   await deps.sql`update app.work_reports set pdf_path = ${path}, pdf_sha256 = ${sha256} where id = ${id} and pdf_path is null`;
 }
 
+/** Frühere Fassungen eines Arbeitsscheins (vor „wieder bearbeiten“): unterschriebene bzw. abgeschlossene PDFs bleiben
+ *  write-once im Archiv und sind hier abrufbar (Ahmed 09.11.). Ältestes zuerst, Nummer = Fassung 1, 2 … */
+export interface WorkReportVersion {
+  n: number;
+  pdfPath: string;
+  signedBy: string | null;
+  signedAt: string | null;
+  noSignatureReason: string | null;
+  reopenedAt: Date;
+  reopenedBy: string;
+}
+
+export async function workReportVersions(sql: Sql, id: string): Promise<WorkReportVersion[]> {
+  const rows = await sql<{ details: Record<string, string | null>; at: Date; actor: string }[]>`
+    select details, at, actor from app.audit_log
+     where entity = 'work_report' and entity_id = ${id} and action = 'reopen' order by at, id`;
+  return rows
+    .map((r, i) => ({
+      n: i + 1,
+      pdfPath: r.details?.pdf_path ?? '',
+      signedBy: r.details?.signed_by_name ?? null,
+      signedAt: r.details?.signed_at ?? null,
+      noSignatureReason: r.details?.no_signature_reason ?? null,
+      reopenedAt: r.at,
+      reopenedBy: r.actor,
+    }))
+    .filter((v) => v.pdfPath);
+}
+
 export async function workReportPdf(deps: Deps, id: string): Promise<Uint8Array> {
   const [w] = await deps.sql<
     { pdf_path: string | null }[]

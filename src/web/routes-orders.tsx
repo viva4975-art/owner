@@ -36,6 +36,8 @@ import {
   setOrderStatus,
   signWorkReport,
   workReportPdf,
+  workReportVersions,
+  type WorkReportVersion,
 } from '../services/orders.js';
 import { listFiles } from '../services/uploads.js';
 import { fullName } from '../services/users.js';
@@ -478,6 +480,58 @@ const CopyWorkReport: FC<{
     </form>
   </details>
 );
+
+/** Frühere (unterschriebene) Fassungen + Herkunft einer Kopie – damit die Unterschrift als PDF immer abrufbar bleibt. */
+const VersionsBox: FC<{
+  id: string;
+  versions: WorkReportVersion[];
+  copiedFrom?: { id: string; number: string; signed: boolean } | null;
+}> = ({ id, versions, copiedFrom }) =>
+  versions.length || copiedFrom ? (
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin-top:0">Frühere Fassungen</h3>
+      {copiedFrom && (
+        <p class="small" style="margin:0 0 6px">
+          Kopie von <a href={`/arbeitsscheine/${copiedFrom.id}`}>Arbeitsschein {copiedFrom.number}</a>
+          {copiedFrom.signed && (
+            <>
+              {' '}
+              – dort bleibt die Unterschrift unverändert:{' '}
+              <a href={`/arbeitsscheine/${copiedFrom.id}/arbeitsschein.pdf`} target="_blank">
+                unterschriebenes PDF
+              </a>
+            </>
+          )}
+          . Die Kopie ist ein neuer Schein und muss selbst abgeschlossen bzw. unterschrieben werden.
+        </p>
+      )}
+      {versions.length > 0 && (
+        <ul style="margin:0;padding-left:18px">
+          {versions.map((v) => (
+            <li>
+              <a href={`/arbeitsscheine/${id}/fassung/${v.n}.pdf`} target="_blank">
+                <Icon name="pdf" /> Fassung {v.n}
+              </a>{' '}
+              <span class="small muted">
+                {v.signedBy
+                  ? `unterschrieben von ${v.signedBy}${v.signedAt ? `, ${new Date(v.signedAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })}` : ''}`
+                  : `ohne Unterschrift${v.noSignatureReason ? `: ${v.noSignatureReason}` : ''}`}
+                {' · wieder bearbeitet am '}
+                {v.reopenedAt.toLocaleDateString('de-DE', {
+                  timeZone: 'Europe/Berlin',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+                {' von '}
+                {fullName({ login: v.reopenedBy })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
 
 export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
   const { sql, env } = deps;
@@ -1150,6 +1204,13 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
            order by e.last_name`
       : [];
     const files = w ? await listFiles(sql, { type: 'work_report', id }) : [];
+    const versions = w ? await workReportVersions(sql, id) : [];
+    const [copyRow] = w
+      ? await sql<{ id: string; number: string; signed: boolean }[]>`
+          select s.id, s.number, s.status = 'unterschrieben' and s.cancelled_at is null as signed
+            from app.audit_log l join app.work_reports s on s.id = (l.details->>'from')::uuid
+           where l.entity = 'work_report' and l.entity_id = ${id} and l.action = 'copy' limit 1`
+      : [];
 
     if (w && w.status !== 'entwurf') {
       // Abgeschlossen: nur ansehen
@@ -1173,6 +1234,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
               <span class={`badge ${WR_CLASS[w.status]}`}>{WR_STATUS[w.status]}</span>
             )}
           </PageHead>
+          <VersionsBox id={id} versions={versions} copiedFrom={copyRow ?? null} />
           {w.cancelled_at && (
             <div class="flash err">
               Storniert am{' '}
@@ -1264,8 +1326,8 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                     action={`/arbeitsscheine/${id}/wieder-bearbeiten`}
                     onsubmit={`return confirm(${JSON.stringify(
                       w.status === 'unterschrieben'
-                        ? 'Arbeitsschein wieder bearbeiten? Die Unterschrift des Kunden gilt dann nicht mehr – der Schein muss neu unterschrieben werden (die alte Fassung bleibt im Archiv).'
-                        : 'Arbeitsschein wieder bearbeiten? Danach erneut „Speichern und PDF erstellen“ (die alte Fassung bleibt im Archiv).',
+                        ? 'Arbeitsschein wieder bearbeiten? Die Unterschrift des Kunden gilt dann nicht mehr – der Schein muss neu unterschrieben werden. Das unterschriebene PDF bleibt als „Frühere Fassung“ abrufbar.'
+                        : 'Arbeitsschein wieder bearbeiten? Danach erneut „Speichern und PDF erstellen“. Das bisherige PDF bleibt als „Frühere Fassung“ abrufbar.',
                     )})`}
                   >
                     <button>
@@ -1558,6 +1620,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         >
           {w && <span class="badge draft">noch nicht unterschrieben</span>}
         </PageHead>
+        {w && <VersionsBox id={id} versions={versions} copiedFrom={copyRow ?? null} />}
         {!siteId ? (
           <form method="get" action={`/arbeitsscheine/${id}`} class="card" style="max-width:520px">
             <label for="objekt">Objekt</label>
@@ -2082,6 +2145,23 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const b = await c.req.parseBody();
     await closeWithoutSignature(deps, id, String(b.reason ?? ''), c.get('actor'));
     return back(c, `/arbeitsscheine/${id}`, { ok: 'Arbeitsschein ohne Unterschrift abgeschlossen.' });
+  });
+
+  app.get(`/arbeitsscheine/:id{${UUID}}/fassung/:n{[0-9]+}.pdf`, async (c) => {
+    const id = c.req.param('id');
+    const data = await getWorkReport(sql, id);
+    if (!data) return c.notFound();
+    assertSite(c, data.report.site_id);
+    const v = (await workReportVersions(sql, id)).find((x) => x.n === Number(c.req.param('n')));
+    if (!v) return c.notFound();
+    const pdf = await deps.archive.get(v.pdfPath);
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Arbeitsschein_${data.report.number}_Fassung${v.n}.pdf"`,
+        'Cache-Control': 'private, no-cache',
+      },
+    });
   });
 
   app.get(`/arbeitsscheine/:id{${UUID}}/arbeitsschein.pdf`, async (c) => {

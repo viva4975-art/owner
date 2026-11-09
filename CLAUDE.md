@@ -5308,3 +5308,8 @@ Testadresse.
   Lohnabrechnung prüfen** – die App kennt Einmalzahlungen/Sachbezüge nicht. Staatsangehörigkeitsschlüssel aus dem
   Gedächtnis eingetragen (destatis hier nicht erreichbar) – einmal gegen die destatis-Liste prüfen. Test
   `wage-statistics.db.test.ts`.
+- 2026-11-09: **Unterweisung: Objektauswahl wie überall** (Ahmed: „kommt nur der Name, mit Straße suchen können“): Auswahl
+  `${Unterweisung.Objekt}` auf der Ausfüll-Seite zeigt jetzt „Nr. · Objekt – Straße, Ort (Kunde)“, je Kunde gruppiert
+  (Objekte der Person zuerst) und ist über die Such-Auswahl nach Nr., Name, Straße, Ort und Kunde durchsuchbar. Ins
+  Dokument kommt „Objekt, Straße, PLZ Ort“ (gleichnamige Objekte unterscheidbar), auch bei der Vorbelegung mit genau einem
+  Objekt. Die Freigabe in der App (an alle eines Objekts) nutzte schon die Auswahl mit Adresse.

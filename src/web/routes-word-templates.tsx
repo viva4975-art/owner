@@ -1,3 +1,4 @@
+import { siteLabel } from './site-options.js';
 import { randomUUID } from 'node:crypto';
 import type { FC } from 'hono/jsx';
 import { BusinessError } from '../services/errors.js';
@@ -257,7 +258,7 @@ const GroupFields: FC<{
   g: string;
   keys: string[];
   values: Record<string, string>;
-  choices?: Record<string, { label: string; options: string[] }[]>;
+  choices?: Record<string, { label: string; options: { value: string; text: string }[] }[]>;
 }> = ({ g, keys, values, choices }) => (
   <>
     <h3 style="margin:16px 0 6px">{g}</h3>
@@ -277,8 +278,8 @@ const GroupFields: FC<{
                   {choices[k]!.map((grp) => (
                     <optgroup label={grp.label}>
                       {grp.options.map((o) => (
-                        <option value={o} selected={o === v}>
-                          {o}
+                        <option value={o.value} selected={o.value === v}>
+                          {o.text}
                         </option>
                       ))}
                     </optgroup>
@@ -516,24 +517,42 @@ export function registerWordTemplateRoutes(ctx: Ctx) {
     const groups = all.filter((g) => !MASTER.has(g)).sort((a, b) => rank(a) - rank(b));
     const master = all.filter((g) => MASTER.has(g));
     // Unterweisung: Objekt zur Auswahl – eigene Objekte zuerst, dann alle aktiven
-    const choices: Record<string, { label: string; options: string[] }[]> = {};
+    const choices: Record<string, { label: string; options: { value: string; text: string }[] }[]> = {};
     if (keys.includes('Unterweisung.Objekt')) {
-      const own =
-        type === 'employee'
-          ? (
-              await sql<{ name: string }[]>`
-                select s.name from app.employee_sites es join app.sites s on s.id = es.site_id
-                 where es.employee_id = ${id} and s.active order by s.name`
-            ).map((r) => r.name)
-          : [];
-      const allSites = (
-        await sql<{ name: string }[]>`select distinct name from app.sites where active order by name`
-      )
-        .map((r) => r.name)
-        .filter((n) => !own.includes(n));
+      // wie überall: „Nr. · Objekt – Straße, Ort“, je Kunde gruppiert, suchbar nach Nr., Name, Straße, Ort, Kunde;
+      // ins Dokument kommt „Objekt, Straße, PLZ Ort“ (gleichnamige Objekte unterscheidbar)
+      const rows = await sql<
+        {
+          id: string;
+          site_no: string;
+          name: string;
+          street: string | null;
+          city: string | null;
+          customer_name: string | null;
+          place: string;
+          own: boolean;
+        }[]
+      >`
+        select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name,
+               concat_ws(', ', s.name, nullif(trim(s.street), ''), nullif(trim(concat_ws(' ', s.postal_code, s.city)), '')) as place,
+               ${type === 'employee'} and exists (select 1 from app.employee_sites es
+                                                   where es.site_id = s.id and es.employee_id = ${id}) as own
+          from app.sites s left join app.customers c on c.id = s.customer_id
+         where s.active order by c.name nulls last, s.name`;
+      const opt = (r: (typeof rows)[number]) => ({
+        value: r.place,
+        text: `${siteLabel(r)}${r.customer_name ? ` (${r.customer_name})` : ''}`,
+      });
+      const own = rows.filter((r) => r.own);
+      const groups = new Map<string, { value: string; text: string }[]>();
+      for (const r of rows.filter((x) => !x.own)) {
+        const k = r.customer_name?.trim() || 'ohne Kunde';
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(opt(r));
+      }
       choices['Unterweisung.Objekt'] = [
-        ...(own.length ? [{ label: 'Objekte der Person', options: own }] : []),
-        { label: 'Alle Objekte', options: allSites },
+        ...(own.length ? [{ label: 'Objekte der Person', options: own.map(opt) }] : []),
+        ...[...groups.entries()].map(([label, options]) => ({ label, options })),
       ];
     }
     return page(

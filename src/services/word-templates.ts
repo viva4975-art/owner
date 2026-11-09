@@ -535,8 +535,9 @@ async function employeeValues(
   const today = todayBerlin();
   const planned = e.days_auto ? await plannedDaysPerWeek(sql, id, today, addDays(today, 90)) : null;
   const workDays = planned ?? (e.days_per_week ? Number(e.days_per_week) : null);
-  const sites = await sql<{ name: string; manager: string | null }[]>`
-    select s.name, (select concat_ws(' · ', mc.name, mc.phone) from app.manager_contacts mc
+  const sites = await sql<{ name: string; manager: string | null; place: string }[]>`
+    select s.name, concat_ws(', ', s.name, nullif(trim(s.street), ''), nullif(trim(concat_ws(' ', s.postal_code, s.city)), '')) as place,
+           (select concat_ws(' · ', mc.name, mc.phone) from app.manager_contacts mc
                      where mc.user_id = s.manager_user_id) as manager
       from app.employee_sites es join app.sites s on s.id = es.site_id
      where es.employee_id = ${id} and s.active order by s.name`;
@@ -634,7 +635,7 @@ async function employeeValues(
     // nur intern für Kästchen-Vorbelegung: 'ja' / 'nein' / '' (noch kein Objekt bekannt)
     'Mitarbeiter.Schulobjekt': school?.any ? (school.school ? 'ja' : 'nein') : '',
     // Unterweisung: Objekt auswählbar (Ausfüll-Seite), bei genau einem Objekt vorbelegt, sonst offen zum Nachtragen
-    'Unterweisung.Objekt': sites.length === 1 ? sites[0]!.name : '',
+    'Unterweisung.Objekt': sites.length === 1 ? sites[0]!.place : '',
     'Mitarbeiter.Einsatzgebiet': sites.map((s) => s.name).join(', '),
     'Mitarbeiter.Telefon': e.mobile ?? e.phone ?? '',
     'Mitarbeiter.E-Mail': e.email ?? '',

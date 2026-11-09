@@ -5279,3 +5279,5 @@ Testadresse.
   Abgelaufene Sitzung → Meldung „neu anmelden“, Daten bleiben auf dem Handy. **Grenze:** Offline-Fotos tragen die
   Aufnahmezeit des Handys (nicht Serverzeit) – im Stempel steht diese Zeit; Raumbuch-Änderungen nach dem Laden erst
   nach „Aktualisieren“. Browser-Test mit Handy-Emulation (offline → online) durchgespielt.
+  Nachtrag (Ahmed: „da steht Arbeitstage 0“): Die Abwesenheitsliste (Urlaub & Abwesenheiten, Startseite, Mitarbeiter)
+  zählte nur Mo–Fr. Ergibt das 0, zählen jetzt die Tage mit geplantem Einsatz (`listAbsences` → `leaveDaysOf`).

@@ -301,7 +301,12 @@ export async function listAbsences(
        and ${f.to ? sql`a.start_date <= ${f.to}` : sql`true`}
        and ${f.from ? sql`a.end_date >= ${f.from}` : sql`true`}
      order by a.start_date desc`;
-  return rows.map((r) => ({ ...r, days: absenceDays(r) })) as AbsenceRow[];
+  const out = rows.map((r) => ({ ...r, days: absenceDays(r) })) as AbsenceRow[];
+  // Abwesenheit nur an Tagen außerhalb Mo–Fr (z. B. Samstag mit Einsatz, Ahmed 09.11.): Tage mit geplantem Einsatz zählen
+  for (const r of out)
+    if (r.days === 0 && !r.half_day)
+      r.days = await leaveDaysOf(sql, r.employee_id, r.start_date, r.end_date, false);
+  return out;
 }
 
 /**

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
-import { leaveDaysOf, listAbsenceHours, requestAbsence } from './absences.js';
+import { leaveDaysOf, listAbsenceHours, listAbsences, requestAbsence } from './absences.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 import { saveShiftPlan } from './time.js';
@@ -61,6 +61,9 @@ describe.skipIf(!available)('Urlaub an einem Samstag mit Einsatz (Datenbank)', (
     });
     const h = await listAbsenceHours(sql, { absenceId: id });
     expect(h.reduce((a, x) => a + x.minutes, 0)).toBe(240);
+    // Liste zeigt 1 Arbeitstag statt 0
+    const [row] = await listAbsences(sql, { employeeId: emp });
+    expect(row?.days).toBe(1);
   });
 
   it('ohne Einsatz bleibt der Sonntag gesperrt', async () => {

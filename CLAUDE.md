@@ -5345,3 +5345,8 @@ Testadresse.
   mindern den Anspruch dieses Jahres nicht (genommen − aus Rest genommen). **Rechtlich:** Verfall nur, wenn rechtzeitig
   zum Urlaub aufgefordert und auf den Verfall hingewiesen wurde (BAG 9 AZR 541/15), sonst bleibt der Vorjahresurlaub
   geschuldet; Übertrag bei Krankheit bis 31.03. bzw. 15 Monate (§ 7 Abs. 3 BUrlG).
+- 2026-11-10: **Lohnabrechnungen: Reiter „Gesendet“ nur mit gesendeten** (Ahmed, Screenshot: „manche nicht versandt, stehen
+  aber unter versandt“): Der Reiter „Mit schon gesendeten (erneut senden)“ zeigte alle Abrechnungen des Monats (auch
+  ungesendete, Zähler = alle). Jetzt „Gesendet (erneut senden) (n)“ = nur gesendete; ungesendete und fehlgeschlagene
+  stehen unter „Noch nicht gesendet“. Versand selbst unverändert. **Bank: Überweisungen automatisch** – nicht gebaut,
+  Rückfrage an Ahmed (PSD2 verlangt TAN-Freigabe je Zahlung/Sammelauftrag; Optionen siehe Antwort).

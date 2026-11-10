@@ -72,7 +72,13 @@ export function registerPayslipRoutes(ctx: Ctx) {
     const showSent = view === 'sent';
     const active = rows.filter((r) => !r.mail_skip_at);
     const skipped = rows.filter((r) => r.mail_skip_at);
-    const visible = view === 'skip' ? skipped : showSent ? active : active.filter((r) => !isSent(r.file_id));
+    // „Gesendet“ zeigt nur wirklich gesendete (vorher alle – auch ungesendete standen dort, Ahmed 10.11.)
+    const visible =
+      view === 'skip'
+        ? skipped
+        : showSent
+          ? active.filter((r) => isSent(r.file_id))
+          : active.filter((r) => !isSent(r.file_id));
     const viewQ = view === 'skip' ? '&ausgeblendet=1' : showSent ? '&gesendet=1' : '';
     const self = (extra = '') => `/personal/lohnabrechnungen?monat=${month}${extra}`;
     return page(
@@ -222,7 +228,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
                   Noch nicht gesendet<span>{active.length - sentCount}</span>
                 </a>
                 <a class={showSent ? 'on' : ''} href={self('&gesendet=1')}>
-                  Mit schon gesendeten (erneut senden)<span>{active.length}</span>
+                  Gesendet (erneut senden)<span>{sentCount}</span>
                 </a>
                 <a class={view === 'skip' ? 'on' : ''} href={self('&ausgeblendet=1')}>
                   Ausgeblendet (kein Versand)<span>{skipped.length}</span>
@@ -277,7 +283,7 @@ export function registerPayslipRoutes(ctx: Ctx) {
                 </>
               )}
               <span class="small mut" style="margin-left:auto">
-                {unsent} bereit zum Senden · Absender Buchhaltung
+                {showSent ? `${sentCount} gesendet` : `${unsent} bereit zum Senden`} · Absender Buchhaltung
               </span>
             </div>
             <div class="tbl">
@@ -387,7 +393,9 @@ export function registerPayslipRoutes(ctx: Ctx) {
                             ? 'Für diesen Monat noch nichts eingelesen.'
                             : view === 'skip'
                               ? 'Keine ausgeblendeten Abrechnungen in diesem Monat.'
-                              : 'Alle Abrechnungen dieses Monats sind schon gesendet oder ausgeblendet.'}
+                              : showSent
+                                ? 'In diesem Monat ist noch nichts gesendet.'
+                                : 'Alle Abrechnungen dieses Monats sind schon gesendet oder ausgeblendet.'}
                         </div>
                       </td>
                     </tr>
@@ -400,8 +408,8 @@ export function registerPayslipRoutes(ctx: Ctx) {
             E-Mail: Das PDF ist mit dem Geburtsdatum der Person im Format TTMMJJ geschützt (z. B. 05.03.1985 →
             050385); das Passwort steht nicht in der Mail, nur die Regel. Gesendet wird von der
             Buchhaltungs-Adresse, nacheinander (der Mailserver erlaubt nur wenige Mails je Minute). Jede
-            Abrechnung geht nur einmal raus; schon gesendete gehen nur über den Reiter „Mit schon gesendeten“
-            noch einmal raus.
+            Abrechnung geht nur einmal raus; schon gesendete gehen nur über den Reiter „Gesendet (erneut
+            senden)“ noch einmal raus.
           </p>
           <p class="small mut">
             Rechtlich: Die Abrechnung ist in Textform zu erteilen (§ 108 GewO); die Bereitstellung im

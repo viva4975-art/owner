@@ -5335,3 +5335,13 @@ Testadresse.
   Objektleitung → Objekt gruppiert mit Knopf „Etiketten für alle Objekte dieser Objektleitung“ (`?ol=`, bei Filter
   „noch nicht gedruckt“ mit `nur=neu`). Druck immer in der Reihenfolge Objektleitung → Objekt → Gerät, lückenlos
   hintereinander (Seiten werden aufgefüllt, kein Seitenumbruch je Objekt; `labelOrder`).
+- 2026-11-10: **Urlaubskonten je Objektleitung, kein Resturlaub aus dem Vorjahr mehr** (Ahmed): Auswertungen → Urlaub &
+  Krankheit → Urlaubskonten gruppiert nach Objektleitung (Objekte, an denen die Person im Jahr eingeplant ist, sonst die
+  zugeordneten aktiven; keine → „ohne Objektleitung“; bei mehreren Objektleitungen steht die Person bei jeder mit „auch
+  bei …“), je Gruppe Summenzeile, Filter „Objektleitung“ (`?ol=<id>|ohne`, `leaveAccounts`/`groupLeaveByManager` in
+  `reports.ts`). PDF (Abschnitt je Objektleitung) und Excel (Spalte Objektleitung) übernehmen den Filter; Summe zählt jede
+  Person einmal. Spalten Übertrag/verfallen entfallen. **Vorjahr:** Auch der aus Fortytools übernommene Resturlaub zählt
+  nicht mehr (`leaveBalance`: carried immer 0); in Fortytools bis zum Stichtag aus dem Vorjahres-Rest genommene Tage
+  mindern den Anspruch dieses Jahres nicht (genommen − aus Rest genommen). **Rechtlich:** Verfall nur, wenn rechtzeitig
+  zum Urlaub aufgefordert und auf den Verfall hingewiesen wurde (BAG 9 AZR 541/15), sonst bleibt der Vorjahresurlaub
+  geschuldet; Übertrag bei Krankheit bis 31.03. bzw. 15 Monate (§ 7 Abs. 3 BUrlG).

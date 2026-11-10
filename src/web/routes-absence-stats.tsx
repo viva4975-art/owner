@@ -3,7 +3,7 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { type XlsxCell, type XlsxSheet, writeXlsx } from '../domain/sheet/xlsx-write.js';
 import { type PdfColumn, type PdfRow, renderTablePdf } from '../pdf/table.js';
 import { type AbsenceStatSum, EMPLOYMENT_LABEL, absenceStats, anonName } from '../services/absence-stats.js';
-import { leaveAccounts, sickDays } from '../services/reports.js';
+import { groupLeaveByManager, leaveAccounts, sickDays } from '../services/reports.js';
 import type { AppEnv, Ctx } from './app.js';
 import { PageHead, dateDe } from './layout.js';
 
@@ -36,9 +36,20 @@ const file = (c: Context<AppEnv>, bytes: Uint8Array, name: string, kind: 'pdf' |
   });
 
 /** Export-Leiste: PDF / Excel, Häkchen „Namen schwärzen“ */
-export const ExportBar = ({ base, year }: { base: string; year: number }) => (
+export const ExportBar = ({
+  base,
+  year,
+  extra,
+}: {
+  base: string;
+  year: number;
+  extra?: Record<string, string> | undefined;
+}) => (
   <form method="get" action={`${base}.pdf`} class="actions" style="margin:0;align-items:center;gap:8px">
     <input type="hidden" name="jahr" value={String(year)} />
+    {Object.entries(extra ?? {}).map(([k, v]) => (
+      <input type="hidden" name={k} value={v} />
+    ))}
     <label class="small" style="display:flex;align-items:center;gap:6px;margin:0">
       <input type="checkbox" name="anonym" value="1" /> Namen schwärzen
     </label>
@@ -352,70 +363,80 @@ export function registerAbsenceStatsRoutes({ app, deps, page }: Ctx) {
   const urlaubData = async (c: Context<AppEnv>) => {
     const year = yearOf(c.req.query('jahr'));
     const anon = anonOf(c);
-    const rows = await leaveAccounts(sql, year);
+    const ol = c.req.query('ol') || undefined;
+    const all = await leaveAccounts(sql, year);
+    const groups = groupLeaveByManager(all, ol);
+    // anonym: gleiche Nummer je Person, auch wenn sie bei mehreren Objektleitungen steht
+    const idx = new Map(all.map((r, i) => [r.id, i]));
+    const label = (r: (typeof all)[number]) =>
+      anon ? anonName(idx.get(r.id)!) : `${r.name} (${r.personnel_no})`;
+    const rows = [...new Map(groups.flatMap((g) => g.rows).map((r) => [r.id, r])).values()];
     const n = rows.length || 1;
-    const sum = (f: (r: (typeof rows)[number]) => number) => rows.reduce((a, r) => a + f(r), 0);
-    return { year, anon, rows, n, sum };
+    const sum = (f: (r: (typeof rows)[number]) => number, list = rows) => list.reduce((a, r) => a + f(r), 0);
+    const olName = ol ? (groups[0]?.manager.name ?? '') : '';
+    return { year, anon, rows, groups, n, sum, label, olName };
   };
-  const URLAUB_COLS = ['Anspruch', 'Übertrag', 'verfallen', 'genommen', 'beantragt', 'Rest'];
+  const URLAUB_COLS = ['Anspruch', 'genommen', 'beantragt', 'Rest'];
   app.get('/auswertungen/urlaub.pdf', async (c) => {
-    const { year, anon, rows, n, sum } = await urlaubData(c);
-    const body: PdfRow[] = rows.map((r, i) => [
-      anon ? anonName(i) : `${r.name} (${r.personnel_no})`,
-      days(r.entitlement),
-      days(r.carried),
-      days(r.carriedExpired),
-      days(r.taken),
-      days(r.requested),
-      days(r.rest),
+    const { year, anon, rows, groups, n, sum, label, olName } = await urlaubData(c);
+    const body: PdfRow[] = groups.flatMap((g) => [
+      { section: `${g.manager.name} (${g.rows.length}) – Rest ${days(sum((r) => r.rest, g.rows))}` },
+      ...g.rows.map((r): PdfRow => [
+        label(r),
+        days(r.entitlement),
+        days(r.taken),
+        days(r.requested),
+        days(r.rest),
+      ]),
     ]);
     const pdf = await renderTablePdf({
-      title: `Urlaubskonten ${year}`,
-      subtitle: `${rows.length} Mitarbeitende${anon ? ' · anonymisiert' : ''} · Stand ${dateDe(todayBerlin())}`,
+      title: `Urlaubskonten ${year}${olName ? ` – ${olName}` : ''}`,
+      subtitle: `${rows.length} Mitarbeitende je Objektleitung${anon ? ' · anonymisiert' : ''} · Stand ${dateDe(todayBerlin())}`,
       columns: [
-        { label: 'Mitarbeiter/in', width: 230 },
-        ...URLAUB_COLS.map((label) => ({ label, width: 80, align: 'right' as const })),
+        { label: 'Mitarbeiter/in', width: 260 },
+        ...URLAUB_COLS.map((label) => ({ label, width: 90, align: 'right' as const })),
       ],
       rows: body,
       totals: [
-        'Summe',
+        'Summe (jede Person einmal)',
         days(sum((r) => r.entitlement)),
-        days(sum((r) => r.carried)),
-        days(sum((r) => r.carriedExpired)),
         days(sum((r) => r.taken)),
         days(sum((r) => r.requested)),
         days(sum((r) => r.rest)),
       ],
-      footnote: `Ø je Mitarbeiter/in: Anspruch ${d1(sum((r) => r.entitlement) / n)}, genommen ${d1(sum((r) => r.taken) / n)}, Rest ${d1(sum((r) => r.rest) / n)} Arbeitstage.`,
+      footnote: `Ø je Mitarbeiter/in: Anspruch ${d1(sum((r) => r.entitlement) / n)}, genommen ${d1(sum((r) => r.taken) / n)}, Rest ${d1(sum((r) => r.rest) / n)} Arbeitstage. Ohne Resturlaub aus dem Vorjahr. Wer bei mehreren Objektleitungen arbeitet, steht bei jeder.`,
     });
     return file(c, pdf, `urlaubskonten-${year}${anon ? '-anonym' : ''}.pdf`, 'pdf');
   });
   app.get('/auswertungen/urlaub.xlsx', async (c) => {
-    const { year, anon, rows, n, sum } = await urlaubData(c);
+    const { year, anon, rows, groups, n, sum, label, olName } = await urlaubData(c);
     const avg = (f: (r: (typeof rows)[number]) => number) => ({ n: sum(f) / n, fmt: 'd1' as const });
-    const lead = (label: string): XlsxCell[] => (anon ? [label] : ['', label]);
+    const lead = (text: string): XlsxCell[] => (anon ? ['', text] : ['', '', text]);
+    const who = (r: (typeof rows)[number]): XlsxCell[] => (anon ? [label(r)] : [r.personnel_no, r.name]);
     return file(
       c,
       writeXlsx([
         {
           name: `Urlaubskonten ${year}`,
-          title: [`Urlaubskonten ${year}`, `${rows.length} Mitarbeitende${anon ? ' · anonymisiert' : ''}`],
-          header: [...(anon ? ['Mitarbeiter/in'] : ['Pers.-Nr.', 'Name']), ...URLAUB_COLS],
-          rows: rows.map((r, i) => [
-            ...(anon ? [anonName(i)] : [r.personnel_no, r.name]),
-            r.entitlement,
-            r.carried,
-            r.carriedExpired,
-            r.taken,
-            r.requested,
-            r.rest,
-          ]),
+          title: [
+            `Urlaubskonten ${year}${olName ? ` – ${olName}` : ''}`,
+            `${rows.length} Mitarbeitende je Objektleitung${anon ? ' · anonymisiert' : ''} · ohne Resturlaub Vorjahr`,
+          ],
+          header: ['Objektleitung', ...(anon ? ['Mitarbeiter/in'] : ['Pers.-Nr.', 'Name']), ...URLAUB_COLS],
+          rows: groups.flatMap((g) =>
+            g.rows.map((r): XlsxCell[] => [
+              g.manager.name,
+              ...who(r),
+              r.entitlement,
+              r.taken,
+              r.requested,
+              r.rest,
+            ]),
+          ),
           footer: [
             [
-              ...lead('Summe'),
+              ...lead('Summe (jede Person einmal)'),
               sum((r) => r.entitlement),
-              sum((r) => r.carried),
-              sum((r) => r.carriedExpired),
               sum((r) => r.taken),
               sum((r) => r.requested),
               sum((r) => r.rest),
@@ -423,17 +444,15 @@ export function registerAbsenceStatsRoutes({ app, deps, page }: Ctx) {
             [
               ...lead('Ø je Mitarbeiter/in'),
               avg((r) => r.entitlement),
-              avg((r) => r.carried),
-              avg((r) => r.carriedExpired),
               avg((r) => r.taken),
               avg((r) => r.requested),
               avg((r) => r.rest),
             ],
           ],
-          widths: anon ? [18, 11, 11, 11, 11, 11, 11] : [10, 28, 11, 11, 11, 11, 11, 11],
+          widths: anon ? [24, 18, 11, 11, 11, 11] : [24, 10, 28, 11, 11, 11, 11],
         },
       ]),
-      `urlaubskonten-${year}${anon ? '-anonym' : ''}.xlsx`,
+      `urlaubskonten-${year}${olName ? '-objektleitung' : ''}${anon ? '-anonym' : ''}.xlsx`,
       'xlsx',
     );
   });

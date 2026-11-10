@@ -262,14 +262,77 @@ export async function hourlyRates(sql: Sql, fromMonth: string, toMonth: string):
 
 // ------------------------------------------------------------------ Urlaubskonten, Krankheitstage
 
+/** Objektleitung im Urlaubskonto: id = Benutzer-ID, '' = ohne Objektleitung */
+export interface LeaveManager {
+  id: string;
+  name: string;
+}
+export const NO_MANAGER: LeaveManager = { id: '', name: 'ohne Objektleitung' };
+
+/**
+ * Urlaubskonten aller im Jahr beschäftigten aktiven Mitarbeitenden. `managers` = Objektleitungen der Objekte, an denen
+ * die Person im Jahr eingeplant ist (Einsätze), sonst der zugeordneten Objekte; keine → „ohne Objektleitung“.
+ * Wer an Objekten mehrerer Objektleitungen arbeitet, hat mehrere.
+ */
 export async function leaveAccounts(sql: Sql, year: number) {
-  const emps = await sql<{ id: string; name: string; personnel_no: string }[]>`
-    select id, last_name || ', ' || first_name as name, personnel_no from app.employees
-     where status = 'aktiv' and entry_date <= ${`${year}-12-31`} and (exit_date is null or exit_date >= ${`${year}-01-01`})
-     order by last_name, first_name`;
-  const out: ({ id: string; name: string; personnel_no: string } & LeaveBalance)[] = [];
-  for (const e of emps) out.push({ ...e, ...(await leaveBalance(sql, e.id, year)) });
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
+  const emps = await sql<
+    {
+      id: string;
+      name: string;
+      personnel_no: string;
+      planned: LeaveManager[] | null;
+      assigned: LeaveManager[] | null;
+    }[]
+  >`
+    select e.id, e.last_name || ', ' || e.first_name as name, e.personnel_no,
+           (select json_agg(distinct jsonb_build_object('id', coalesce(s.manager_user_id::text, ''),
+                                                       'name', coalesce(pr.display_name, 'ohne Objektleitung')))
+              from app.shift_plans sp join app.sites s on s.id = sp.site_id
+              left join app.profiles pr on pr.user_id = s.manager_user_id
+             where sp.employee_id = e.id and sp.valid_from <= ${to}
+               and (sp.valid_until is null or sp.valid_until >= ${from})) as planned,
+           (select json_agg(distinct jsonb_build_object('id', coalesce(s.manager_user_id::text, ''),
+                                                       'name', coalesce(pr.display_name, 'ohne Objektleitung')))
+              from app.employee_sites es join app.sites s on s.id = es.site_id
+              left join app.profiles pr on pr.user_id = s.manager_user_id
+             where es.employee_id = e.id and s.active) as assigned
+      from app.employees e
+     where e.status = 'aktiv' and e.entry_date <= ${to} and (e.exit_date is null or e.exit_date >= ${from})
+     order by e.last_name, e.first_name`;
+  const out: ({ id: string; name: string; personnel_no: string; managers: LeaveManager[] } & LeaveBalance)[] =
+    [];
+  for (const e of emps) {
+    const list = (e.planned?.length ? e.planned : e.assigned) ?? [];
+    const named = list.filter((m) => m.id);
+    const managers = (named.length ? named : [NO_MANAGER]).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    out.push({
+      id: e.id,
+      name: e.name,
+      personnel_no: e.personnel_no,
+      managers,
+      ...(await leaveBalance(sql, e.id, year)),
+    });
+  }
   return out;
+}
+
+/** Urlaubskonten je Objektleitung (Person erscheint bei jeder ihrer Objektleitungen), optional nur eine (`ol`, 'ohne'). */
+export function groupLeaveByManager<R extends { managers: LeaveManager[] }>(rows: R[], ol?: string) {
+  const groups = new Map<string, { manager: LeaveManager; rows: R[] }>();
+  for (const r of rows)
+    for (const m of r.managers) {
+      if (ol && (ol === 'ohne' ? m.id !== '' : m.id !== ol)) continue;
+      const g = groups.get(m.id) ?? { manager: m, rows: [] };
+      g.rows.push(r);
+      groups.set(m.id, g);
+    }
+  return [...groups.values()].sort(
+    (a, b) =>
+      Number(a.manager.id === '') - Number(b.manager.id === '') ||
+      a.manager.name.localeCompare(b.manager.name, 'de'),
+  );
 }
 
 export interface SickRow {

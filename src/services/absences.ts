@@ -593,8 +593,8 @@ export interface LeaveBalance {
 }
 
 /**
- * Urlaubskonto eines Jahres. Resturlaub verfällt zum 31.12. (Ahmed 30.10., § 7 Abs. 3 S. 1 BUrlG); nur ein aus Fortytools
- * übernommener Resturlaub des Vorjahres zählt noch (bis 31.03. wie dort gerechnet). ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
+ * Urlaubskonto eines Jahres. Resturlaub verfällt zum 31.12. (Ahmed 30.10., § 7 Abs. 3 S. 1 BUrlG); seit 10.11. zählt
+ * auch kein aus Fortytools übernommener Resturlaub des Vorjahres mehr. ACHTUNG (BAG 19.02.2019, 9 AZR 541/15): Verfall nur, wenn der Arbeitgeber
  * rechtzeitig zum Urlaub aufgefordert und auf den Verfall hingewiesen hat – die Anzeige ist nur ein Rechenwert.
  */
 export async function leaveBalance(
@@ -612,16 +612,20 @@ export async function leaveBalance(
     // der Fortytools-Anspruch dient nur dazu, den dort verfallenen Resturlaub nachzurechnen
     const entitlement = after.entitlement;
     const ftEntitlement = op.entitlement ?? entitlement;
-    const carried = op.carried ?? 0;
-    const expired = op.available != null ? Math.max(0, carried + ftEntitlement - op.taken - op.available) : 0;
-    const taken = op.taken + after.taken;
+    // Resturlaub aus dem Vorjahr zählt nicht mehr (Ahmed 10.11.) – auch nicht der aus Fortytools übernommene. Was in
+    // Fortytools bis zum Stichtag aus dem Vorjahres-Rest genommen wurde, mindert den Anspruch dieses Jahres nicht.
+    const ftCarried = op.carried ?? 0;
+    const ftExpired =
+      op.available != null ? Math.max(0, ftCarried + ftEntitlement - op.taken - op.available) : 0;
+    const fromCarry = Math.min(op.taken, Math.max(0, ftCarried - ftExpired));
+    const taken = op.taken - fromCarry + after.taken;
     return {
       entitlement,
       taken,
       requested: after.requested,
-      rest: entitlement + carried - expired - taken - after.requested,
-      carried,
-      carriedExpired: expired,
+      rest: entitlement - taken - after.requested,
+      carried: 0,
+      carriedExpired: 0,
       openingAsOf: op.as_of,
       extra: after.extra,
     };

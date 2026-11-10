@@ -73,7 +73,7 @@ describe.skipIf(!available)('Urlaub/Krankheit übernehmen (Datenbank)', () => {
     });
     expect(r).toEqual({ saved: 2, skipped: 1 });
     const ba = await leaveBalance(sql, a, 2026);
-    expect([ba.entitlement, ba.carried, ba.carriedExpired, ba.taken, ba.rest]).toEqual([30, 23, 23, 47, -17]);
+    expect([ba.entitlement, ba.carried, ba.carriedExpired, ba.taken, ba.rest]).toEqual([30, 0, 0, 47, -17]);
     expect((await leaveBalance(sql, b, 2026)).rest).toBe(20);
     await requestAbsence(sql, {
       id: randomUUID(),

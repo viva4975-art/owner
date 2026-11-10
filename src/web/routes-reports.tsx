@@ -9,6 +9,7 @@ import {
   dutyList,
   hourlyRates,
   hoursControl,
+  groupLeaveByManager,
   leaveAccounts,
   nextMonth,
   forecastPriorYear,
@@ -89,7 +90,7 @@ export const REPORTS: (Tab & { text: string })[] = [
     key: 'urlaub',
     label: 'Urlaubskonten',
     href: '/auswertungen/urlaub',
-    text: 'Anspruch, Übertrag, genommen, Rest',
+    text: 'Anspruch, genommen, Rest – je Objektleitung',
   },
   {
     key: 'krankheit',
@@ -1116,7 +1117,12 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
   // ------------------------------------------------------------------ Urlaubskonten
   app.get('/auswertungen/urlaub', async (c) => {
     const year = yearOf(c.req.query('jahr'));
+    const ol = c.req.query('ol') ?? '';
     const [rows, warns] = await Promise.all([leaveAccounts(sql, year), leaveWarnings(sql)]);
+    const allGroups = groupLeaveByManager(rows);
+    const groups = groupLeaveByManager(rows, ol || undefined);
+    const tot = (list: typeof rows, f: (r: (typeof rows)[number]) => number) =>
+      list.reduce((a, r) => a + f(r), 0);
     const open = warns.filter(isOpen);
     const done = warns.filter((w) => !isOpen(w));
     return shell(
@@ -1210,7 +1216,7 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
           </div>
         )}
         <div class="actions" style="margin-top:0">
-          <ExportBar base="/auswertungen/urlaub" year={year} />
+          <ExportBar base="/auswertungen/urlaub" year={year} extra={ol ? { ol } : undefined} />
           <a class="btn sm sec" href={`/auswertungen/ausfallzeiten?jahr=${year}`}>
             Durchschnitt für Kalkulation
           </a>
@@ -1222,49 +1228,85 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
             {[...new Set(rows.map((r) => r.openingAsOf).filter(Boolean))].map((d) => dateDe(d!)).join(', ')}).
           </p>
         )}
-        <div class="card">
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Mitarbeiter</th>
-                  <th class="r">Anspruch</th>
-                  <th class="r">Übertrag</th>
-                  <th class="r">verfallen</th>
-                  <th class="r">genommen</th>
-                  <th class="r">beantragt</th>
-                  <th class="r">Rest</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
+        <form method="get" action="/auswertungen/urlaub" class="actions ls-bar" style="margin-top:0">
+          <input type="hidden" name="jahr" value={String(year)} />
+          <label class="small" for="urlaub-ol" style="margin:0">
+            Objektleitung
+          </label>
+          <select name="ol" id="urlaub-ol" data-autosubmit>
+            <option value="">alle Objektleitungen</option>
+            {allGroups.map((g) => (
+              <option value={g.manager.id || 'ohne'} selected={ol === (g.manager.id || 'ohne')}>
+                {g.manager.name} ({g.rows.length})
+              </option>
+            ))}
+          </select>
+          <button class="btn sm sec">Anzeigen</button>
+        </form>
+        {groups.length === 0 && <div class="empty">Keine Mitarbeitenden für diese Auswahl.</div>}
+        {groups.map((g) => (
+          <div class="card">
+            <h3 style="margin-top:0">
+              {g.manager.name} <span class="cnt">({g.rows.length})</span>
+            </h3>
+            <div class="tbl">
+              <table>
+                <thead>
                   <tr>
-                    <td>
-                      <a href={`/personal/${r.id}`}>{r.name}</a>{' '}
-                      <span class="small mut">{r.personnel_no}</span>
-                    </td>
-                    <td class="r">{daysDe(r.entitlement)}</td>
-                    <td class="r">{r.carried ? daysDe(r.carried) : '–'}</td>
-                    <td class="r">{r.carriedExpired ? daysDe(r.carriedExpired) : '–'}</td>
-                    <td class="r">{daysDe(r.taken)}</td>
-                    <td class="r">{r.requested ? daysDe(r.requested) : '–'}</td>
-                    <td class="r" style={r.rest < 0 ? 'color:var(--err)' : ''}>
-                      <b>{daysDe(r.rest)}</b>
+                    <th>Mitarbeiter</th>
+                    <th class="r">Anspruch</th>
+                    <th class="r">genommen</th>
+                    <th class="r">beantragt</th>
+                    <th class="r">Rest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.rows.map((r) => (
+                    <tr>
+                      <td>
+                        <a href={`/personal/${r.id}`}>{r.name}</a>{' '}
+                        <span class="small mut">{r.personnel_no}</span>
+                        {r.managers.length > 1 && (
+                          <div class="small mut">
+                            auch bei{' '}
+                            {r.managers
+                              .filter((m) => m.id !== g.manager.id)
+                              .map((m) => m.name)
+                              .join(', ')}
+                          </div>
+                        )}
+                      </td>
+                      <td class="r">{daysDe(r.entitlement)}</td>
+                      <td class="r">{daysDe(r.taken)}</td>
+                      <td class="r">{r.requested ? daysDe(r.requested) : '–'}</td>
+                      <td class="r" style={r.rest < 0 ? 'color:var(--err)' : ''}>
+                        <b>{daysDe(r.rest)}</b>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr class="sum">
+                    <td>Summe {g.manager.name}</td>
+                    <td class="r">{daysDe(tot(g.rows, (r) => r.entitlement))}</td>
+                    <td class="r">{daysDe(tot(g.rows, (r) => r.taken))}</td>
+                    <td class="r">{daysDe(tot(g.rows, (r) => r.requested))}</td>
+                    <td class="r">
+                      <b>{daysDe(tot(g.rows, (r) => r.rest))}</b>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <p class="small mut" style="margin-bottom:0">
-            Arbeitstage. Resturlaub verfällt zum 31.12. (kein Übertrag; nur ein aus Fortytools übernommener
-            Resturlaub zählt noch bis 31.03.). Rechtlich nur, wenn rechtzeitig auf Urlaub und Verfall
-            hingewiesen wurde (BAG 9 AZR 541/15). Der Anspruch wird immer selbst gerechnet (30 Tage bei
-            5-Tage-Woche, anteilig nach den Arbeitstagen laut Einsatzplanung). „Stand …“ = aus Fortytools
-            übernommen sind nur Resturlaub und genommener/geplanter Urlaub bis zum Stichtag; Urlaub in der App
-            zählt ab dem Folgetag dazu.
-          </p>
-        </div>
+        ))}
+        <p class="small mut">
+          Arbeitstage. Objektleitung = Objekte, an denen die Person im Jahr eingeplant ist (sonst die
+          zugeordneten); wer an Objekten mehrerer Objektleitungen arbeitet, steht bei jeder (Summen daher
+          nicht addieren). Resturlaub aus dem Vorjahr wird nicht mehr gerechnet (verfällt zum 31.12.) –
+          rechtlich nur, wenn rechtzeitig auf Urlaub und Verfall hingewiesen wurde (BAG 9 AZR 541/15). Der
+          Anspruch wird immer selbst gerechnet (30 Tage bei 5-Tage-Woche, anteilig nach den Arbeitstagen laut
+          Einsatzplanung). „Stand …“ = aus Fortytools übernommen ist nur der genommene/geplante Urlaub dieses
+          Jahres bis zum Stichtag; Urlaub in der App zählt ab dem Folgetag dazu.
+        </p>
       </>,
     );
   });

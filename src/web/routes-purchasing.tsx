@@ -939,11 +939,20 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     // Je Nachunternehmer (Ahmed 11.11.): Auswahl Unterschrift fehlt / Rechnung nicht eingegangen / alle.
     // „Nicht eingegangen“ = Zeitraum vorbei ohne Eingangsrechnung; eine eingegangene (auch unbezahlte) Rechnung zählt.
     const scById = new Map(subcontracts.map((x) => [x.id, x]));
-    const missingOf = (r: Row): { label: string; v: bigint | null }[] => {
+    // Monat der fehlenden Rechnung (Ahmed 11.11.): monatlich = Monat des Zeitraums, nach Ausführung = Monat des Endes,
+    // Material = Liefer- bzw. Bestellmonat
+    const month = view === 'rechnung' && /^\d{4}-\d{2}$/.test(q.monat ?? '') ? q.monat! : '';
+    const missingOf = (r: Row): { label: string; v: bigint | null; m: string }[] => {
       if (r.kind === 'material') {
         const o = orders.find((x) => x.id === r.id);
         return o && o.status === 'geliefert' && !invoiced.has(o.id)
-          ? [{ label: `geliefert ${dateDe(o.delivery_date ?? o.order_date)}`, v: o.net_cents }]
+          ? [
+              {
+                label: `geliefert ${dateDe(o.delivery_date ?? o.order_date)}`,
+                v: o.net_cents,
+                m: (o.delivery_date ?? o.order_date).slice(0, 7),
+              },
+            ]
           : [];
       }
       const sc = scById.get(r.id);
@@ -963,10 +972,12 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           return {
             label: p.state === 'bedarf' ? `nach Ausführung ${MON(p.start)}` : MON(p.start),
             v: any ? v : null,
+            m: p.state === 'bedarf' ? p.end.slice(0, 7) : p.start,
           };
         })
         .reverse();
     };
+    const missingIn = (r: Row) => missingOf(r).filter((x) => !month || x.m === month);
     const stageOf = (r: Row) =>
       r.phase === 'erledigen' ? (r.unsigned ? (r.recurring ? 'laufend' : 'einmalig') : 'entwurf') : r.phase;
     const base = all
@@ -974,7 +985,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       .filter((r) => !supplierId || r.supplierId === supplierId)
       .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)));
     const inView = (r: Row, v: string) =>
-      v === 'unterschrift' ? r.unsigned : v === 'rechnung' ? missingOf(r).length > 0 : true;
+      v === 'unterschrift' ? r.unsigned : v === 'rechnung' ? missingIn(r).length > 0 : true;
     const count = (v: string) => base.filter((r) => inView(r, v)).length;
     const allRows = base
       .filter((r) => inView(r, view))
@@ -990,6 +1001,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       const p = new URLSearchParams();
       const st: Record<string, string | null> = {
         ansicht: view === 'rechnung' ? null : view,
+        monat: month || null,
         stufe: stage || null,
         art: art || null,
         lieferant: supplierId || null,
@@ -1049,7 +1061,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           {VIEWS.map(([k, l]) => (
             <a
               class={view === k ? 'on' : ''}
-              href={link({ ansicht: k === 'rechnung' ? null : k, stufe: null })}
+              href={link({ ansicht: k === 'rechnung' ? null : k, stufe: null, monat: null })}
             >
               {l} <span class="cnt">{count(k)}</span>
             </a>
@@ -1057,6 +1069,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         </div>
         <form class="ls-bar bs-bar" method="get" action="/bestellungen">
           {view !== 'rechnung' && <input type="hidden" name="ansicht" value={view} />}
+          {month && <input type="hidden" name="monat" value={month} />}
           {stage && <input type="hidden" name="stufe" value={stage} />}
           {art && <input type="hidden" name="art" value={art} />}
           <div class="chips">
@@ -1097,6 +1110,26 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </a>
           )}
         </form>
+        {view === 'rechnung' &&
+          (() => {
+            const byM = new Map<string, number>();
+            for (const r of base)
+              for (const x of new Set(missingOf(r).map((y) => y.m))) byM.set(x, (byM.get(x) ?? 0) + 1);
+            const ms = [...byM.keys()].sort();
+            if (!ms.length) return null;
+            return (
+              <div class="chips bs-stages" aria-label="Monat">
+                <a class={!month ? 'on' : ''} href={link({ monat: null })}>
+                  Alle Monate
+                </a>
+                {ms.map((m) => (
+                  <a class={month === m ? 'on' : ''} href={link({ monat: m })}>
+                    {MON(m)} <span class="cnt">{byM.get(m)}</span>
+                  </a>
+                ))}
+              </div>
+            );
+          })()}
         {view === 'alle' && (
           <div class="chips bs-stages">
             {STAGES.map(([k, l]) => (
@@ -1132,7 +1165,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           </div>
         )}
         {groupList.map(([sid, g]) => {
-          const miss = g.rows.flatMap((r) => missingOf(r));
+          const miss = g.rows.flatMap((r) => missingIn(r));
           const sum = miss.reduce((a, m) => a + (m.v ?? 0n), 0n);
           const uns = g.rows.filter((r) => r.unsigned).length;
           return (
@@ -1173,7 +1206,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   </div>
                 </div>
                 {g.rows.map((r) => {
-                  const ms = missingOf(r);
+                  const ms = view === 'rechnung' ? missingIn(r) : missingOf(r);
                   const ups = unpaidOf(r);
                   return (
                     <div class="bs-sel">

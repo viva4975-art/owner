@@ -5360,4 +5360,7 @@ Testadresse.
   eingegangen – die Bestellung steht dann nicht mehr dort (Hinweis „eingegangen · noch nicht bezahlt“ in der Zeile).
   **„n ohne Unterschrift drucken“ je Nachunternehmer** im Gruppenkopf (Sammel-PDF nur dieses NU), oben „Alle drucken“.
   Alte Adressen (`ansicht=offen|rechnung|unbezahlt|entwurf`, `unterschrift=fehlt`, `monat=`) landen in der passenden Ansicht.
+  - Nachtrag (Ahmed): Unter „Rechnung nicht eingegangen“ Monats-Chips (Alle Monate · 10/2026 · 11/2026 … mit Anzahl,
+    `?monat=JJJJ-MM`): Monat = Zeitraum bei monatlichen Bestellungen, Monat des Endes bei „nach Ausführung“, Liefer-
+    bzw. Bestellmonat bei Material. Pfeil im Gruppenkopf war abgeschnitten (globale Regel setzte den Innenabstand auf 0).
 

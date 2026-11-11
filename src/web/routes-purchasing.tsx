@@ -957,7 +957,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       }
       const sc = scById.get(r.id);
       if (!sc) return [];
-      const ended = sc.status === 'beendet' || (!!sc.valid_to && sc.valid_to < today);
+      // ohne Enddatum: nach Ausführung = Ausführungstag ist der Beginn (Ahmed 11.11.: 05.11. ohne Ende stand nicht da)
+      const endDay = sc.valid_to ?? (isRecurringOrder(sc.frequency) ? null : sc.valid_from);
+      const ended = sc.status === 'beendet' || (!!endDay && endDay < today);
       const mm = missBy.get(r.id);
       return (tracking.get(r.id) ?? [])
         .filter((p) => p.state === 'offen' || (p.state === 'bedarf' && ended))
@@ -1036,7 +1038,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         ? `bestellt ${dateDe(r.from)}${r.to ? ` · Lieferung ${dateDe(r.to)}` : ''}`
         : r.ongoing
           ? `ab ${dateDe(r.from)} · fortlaufend`
-          : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`;
+          : r.to
+            ? `${dateDe(r.from)} – ${dateDe(r.to)}`
+            : `am ${dateDe(r.from)} (ohne Enddatum)`;
     return page(
       c,
       'Bestellungen',
@@ -1275,10 +1279,10 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         <details class="small mut bs-explain">
           <summary>So wird gezählt</summary>
           Rechnung nicht eingegangen = Abrechnungszeitraum ist vorbei (monatliche Bestellungen: Monat
-          abgelaufen; nach Ausführung: Bestellung beendet) und es ist keine Eingangsrechnung dafür erfasst.
-          Sobald eine Rechnung erfasst ist – auch wenn sie noch nicht bezahlt ist –, steht die Bestellung
-          nicht mehr dort. Material: geliefert, aber keine Rechnung. Nachunternehmer ab Oktober 2026. Beträge
-          netto, geschätzt laut Bestellung.
+          abgelaufen; nach Ausführung: Bestellung beendet bzw. ohne Enddatum der Ausführungstag vorbei) und es
+          ist keine Eingangsrechnung dafür erfasst. Sobald eine Rechnung erfasst ist – auch wenn sie noch
+          nicht bezahlt ist –, steht die Bestellung nicht mehr dort. Material: geliefert, aber keine Rechnung.
+          Nachunternehmer ab Oktober 2026. Beträge netto, geschätzt laut Bestellung.
         </details>
         {allRows
           .filter((r) => r.canFinish)

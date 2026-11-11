@@ -5364,3 +5364,7 @@ Testadresse.
     `?monat=JJJJ-MM`): Monat = Zeitraum bei monatlichen Bestellungen, Monat des Endes bei „nach Ausführung“, Liefer-
     bzw. Bestellmonat bei Material. Pfeil im Gruppenkopf war abgeschnitten (globale Regel setzte den Innenabstand auf 0).
 
+- 2026-11-11: **„Rechnung nicht eingegangen“ auch ohne Enddatum** (Ahmed: BE-2026-0064 Bauendreinigung 05.11. fehlte): NU-
+  Bestellungen nach Ausführung ohne Enddatum galten nie als beendet → nie „Rechnung fehlt“. Jetzt gilt der Beginn als
+  Ausführungstag (vorbei = Rechnung fehlt, Monat = Monat des Beginns); Zeitraum steht als „am TT.MM.JJJJ (ohne Enddatum)“.
+  Laufende Monate, heute und künftige Ausführungen zählen weiterhin nicht.

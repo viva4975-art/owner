@@ -498,23 +498,19 @@ export function registerPurchasingRoutes(ctx: Ctx) {
   app.get('/bestellungen', async (c) => {
     const q = c.req.query();
     const art = q.art === 'material' || q.art === 'nu' ? q.art : '';
-    // Aufteilung (Ahmed 02.11.): Monat wählen, dann „was fehlt“ – Rechnung fehlt / unbezahlt / Unterschrift fehlt.
-    // Alte Adressen (ansicht=laufend …, unterschrift=fehlt) werden umgedeutet.
-    const OLD_STAGE = ['laufend', 'einmalig', 'abgeschlossen'];
+    // Ansicht (Ahmed 11.11.): rechnung (Standard) / unterschrift / alle; alte Adressen werden umgedeutet
+    const OLD_STAGE = ['laufend', 'einmalig', 'abgeschlossen', 'entwurf'];
     const view =
-      q.unterschrift === 'fehlt'
+      q.unterschrift === 'fehlt' || q.ansicht === 'unterschrift'
         ? 'unterschrift'
-        : OLD_STAGE.includes(q.ansicht ?? '')
+        : q.ansicht === 'alle' || OLD_STAGE.includes(q.ansicht ?? '')
           ? 'alle'
-          : ['offen', 'rechnung', 'unbezahlt', 'unterschrift', 'entwurf', 'alle'].includes(q.ansicht ?? '')
-            ? q.ansicht!
-            : 'offen';
+          : 'rechnung';
     const stage = OLD_STAGE.includes(q.ansicht ?? '')
       ? q.ansicht!
       : ['laufend', 'einmalig', 'abgeschlossen', 'storniert', 'entwurf'].includes(q.stufe ?? '')
         ? q.stufe!
         : '';
-    const month = /^\d{4}-\d{2}$/.test(q.monat ?? '') || q.monat === 'bedarf' ? q.monat! : '';
     const supplierId = q.lieferant && /^[0-9a-f-]{36}$/.test(q.lieferant) ? q.lieferant : '';
     const search = (q.q ?? '').trim().toLowerCase();
     const [orders, subcontracts, suppliers, billed] = await Promise.all([
@@ -625,10 +621,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       sql,
       subcontracts.filter((x) => x.billing === 'tag').map((x) => x.id),
     );
-    const monthEndOf = (m: string) => {
-      const [y, mo] = m.split('-').map(Number) as [number, number];
-      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-    };
     const monthsOf = (start: string, end: string) => {
       const out: string[] = [];
       for (let m = start; m <= end.slice(0, 7) && out.length < 60;) {
@@ -769,56 +761,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           byMonth: new Map([[o.order_date.slice(0, 7), o.net_cents]]),
         });
       }
-    const billCell = (r: {
-      kind: 'material' | 'nu';
-      id: string;
-      phase: string;
-      from: string | null;
-      status: string;
-    }) => {
-      if (r.kind === 'material') {
-        if (r.phase === 'storniert') return null;
-        return invoiced.has(r.id) ? (
-          <span class="bs-pill bs-ok">Rechnung erfasst</span>
-        ) : (
-          <span class="small mut">noch keine Rechnung</span>
-        );
-      }
-      const ps = tracking.get(r.id) ?? [];
-      // Beginn in der Zukunft: noch kein Abrechnungszeitraum (Ahmed 22.10.: „bei genau den zwei fehlt es“)
-      if (!ps.length)
-        return r.phase === 'storniert' || /^(Entwurf|angefragt)/.test(r.status) ? null : (
-          <span class="bs-pill bs-info">beginnt {dateDe(r.from)}</span>
-        );
-      const cur = ps[0]!;
-      const open = ps.filter((p) => p.state === 'offen').length;
-      const label =
-        cur.state === 'abgerechnet'
-          ? `${MON(cur.start)} abgerechnet`
-          : cur.state === 'keine'
-            ? `${MON(cur.start)} keine Rechnung`
-            : cur.state === 'laufend'
-              ? `${MON(cur.start)} läuft`
-              : cur.state === 'bedarf'
-                ? 'nach Ausführung'
-                : `${MON(cur.start)} fehlt`;
-      const tone =
-        cur.state === 'abgerechnet' || cur.state === 'keine'
-          ? 'ok'
-          : cur.state === 'laufend' || cur.state === 'bedarf'
-            ? 'info'
-            : 'warn';
-      return (
-        <span>
-          <span class={`bs-pill bs-${tone}`}>{label}</span>
-          {open > (cur.state === 'offen' ? 1 : 0) ? (
-            <span class="bs-sub" style="color:var(--bad)">
-              {open} Zeitr. ohne Rechnung
-            </span>
-          ) : null}
-        </span>
-      );
-    };
     type Row = {
       id: string;
       href: string;
@@ -908,11 +850,8 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         per: '',
         // „zu erledigen“ nur Entwürfe (Ahmed 19.10.); fehlende Rechnungen stehen im Rechnungseingang
         phase: PO_PHASE[o.status],
-        status:
-          o.status === 'geliefert' && !invoiced.has(o.id)
-            ? 'geliefert · Rechnung fehlt'
-            : PO_STATUS[o.status],
-        tone: o.status === 'geliefert' && !invoiced.has(o.id) ? 'warn' : PO_TONE[o.status],
+        status: PO_STATUS[o.status],
+        tone: PO_TONE[o.status],
       })),
       ...subcontracts.map((sc) => ({
         id: sc.id,
@@ -997,108 +936,60 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         })(),
       })),
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
-    /** Bestellung läuft im Monat (für Unterschrift/Entwurf) */
-    const activeIn = (r: Row, m: string) =>
-      !m || (m !== 'bedarf' && (r.from ?? '9999') <= monthEndOf(m) && (!r.to || r.to >= `${m}-01`));
-    const missIn = (r: Row, m: string) =>
-      [...(missBy.get(r.id) ?? [])]
-        .filter(([k, x]) => (m ? k === m : x.primary))
-        .sort(([a], [b]) => a.localeCompare(b));
-    const unpaidIn = (r: Row, m: string) => unpaidOf(r).filter((u) => !m || u.month === m);
-    const unsignedIn = (r: Row, m: string) => r.unsigned && activeIn(r, m);
-    const draftIn = (r: Row, m: string) => r.phase === 'erledigen' && !r.unsigned && activeIn(r, m);
+    // Je Nachunternehmer (Ahmed 11.11.): Auswahl Unterschrift fehlt / Rechnung nicht eingegangen / alle.
+    // „Nicht eingegangen“ = Zeitraum vorbei ohne Eingangsrechnung; eine eingegangene (auch unbezahlte) Rechnung zählt.
+    const scById = new Map(subcontracts.map((x) => [x.id, x]));
+    const missingOf = (r: Row): { label: string; v: bigint | null }[] => {
+      if (r.kind === 'material') {
+        const o = orders.find((x) => x.id === r.id);
+        return o && o.status === 'geliefert' && !invoiced.has(o.id)
+          ? [{ label: `geliefert ${dateDe(o.delivery_date ?? o.order_date)}`, v: o.net_cents }]
+          : [];
+      }
+      const sc = scById.get(r.id);
+      if (!sc) return [];
+      const ended = sc.status === 'beendet' || (!!sc.valid_to && sc.valid_to < today);
+      const mm = missBy.get(r.id);
+      return (tracking.get(r.id) ?? [])
+        .filter((p) => p.state === 'offen' || (p.state === 'bedarf' && ended))
+        .map((p) => {
+          let v: bigint | null = 0n;
+          let any = false;
+          for (const [k, x] of mm ?? [])
+            if (k >= p.start && k <= p.end.slice(0, 7)) {
+              any = true;
+              v = v === null || x.v === null ? null : v + x.v;
+            }
+          return {
+            label: p.state === 'bedarf' ? `nach Ausführung ${MON(p.start)}` : MON(p.start),
+            v: any ? v : null,
+          };
+        })
+        .reverse();
+    };
     const stageOf = (r: Row) =>
       r.phase === 'erledigen' ? (r.unsigned ? (r.recurring ? 'laufend' : 'einmalig') : 'entwurf') : r.phase;
     const base = all
       .filter((r) => !art || r.kind === art)
       .filter((r) => !supplierId || r.supplierId === supplierId)
       .filter((r) => !search || [r.number, r.supplier, r.what].some((v) => v.toLowerCase().includes(search)));
-    const MONTH_NAMES = [
-      'Januar',
-      'Februar',
-      'März',
-      'April',
-      'Mai',
-      'Juni',
-      'Juli',
-      'August',
-      'September',
-      'Oktober',
-      'November',
-      'Dezember',
-    ];
-    const monthName = (m: string) =>
-      m === 'bedarf'
-        ? 'nach Ausführung (Monat offen)'
-        : `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
-    // Übersicht je Monat: Rechnung fehlt / unbezahlt / Unterschrift fehlt – jede Rechnung nur einmal
-    type MStat = {
-      miss: number;
-      missV: bigint;
-      missDue: bigint;
-      unknown: number;
-      inv: Map<string, Unpaid>;
-      uns: number;
-    };
-    const statOf = (m: string): MStat => {
-      const st: MStat = { miss: 0, missV: 0n, missDue: 0n, unknown: 0, inv: new Map(), uns: 0 };
-      for (const r of base) {
-        const ms = missIn(r, m);
-        if (ms.length) st.miss++;
-        for (const [, x] of ms) {
-          if (x.v === null) st.unknown++;
-          else {
-            st.missV += x.v;
-            if (x.due) st.missDue += x.v;
-          }
-        }
-        for (const u of unpaidIn(r, m)) st.inv.set(u.inv, u);
-        if (unsignedIn(r, m)) st.uns++;
-      }
-      return st;
-    };
-    const monthKeys = new Set<string>([curMonth, nextMonth]);
-    for (const r of base) {
-      for (const k of missBy.get(r.id)?.keys() ?? []) monthKeys.add(k);
-      for (const u of unpaidOf(r)) monthKeys.add(u.month);
-    }
-    if (month) monthKeys.add(month);
-    const monthList = [...monthKeys].sort((a, b) =>
-      a === 'bedarf' ? 1 : b === 'bedarf' ? -1 : b.localeCompare(a),
-    );
-    const inView = (r: Row, v: string) => {
-      const miss = missIn(r, month).length > 0;
-      const unp = unpaidIn(r, month).length > 0;
-      if (v === 'rechnung') return miss;
-      if (v === 'unbezahlt') return unp;
-      if (v === 'unterschrift') return unsignedIn(r, month);
-      if (v === 'entwurf') return draftIn(r, month);
-      if (v === 'offen') return miss || unp || unsignedIn(r, month) || draftIn(r, month);
-      return activeIn(r, month) || miss || unp;
-    };
+    const inView = (r: Row, v: string) =>
+      v === 'unterschrift' ? r.unsigned : v === 'rechnung' ? missingOf(r).length > 0 : true;
     const count = (v: string) => base.filter((r) => inView(r, v)).length;
     const allRows = base
       .filter((r) => inView(r, view))
       .filter((r) => view !== 'alle' || !stage || stageOf(r) === stage);
-    const PER_PAGE = 25;
-    const sortedRows = sortListByRequest(allRows, {
-      'Nr.': (r) => r.number,
-      'Lieferant · Objekt · Zeitraum': (r) => `${r.supplier} ${r.what}`,
-      'Betrag netto': (r) => r.net,
-      'Stand · was ist offen': (r) => r.status,
-    });
-    const pages = Math.max(1, Math.ceil(sortedRows.length / PER_PAGE));
-    const cur = Math.min(pages, Math.max(1, Number(q.seite) || 1));
-    const rows = sortedRows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
-    const sortQ = c.req.query('sort') ?? '';
-    const dirQ = c.req.query('dir') === 'desc' ? 'desc' : 'asc';
+    const groups = new Map<string, { name: string; rows: Row[] }>();
+    for (const r of allRows) {
+      const g = groups.get(r.supplierId) ?? { name: r.supplier, rows: [] };
+      g.rows.push(r);
+      groups.set(r.supplierId, g);
+    }
+    const groupList = [...groups.entries()].sort(([, a], [, b]) => a.name.localeCompare(b.name, 'de'));
     const link = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
       const st: Record<string, string | null> = {
-        sort: sortQ || null,
-        dir: sortQ ? dirQ : null,
-        monat: month || null,
-        ansicht: view === 'offen' ? null : view,
+        ansicht: view === 'rechnung' ? null : view,
         stufe: stage || null,
         art: art || null,
         lieferant: supplierId || null,
@@ -1109,18 +1000,16 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       const str = p.toString();
       return `/bestellungen${str ? `?${str}` : ''}`;
     };
-    const VIEWS: [string, string, string][] = [
-      ['offen', 'Alles Offene', 'Rechnung fehlt, unbezahlt, Unterschrift fehlt oder Entwurf'],
-      ['rechnung', 'Rechnung fehlt', 'Zeitraum ohne Eingangsrechnung'],
-      ['unbezahlt', 'Unbezahlt', 'Rechnung da, noch nicht bezahlt'],
-      ['unterschrift', 'Unterschrift fehlt', 'erteilt, unterschriebener Auftrag fehlt'],
-      ['entwurf', 'Entwürfe', 'noch nicht erteilt / bestellt'],
-      ['alle', 'Alle Bestellungen', ''],
+    const VIEWS: [string, string][] = [
+      ['rechnung', 'Rechnung nicht eingegangen'],
+      ['unterschrift', 'Unterschrift fehlt'],
+      ['alle', 'Alle Bestellungen'],
     ];
     const STAGES: [string, string][] = [
       ['', 'Alle'],
       ['laufend', 'Laufend (monatlich)'],
       ['einmalig', 'Einmalig / nach Ausführung'],
+      ['entwurf', 'Entwürfe'],
       ['abgeschlossen', 'Abgeschlossen'],
       ['storniert', 'Storniert'],
     ];
@@ -1129,11 +1018,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       ['nu', 'Nachunternehmer'],
       ['material', 'Material'],
     ];
-    const sel = statOf(month);
-    const selInv = [...sel.inv.values()];
-    const selUnpaidNet = selInv.reduce((a, u) => a + u.net, 0n);
-    const selUnpaidGross = selInv.reduce((a, u) => a + u.cents, 0n);
-    const selUnpaidDue = selInv.filter((u) => u.due_date < today).reduce((a, u) => a + u.net, 0n);
     const ret = c.req.url.slice(c.req.url.indexOf('/bestellungen'));
     const period = (r: Row) =>
       r.kind === 'material'
@@ -1141,7 +1025,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         : r.ongoing
           ? `ab ${dateDe(r.from)} · fortlaufend`
           : `${dateDe(r.from)} – ${dateDe(r.to ?? r.from)}`;
-    const monLabel = (m: string) => (m === 'bedarf' ? 'nach Ausführung' : MON(m));
     return page(
       c,
       'Bestellungen',
@@ -1151,7 +1034,7 @@ export function registerPurchasingRoutes(ctx: Ctx) {
           <div>
             <div class="eyebrow">Einkauf</div>
             <h1>Bestellungen</h1>
-            <div class="sub">Material und Aufträge an Nachunternehmer</div>
+            <div class="sub">Je Nachunternehmer bzw. Lieferant</div>
           </div>
           <div class="acts">
             <a class="btn sec" href={`/bestellungen/${randomUUID()}/bearbeiten`}>
@@ -1162,105 +1045,23 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             </a>
           </div>
         </div>
-        {/* 1. Monat wählen – Leistungsmonat */}
-        <div class="bs-mstrip" role="tablist" aria-label="Monat">
-          {[
-            '',
-            ...monthList.filter((x) => x !== 'bedarf').reverse(),
-            ...monthList.filter((x) => x === 'bedarf'),
-          ].map((m) => {
-            const st = m === month ? sel : statOf(m);
-            const inv = [...st.inv.values()];
-            const n = st.miss + inv.length + st.uns;
-            const late = st.missDue > 0n || inv.some((u) => u.due_date < today);
-            return (
-              <a class={m === month ? 'on' : ''} href={link({ monat: m || null, seite: null })}>
-                <span class="bs-ml">
-                  {!m ? 'Alle Monate' : m === 'bedarf' ? 'nach Ausführung' : monthName(m)}
-                </span>
-                <span class="bs-mh">
-                  {m === curMonth ? 'aktuell' : m === nextMonth ? 'Vorschau' : !m ? 'gesamt' : ''}
-                  {n > 0 ? (
-                    <b class={late ? 'late' : ''}>
-                      {m === curMonth || m === nextMonth || !m ? ' · ' : ''}
-                      {n} offen
-                    </b>
-                  ) : (
-                    <span>{m === curMonth || m === nextMonth || !m ? ' · ' : ''}nichts offen</span>
-                  )}
-                </span>
-              </a>
-            );
-          })}
-        </div>
-        {/* 2. Was ist offen – Kacheln sind zugleich der Filter */}
-        {(() => {
-          const due = sel.missDue + selUnpaidDue;
-          const tile = (k: string, label: string, n: number, main: string | null, sub: Child, tone = '') => (
+        <div class="ls-tabs">
+          {VIEWS.map(([k, l]) => (
             <a
-              class={`bs-kpi${view === k ? ' on' : ''}${tone ? ` ${tone}` : ''}`}
-              href={link({ ansicht: k === 'offen' ? null : k, stufe: null, seite: null })}
+              class={view === k ? 'on' : ''}
+              href={link({ ansicht: k === 'rechnung' ? null : k, stufe: null })}
             >
-              <span class="bs-kl">{label}</span>
-              <span class="bs-kv">{main ?? n}</span>
-              <span class="bs-ks">{sub}</span>
+              {l} <span class="cnt">{count(k)}</span>
             </a>
-          );
-          return (
-            <div class="bs-kpis">
-              {tile(
-                'offen',
-                'Alles Offene',
-                count('offen'),
-                euro(sel.missV + selUnpaidNet),
-                <>
-                  {count('offen')} {count('offen') === 1 ? 'Bestellung' : 'Bestellungen'}
-                  {due > 0n && <b style="color:var(--bad)"> · überfällig {euro(due)}</b>}
-                </>,
-              )}
-              {tile(
-                'rechnung',
-                'Rechnung fehlt',
-                sel.miss,
-                sel.miss ? `≈ ${euro(sel.missV)}` : '–',
-                <>
-                  {sel.miss} {sel.miss === 1 ? 'Bestellung' : 'Bestellungen'}
-                  {sel.unknown > 0 && ` · ${sel.unknown} nach Aufwand`}
-                </>,
-                sel.missDue > 0n ? 'bad' : '',
-              )}
-              {tile(
-                'unbezahlt',
-                'Unbezahlt',
-                selInv.length,
-                selInv.length ? euro(selUnpaidNet) : '–',
-                <>
-                  {selInv.length} {selInv.length === 1 ? 'Rechnung' : 'Rechnungen'}
-                  {selInv.length > 0 && ` · brutto ${euro(selUnpaidGross)}`}
-                </>,
-                selUnpaidDue > 0n ? 'bad' : '',
-              )}
-              {tile(
-                'unterschrift',
-                'Unterschrift fehlt',
-                sel.uns,
-                null,
-                'erteilt, Auftrag nicht unterschrieben',
-                sel.uns ? 'warn' : '',
-              )}
-              {tile('entwurf', 'Entwürfe', count('entwurf'), null, 'noch nicht erteilt / bestellt')}
-            </div>
-          );
-        })()}
-        {/* 3. Filter */}
+          ))}
+        </div>
         <form class="ls-bar bs-bar" method="get" action="/bestellungen">
-          {month && <input type="hidden" name="monat" value={month} />}
-          {view !== 'offen' && <input type="hidden" name="ansicht" value={view} />}
+          {view !== 'rechnung' && <input type="hidden" name="ansicht" value={view} />}
           {stage && <input type="hidden" name="stufe" value={stage} />}
           {art && <input type="hidden" name="art" value={art} />}
           <div class="chips">
             {ARTS.map(([k, l]) => (
-              <a class={art === k ? 'on' : ''} href={link({ art: k || null, seite: null })}>
+              <a class={art === k ? 'on' : ''} href={link({ art: k || null })}>
                 {l}
               </a>
             ))}
@@ -1269,9 +1070,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             name="lieferant"
             onchange="this.form.submit()"
             style="width:auto;max-width:260px"
-            aria-label="Lieferant"
+            aria-label="Nachunternehmer / Lieferant"
           >
-            <option value="">Alle Lieferanten</option>
+            <option value="">Alle Nachunternehmer / Lieferanten</option>
             {suppliers.map((x) => (
               <option value={x.id} selected={x.id === supplierId}>
                 {x.name} ({x.supplier_no})
@@ -1286,54 +1087,25 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             placeholder="Nummer, Firma, Objekt …"
             aria-label="Suche"
           />
-          <a
-            class={`bs-allbtn${view === 'alle' ? ' on' : ''}`}
-            href={link({ ansicht: view === 'alle' ? null : 'alle', stufe: null, seite: null })}
-          >
-            {view === 'alle' ? '× nur Offene zeigen' : `Alle Bestellungen (${count('alle')})`}
-          </a>
+          {view === 'unterschrift' && allRows.length > 0 && (
+            <a
+              class="btn sm sec"
+              href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
+              target="_blank"
+            >
+              <Icon name="file" size={14} /> Alle drucken (PDF)
+            </a>
+          )}
         </form>
         {view === 'alle' && (
           <div class="chips bs-stages">
             {STAGES.map(([k, l]) => (
-              <a class={stage === k ? 'on' : ''} href={link({ stufe: k || null, seite: null })}>
+              <a class={stage === k ? 'on' : ''} href={link({ stufe: k || null })}>
                 {l}
               </a>
             ))}
           </div>
         )}
-        <div class="bs-listhead">
-          <b>
-            {VIEWS.find(([k]) => k === view)?.[1]}
-            {month ? ` · ${monthName(month)}` : ''}
-          </b>
-          <span class="small mut">
-            {allRows.length === 0
-              ? 'keine Treffer'
-              : `${(cur - 1) * PER_PAGE + 1}–${(cur - 1) * PER_PAGE + rows.length} von ${allRows.length}`}
-          </span>
-          <span class="bs-listacts">
-            {view === 'unbezahlt' && selInv.length > 0 && (
-              <a class="btn sm sec" href="/zahlungsliste">
-                Zur Zahlungsliste →
-              </a>
-            )}
-            {view === 'rechnung' && sel.miss > 0 && (
-              <a class="btn sm sec" href="/rechnungseingang?status=erwartet">
-                Rechnung erwartet →
-              </a>
-            )}
-            {(view === 'unterschrift' || view === 'offen') && sel.uns > 0 && (
-              <a
-                class="btn sm sec"
-                href={`/bestellungen/ohne-unterschrift.pdf${supplierId ? `?lieferant=${supplierId}` : ''}`}
-                target="_blank"
-              >
-                <Icon name="file" size={14} /> Ohne Unterschrift drucken (PDF)
-              </a>
-            )}
-          </span>
-        </div>
         <form
           id="bs-del"
           method="post"
@@ -1350,122 +1122,132 @@ export function registerPurchasingRoutes(ctx: Ctx) {
             Markierte löschen
           </button>
         </form>
-        <div class="bs-table bs2">
-          <div class="bs-sel bs-sel-h">
-            <input
-              type="checkbox"
-              aria-label="alle markieren"
-              title="alle markieren"
-              onchange="document.querySelectorAll('input[name=ids][form=bs-del]').forEach(function(x){x.checked=this.checked}.bind(this))"
-            />
-            <div class="bs-tr bs-th">
-              {(
-                [
-                  ['Nr.', ''],
-                  ['Lieferant · Objekt · Zeitraum', ''],
-                  ['Betrag netto', 'r'],
-                  ['Stand · was ist offen', ''],
-                ] as const
-              ).map(([lab, cls]) => {
-                const on = sortQ === lab;
-                const next = on && dirQ === 'asc' ? 'desc' : 'asc';
-                return (
-                  <span class={cls}>
-                    <a
-                      class={`sorth${on ? ` ${dirQ}` : ''}`}
-                      href={link({ sort: lab, dir: next, seite: null })}
-                      title="Sortieren"
-                      aria-sort={on ? (dirQ === 'asc' ? 'ascending' : 'descending') : 'none'}
-                    >
-                      {lab}
-                    </a>
-                  </span>
-                );
-              })}
-            </div>
+        {!groupList.length && (
+          <div class="empty-hint">
+            {view === 'rechnung'
+              ? 'Keine fehlenden Rechnungen – für alle abgelaufenen Zeiträume ist eine Rechnung eingegangen.'
+              : view === 'unterschrift'
+                ? 'Alle erteilten Bestellungen sind unterschrieben.'
+                : 'Keine Bestellungen.'}
           </div>
-          {rows.map((r) => (
-            <div class="bs-sel">
-              <input
-                type="checkbox"
-                name="ids"
-                form="bs-del"
-                value={`${r.kind === 'nu' ? 'nu' : 'po'}:${r.id}`}
-                aria-label={`${r.number} markieren`}
-              />
-              <a class="bs-tr" href={r.href}>
-                <span class="bs-nr">
-                  {r.number}
-                  <span class="bs-kind">{r.kind === 'nu' ? 'NU' : 'Material'}</span>
+        )}
+        {groupList.map(([sid, g]) => {
+          const miss = g.rows.flatMap((r) => missingOf(r));
+          const sum = miss.reduce((a, m) => a + (m.v ?? 0n), 0n);
+          const uns = g.rows.filter((r) => r.unsigned).length;
+          return (
+            <details class="card bs-group" open>
+              <summary>
+                <b>{g.name}</b>
+                <span class="small mut">
+                  {' '}
+                  · {g.rows.length} {g.rows.length === 1 ? 'Bestellung' : 'Bestellungen'}
+                  {miss.length > 0 && ` · ${miss.length} Rechn. fehlen${sum > 0n ? ` (≈ ${euro(sum)})` : ''}`}
+                  {uns > 0 && ` · ${uns} ohne Unterschrift`}
                 </span>
-                <span class="bs-main">
-                  <b>{r.supplier}</b>
-                  <span class="bs-sub">{r.what}</span>
-                  <span class="bs-sub">{period(r)}</span>
-                </span>
-                <span class="r bs-amt">
-                  {r.net !== null && (
-                    <>
-                      {euro(r.net)} <span class="small mut">{r.per}</span>
-                    </>
-                  )}
-                  {r.unit && <span class="bs-sub">{r.unit}</span>}
-                </span>
-                <span class="bs-st">
-                  <span class="bs-strow">
-                    <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
-                    {billCell(r)}
-                  </span>
-                  {(() => {
-                    const ms = missIn(r, month);
-                    const ups = unpaidIn(r, month);
-                    return (
-                      <>
-                        {r.unsigned && !r.status.includes('Unterschrift fehlt') && (
-                          <span class="bs-flag warn">Unterschrift fehlt</span>
-                        )}
-                        {ms.slice(0, 3).map(([m, x]) => (
-                          <span class={`bs-flag ${x.due ? 'bad' : 'warn'}`}>
-                            Rechnung fehlt · {x.span ?? monLabel(m)}
-                            {x.v !== null ? ` · ≈ ${euro(x.v)}` : ' · nach Aufwand'}
+                {uns > 0 && (
+                  <a
+                    class="btn sm sec"
+                    style="margin-left:auto"
+                    href={`/bestellungen/ohne-unterschrift.pdf?lieferant=${sid}`}
+                    target="_blank"
+                    onclick="event.stopPropagation()"
+                  >
+                    <Icon name="file" size={14} /> {uns} ohne Unterschrift drucken
+                  </a>
+                )}
+              </summary>
+              <div class="bs-table bs2">
+                <div class="bs-sel bs-sel-h">
+                  <input
+                    type="checkbox"
+                    aria-label="alle markieren"
+                    title="alle markieren"
+                    onchange="this.closest('details').querySelectorAll('input[name=ids][form=bs-del]').forEach(function(x){x.checked=this.checked}.bind(this))"
+                  />
+                  <div class="bs-tr bs-th">
+                    <span>Nr.</span>
+                    <span>Objekt · Leistung · Zeitraum</span>
+                    <span class="r">Betrag netto</span>
+                    <span>Stand</span>
+                  </div>
+                </div>
+                {g.rows.map((r) => {
+                  const ms = missingOf(r);
+                  const ups = unpaidOf(r);
+                  return (
+                    <div class="bs-sel">
+                      <input
+                        type="checkbox"
+                        name="ids"
+                        form="bs-del"
+                        value={`${r.kind === 'nu' ? 'nu' : 'po'}:${r.id}`}
+                        aria-label={`${r.number} markieren`}
+                      />
+                      <a class="bs-tr" href={r.href}>
+                        <span class="bs-nr">
+                          {r.number}
+                          <span class="bs-kind">{r.kind === 'nu' ? 'NU' : 'Material'}</span>
+                        </span>
+                        <span class="bs-main">
+                          <span>{r.what}</span>
+                          <span class="bs-sub">{period(r)}</span>
+                        </span>
+                        <span class="r bs-amt">
+                          {r.net !== null && (
+                            <>
+                              {euro(r.net)} <span class="small mut">{r.per}</span>
+                            </>
+                          )}
+                          {r.unit && <span class="bs-sub">{r.unit}</span>}
+                        </span>
+                        <span class="bs-st">
+                          <span class="bs-strow">
+                            <span class={`bs-pill bs-${r.tone || 'grey'}`}>{r.status}</span>
                           </span>
-                        ))}
-                        {ms.length > 3 && <span class="bs-sub">+ {ms.length - 3} weitere Monate</span>}
-                        {ups.map((u) => (
-                          <span class={`bs-flag ${u.due_date < today ? 'bad' : 'info'}`}>
-                            unbezahlt · {u.invoice_no} · {euro(u.cents)} · fällig {dateDe(u.due_date)}
-                            {u.status === 'erfasst' ? ' · nicht freigegeben' : ''}
-                          </span>
-                        ))}
-                      </>
-                    );
-                  })()}
-                  {r.canFinish && (
-                    <button
-                      type="button"
-                      class="btn sm sec"
-                      title="Auftrag komplett erledigt (beendet)"
-                      onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
-                    >
-                      ✓ erledigt
-                    </button>
-                  )}
-                </span>
-              </a>
-            </div>
-          ))}
-          {!rows.length && <div class="bs-tr empty">Keine Bestellungen in dieser Ansicht.</div>}
-        </div>
-        <Pager cur={cur} pages={pages} url={(n) => link({ seite: n > 1 ? String(n) : null })} />
+                          {r.unsigned && !r.status.includes('Unterschrift fehlt') && (
+                            <span class="bs-flag warn">Unterschrift fehlt</span>
+                          )}
+                          {ms.slice(0, 4).map((m) => (
+                            <span class="bs-flag bad">
+                              Rechnung fehlt · {m.label}
+                              {m.v !== null && m.v > 0n ? ` · ≈ ${euro(m.v)}` : ''}
+                            </span>
+                          ))}
+                          {ms.length > 4 && <span class="bs-sub">+ {ms.length - 4} weitere</span>}
+                          {ups.map((u) => (
+                            <span class="bs-flag info">
+                              Rechnung {u.invoice_no} eingegangen · noch nicht bezahlt
+                            </span>
+                          ))}
+                          {r.canFinish && (
+                            <button
+                              type="button"
+                              class="btn sm sec"
+                              title="Auftrag komplett erledigt (beendet)"
+                              onclick={`event.preventDefault();event.stopPropagation();if(confirm(${JSON.stringify(`Auftrag ${r.number} als komplett erledigt markieren?`)}))document.getElementById('fin-${r.id}').submit()`}
+                            >
+                              ✓ erledigt
+                            </button>
+                          )}
+                        </span>
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })}
         <details class="small mut bs-explain">
-          <summary>So wird gerechnet</summary>
-          Monat = Leistungsmonat. Rechnung fehlt = erwarteter Betrag laut Bestellung für Zeiträume ohne
-          Eingangsrechnung (Pauschale, je Tag × Arbeitstage, erfasste Stunden und Regie; Nachunternehmer ab
-          Oktober 2026). Bestellungen nach Ausführung stehen in jedem Monat ihrer Laufzeit, in „Alle Monate“
-          zählen sie einmal. Unbezahlt = eingegangen, noch nicht bezahlt (netto nach Abzügen und Vorschüssen).
-          Alle Beträge netto.
+          <summary>So wird gezählt</summary>
+          Rechnung nicht eingegangen = Abrechnungszeitraum ist vorbei (monatliche Bestellungen: Monat
+          abgelaufen; nach Ausführung: Bestellung beendet) und es ist keine Eingangsrechnung dafür erfasst.
+          Sobald eine Rechnung erfasst ist – auch wenn sie noch nicht bezahlt ist –, steht die Bestellung
+          nicht mehr dort. Material: geliefert, aber keine Rechnung. Nachunternehmer ab Oktober 2026. Beträge
+          netto, geschätzt laut Bestellung.
         </details>
-        {rows
+        {allRows
           .filter((r) => r.canFinish)
           .map((r) => (
             <form

@@ -5350,3 +5350,14 @@ Testadresse.
   ungesendete, Zähler = alle). Jetzt „Gesendet (erneut senden) (n)“ = nur gesendete; ungesendete und fehlgeschlagene
   stehen unter „Noch nicht gesendet“. Versand selbst unverändert. **Bank: Überweisungen automatisch** – nicht gebaut,
   Rückfrage an Ahmed (PSD2 verlangt TAN-Freigabe je Zahlung/Sammelauftrag; Optionen siehe Antwort).
+- 2026-11-11: **Bestellungen je Nachunternehmer** (Ahmed: „nicht nach Monaten, Bestellungen pro Nachunternehmer, auswählen
+  zwischen ununterschrieben, nicht eingegangene Rechnungen und alle“): ersetzt Monats-Pillen, Kacheln und „Unbezahlt“
+  vom 02.11. Reiter **Rechnung nicht eingegangen** (Standard) · **Unterschrift fehlt** · **Alle Bestellungen** (dort Chips
+  Laufend / Einmalig / Entwürfe / Abgeschlossen / Storniert), Filter Art, Lieferant, Suche; Liste je Nachunternehmer bzw.
+  Lieferant aufklappbar (Kopf: Anzahl, fehlende Rechnungen ≈ Betrag, ohne Unterschrift). **Nicht eingegangen** =
+  Abrechnungszeitraum vorbei ohne erfasste Eingangsrechnung (monatlich: Monat abgelaufen; nach Ausführung: Bestellung
+  beendet; Material: geliefert ohne Rechnung; NU ab 10/2026). Eine erfasste, noch unbezahlte Rechnung zählt als
+  eingegangen – die Bestellung steht dann nicht mehr dort (Hinweis „eingegangen · noch nicht bezahlt“ in der Zeile).
+  **„n ohne Unterschrift drucken“ je Nachunternehmer** im Gruppenkopf (Sammel-PDF nur dieses NU), oben „Alle drucken“.
+  Alte Adressen (`ansicht=offen|rechnung|unbezahlt|entwurf`, `unterschrift=fehlt`, `monat=`) landen in der passenden Ansicht.
+

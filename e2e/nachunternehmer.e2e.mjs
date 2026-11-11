@@ -198,7 +198,10 @@ check(
 await p.goto(B + '/bestellungen?ansicht=alle&art=nu');
 check(
   'NU-Bestellung in der gemeinsamen Bestellliste',
-  (await p.locator('.bs-tr', { hasText: `E2E Reinigung ${stamp}` }).count()) >= 1,
+  (await p
+    .locator('.bs-group', { hasText: `E2E Reinigung ${stamp}` })
+    .locator('.bs-tr:not(.bs-th)')
+    .count()) >= 1,
 );
 await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
 check('Zahlungsliste lädt', (await p.goto(B + '/zahlungsliste')).ok());

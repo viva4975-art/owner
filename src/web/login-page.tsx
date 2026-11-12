@@ -107,49 +107,29 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
 @media (prefers-reduced-motion:reduce){
   .lg-blob,.lg-streaks,.lg-btn::after{animation:none}
 }
-/* Fassung 3 (Ahmed 12.11.: „unsere Farben sollen bleiben, muss nicht gleich sein, einfach was Geiles“):
-   heller Viva-Bordeaux statt Fast-Schwarz, wandernder Farbschleier, Lichtpunkt folgt Maus/Finger,
-   weiße Karte mit umlaufendem Bordeaux-Leuchtrand, am PC leicht kippend. */
+/* Fassung 4 (Ahmed 12.11.: „vorher war besser mit dem dunklen, aber bisschen gläserner, damit es nicht in den Augen
+   weh tut“): dunkler Hintergrund wie Fassung 2, Karte durchsichtiger und weicher, gedämpfter Kontrast, sanft umlaufender
+   Lichtrand, schwacher Lichtschein folgt Maus/Finger. */
 @property --lg-a{syntax:'<angle>';inherits:false;initial-value:0deg}
-body{background:#7d1435}
-.lg-bg{background:linear-gradient(150deg,#9b2348 0%,#7d1435 38%,#5c0e27 100%)}
-.lg-bg::before{content:"";position:absolute;inset:-30%;opacity:.55;will-change:transform;
-  background:conic-gradient(from 0deg at 50% 50%,#7d1435,#b8325f,#8b2332,#e0708f,#7d1435,#5c0e27,#7d1435);
-  filter:blur(90px);animation:lgSpin 28s linear infinite}
-.lg-bg::after{content:"";position:absolute;inset:0;pointer-events:none;transition:background .15s;
-  background:radial-gradient(420px circle at var(--mx,50%) var(--my,35%),rgba(255,255,255,.16),transparent 60%)}
-@keyframes lgSpin{to{transform:rotate(360deg)}}
-.lg-blob.b1{background:#c4436d;opacity:.45}.lg-blob.b2{background:#4d0a20;opacity:.6}.lg-blob.b3{background:#fff;opacity:.08}
-.lg-streaks{opacity:.7;background:repeating-linear-gradient(118deg,transparent 0 90px,rgba(255,255,255,.06) 90px 92px,
-  transparent 92px 170px,rgba(255,255,255,.035) 170px 171px,transparent 171px 280px)}
-.lg-grain{background:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px) 0 0/24px 24px}
-.lg-stat{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28);box-shadow:0 8px 24px rgba(60,6,24,.25)}
-.lg-num{background-image:linear-gradient(180deg,#fff 40%,#ffd6e2)}
-.lg-lbl{color:rgba(255,255,255,.85)}
-/* weiße Karte mit umlaufendem Leuchtrand */
-.lg-card{color:#1d1a1c;background:rgba(255,255,255,.94);border:0;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-  box-shadow:0 30px 70px rgba(50,4,20,.45),0 0 0 1px rgba(255,255,255,.6);
-  transition:transform .25s ease-out}
-.lg-card::before{inset:-2px;padding:2px;border-radius:24px;z-index:-1;
-  background:conic-gradient(from var(--lg-a),#7d1435,#e0708f,#fff,#b8325f,#7d1435);animation:lgRing 6s linear infinite;
-  filter:drop-shadow(0 0 10px rgba(224,112,143,.55))}
+.lg-bg::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(380px circle at var(--mx,50%) var(--my,35%),rgba(233,120,160,.10),transparent 60%)}
+.lg-card{background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border-color:rgba(255,255,255,.10);
+  backdrop-filter:blur(30px) saturate(130%);-webkit-backdrop-filter:blur(30px) saturate(130%);
+  box-shadow:0 30px 80px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.10);transition:transform .25s ease-out}
+.lg-card::before{padding:1px;background:conic-gradient(from var(--lg-a),rgba(255,255,255,.04),rgba(233,120,160,.45),
+  rgba(255,255,255,.04) 40%,rgba(255,255,255,.25) 70%,rgba(255,255,255,.04));animation:lgRing 9s linear infinite}
 @keyframes lgRing{to{--lg-a:360deg}}
-.lg-card h1{color:#7d1435}
-.lg-sub{color:#6d6468}
-.lg-f label{color:#3a3236}
-.lg-in svg{color:#a1959a}
-.lg-in input{color:#1d1a1c;background:#f7f3f5;border:1px solid #e6dce1}
-.lg-in input::placeholder{color:#b3a8ad}
-.lg-in input:focus{background:#fff;border-color:#7d1435;box-shadow:0 0 0 4px rgba(125,20,53,.14)}
-.lg-in input:-webkit-autofill{-webkit-text-fill-color:#1d1a1c;-webkit-box-shadow:0 0 0 40px #fbf3f6 inset;caret-color:#1d1a1c}
-.lg-eye{color:#8a8085}.lg-eye:hover{color:#7d1435;background:#f6eef1}
-.lg-btn{background:linear-gradient(135deg,#a3214a,#7d1435 55%,#5c0e27);box-shadow:0 12px 28px rgba(125,20,53,.45),inset 0 1px 0 rgba(255,255,255,.25)}
-.lg-err{background:#fdf0f1;border-color:#f2c9cf;color:#8b1d2c}
-.lg-ok{background:#eef8f1;border-color:#c6e6d0;color:#1c6b3a}
-.lg-rem{color:#4a4246}.lg-rem input{accent-color:#7d1435}
-.lg-help{border-top-color:#eee5e9;color:#6d6468}.lg-help summary{color:#3a3236}.lg-help a{color:#7d1435}.lg-help b{color:#1d1a1c}
-.lg-seals{opacity:.9}.lg-foot{color:rgba(255,255,255,.7)}
-@media (prefers-reduced-motion:reduce){.lg-bg::before,.lg-card::before{animation:none}.lg-card{transition:none}}`;
+.lg-card h1{color:rgba(255,255,255,.94)}
+.lg-sub{color:rgba(255,255,255,.58)}
+.lg-f label{color:rgba(255,255,255,.78)}
+.lg-in input{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.95)}
+.lg-in input:focus{background:rgba(255,255,255,.08);border-color:rgba(240,163,188,.7);box-shadow:0 0 0 4px rgba(240,120,160,.12)}
+.lg-btn{background:linear-gradient(135deg,rgba(179,40,90,.92),rgba(125,20,53,.92) 60%,rgba(95,14,41,.92));
+  box-shadow:0 10px 26px rgba(125,20,53,.4),inset 0 1px 0 rgba(255,255,255,.18)}
+.lg-stat{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.09)}
+.lg-num{background-image:linear-gradient(180deg,rgba(255,255,255,.95) 30%,#e9a7bd)}
+.lg-seals{opacity:.6}
+@media (prefers-reduced-motion:reduce){.lg-card::before{animation:none}.lg-card{transition:none}}`;
 
 /** Kennzahlen wie auf der Website (Werte aus dem Briefing; bei Änderung hier anpassen) */
 const STATS: { n: number; suffix: string; label: string; text?: string }[] = [

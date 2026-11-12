@@ -5426,3 +5426,7 @@ Testadresse.
   einfach was Geiles“): heller Bordeaux-Verlauf (#9b2348 → #7d1435 → #5c0e27) statt Fast-Schwarz mit langsam drehendem
   Farbschleier, Lichtpunkt folgt Maus/Finger; weiße Karte mit umlaufendem Leuchtrand (Bordeaux → Rosé → Weiß), am PC
   kippt sie leicht mit der Maus; Kennzahlen-Kacheln heller. Ablauf (Zahlen zählen, dann Karte) unverändert.
+- 2026-11-12: **Anmeldemaske Fassung 4** (Ahmed: „vorher war besser mit dem dunklen, aber bisschen gläserner, damit es
+  nicht in den Augen weh tut“) – ersetzt Fassung 3: wieder dunkler Bordeaux-Hintergrund (Fassung 2), Karte durchsichtiger
+  (Weiß 8 → 2 %, Unschärfe 30 px), Texte/Felder/Knopf gedämpft, sanft umlaufender Lichtrand, schwacher rosé Lichtschein
+  folgt Maus/Finger; keine weiße Karte, kein Kippen.

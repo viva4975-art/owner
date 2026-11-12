@@ -5422,3 +5422,7 @@ Testadresse.
   ~2,5 s, „Überspringen“ bzw. Taste beendet ihn sofort; nur beim ersten Aufruf je Tab (sessionStorage `vd_intro`), nicht
   bei Fehler-/Hinweismeldung, nicht bei „Bewegung reduzieren“, ohne JavaScript sofort das Formular. Feld-IDs/Namen
   unverändert, `e2e:login` 47 Prüfungen grün.
+- 2026-11-12: **Anmeldemaske Fassung 3 in Viva-Farben** (Ahmed: „unsere Farben sollen bleiben, muss nicht gleich sein,
+  einfach was Geiles“): heller Bordeaux-Verlauf (#9b2348 → #7d1435 → #5c0e27) statt Fast-Schwarz mit langsam drehendem
+  Farbschleier, Lichtpunkt folgt Maus/Finger; weiße Karte mit umlaufendem Leuchtrand (Bordeaux → Rosé → Weiß), am PC
+  kippt sie leicht mit der Maus; Kennzahlen-Kacheln heller. Ablauf (Zahlen zählen, dann Karte) unverändert.

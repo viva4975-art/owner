@@ -5435,3 +5435,20 @@ Testadresse.
   nur noch ~1,2 s (Beschreibung blendet ein, dann die Karte), höchstens einmal am Tag je Gerät (localStorage
   `vd_intro` = Datum), kein „Überspringen“ mehr nötig. Feldbeschriftung und Eingaben etwas kontrastreicher (lesbar
   draußen am Handy). Dunkles Glas-Design (Fassung 4) bleibt. Siegel unten rein weiß wie das Logo (vorher gedämpft grau, kaum sichtbar).
+- 2026-11-12: **Übersicht neu (Vorschlag C, je Rolle)** (Ahmed: „moderner, Umsatzzahlen; Wiedervorlage Akquise und
+  Nachkalkulation weg; Objektleiter sollen nicht leer sehen; Aufenthaltstitel will ich als Büro auch sehen“):
+  - Bordeaux-Kopf mit Datum, Begrüßung, Schnellknöpfen und 4 Kennzahlen (`DashHero` in `pages-crm.tsx`, CSS
+    `.dhero`/`.hx-*` in `glass-css.ts` – `.vh` war schon als „unsichtbarer Text“ belegt).
+  - **Admin/Buchhaltung:** Umsatz Vormonat netto mit Vergleich + Verlauf 12 Monate, Umsatz des Jahres bis heute ggü.
+    Vorjahr (gleicher Stichtag), Offene Posten mit überfälligem Betrag, Kontostand mit neuen Umsätzen (ohne Bankzugriff:
+    „Noch nicht versendet“). Umsatz nach Leistungszeitraum wie Auswertungen → Statistiken (`monthlyRevenue` in
+    `statistics.ts`, eigene + übernommene Rechnungen).
+  - **Personal** hat jetzt auch eine Übersicht (vorher Sprung in die Zeiterfassung; `homeFor` = `/` für alle):
+    Mitarbeitende aktiv (Ein-/Austritte im Monat), abwesend heute (krank/Urlaub), offene Anträge, fehlende Unterlagen;
+    Karten Aufgaben, Abwesend, Hinweise, Aufenthaltstitel, Geburtstage – keine Beträge.
+  - **Objektleitung** (nur ihre Objekte): Einsätze heute erledigt/geplant als Balken, nicht gestempelt, abwesend
+    heute/7 Tage, Qualität Ø 30 Tage aus abgeschlossenen Audits + offene Tickets; Karten Einsätze heute (Fehlendes
+    zuerst), Zu erledigen (Anträge, Nachträge, auffällige Zeiten, Tickets, Audit seit 60 Tagen fällig), Ablaufende
+    Aufenthaltstitel, Abwesend, Meine Aufgaben, Meine Objekte (letztes Audit).
+  - Karten „Wiedervorlagen Akquise“ und „Nachkalkulation Vormonat“ entfernt (gespeicherte Startseiten verwerfen sie);
+    neue Karte **„Ablaufende Aufenthaltstitel“** fürs Büro (60 Tage, statt Zeilen in den Hinweisen).

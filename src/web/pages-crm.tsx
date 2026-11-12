@@ -443,22 +443,20 @@ export interface DashboardTodo {
 /** Karten der Startseite (Reihenfolge/Spalte/Ausblenden je Benutzer, „Übersicht anpassen“). */
 export type DashCardKey =
   | 'aufgaben'
-  | 'akquise'
   | 'offeneposten'
   | 'unversendet'
   | 'abwesend'
   | 'hinweise'
-  | 'ampel'
+  | 'aufenthalt'
   | 'bank'
   | 'geburtstage';
 export const DASH_CARDS: Record<DashCardKey, string> = {
   aufgaben: 'Aufgaben (inkl. Ausschreibungs-Termine)',
-  akquise: 'Wiedervorlagen Akquise',
   offeneposten: 'Offene Posten',
   unversendet: 'Noch nicht versendet',
   abwesend: 'Abwesend (heute, 7 und 14 Tage)',
   hinweise: 'Hinweise (Fristen, Unterschriften, Prüfungen)',
-  ampel: 'Nachkalkulation Vormonat (Ampel je Objekt)',
+  aufenthalt: 'Ablaufende Aufenthaltstitel & Arbeitserlaubnisse',
   bank: 'Bankkonten (Kontostand, neue Umsätze)',
   geburtstage: 'Geburtstage & Jubiläen',
 };
@@ -471,13 +469,12 @@ export const DEFAULT_DASH: DashItem[] = [
   // Offene Posten breit links wie Fortytools (Spalten Tage/Offen/Überfällig/Summe brauchen Platz)
   { key: 'offeneposten', col: 1, hidden: false },
   { key: 'aufgaben', col: 1, hidden: false },
-  { key: 'akquise', col: 1, hidden: false },
   // Hinweise (Fristen, Aufenthaltstitel …) oben rechts – vorher weit unten übersehen (Bedientest 10.10.)
   { key: 'hinweise', col: 2, hidden: false },
+  { key: 'aufenthalt', col: 2, hidden: false },
   { key: 'unversendet', col: 2, hidden: false },
   { key: 'abwesend', col: 2, hidden: false },
   { key: 'bank', col: 2, hidden: false },
-  { key: 'ampel', col: 2, hidden: false },
   { key: 'geburtstage', col: 2, hidden: false },
 ];
 /** Gespeichertes Layout prüfen und um neue Karten ergänzen. */
@@ -536,8 +533,158 @@ const taskHref = (t: Task) =>
     ? `${TASK_HREF[t.entity_type]}${t.entity_id}`
     : `/aufgaben/${t.id}/bearbeiten`;
 
+/** Kennzahl im Bordeaux-Kopf der Übersicht */
+export interface HeroTile {
+  label: string;
+  value: string;
+  sub?: Child;
+  /** Farbe der Unterzeile: gut (grün), schlecht (rot), Hinweis (gelb) */
+  tone?: 'ok' | 'bad' | 'warn' | undefined;
+  /** Fortschrittsbalken 0…1 */
+  bar?: number | undefined;
+  /** kleine Verlaufslinie (z. B. Umsatz der letzten Monate) */
+  spark?: number[] | undefined;
+  href?: string | undefined;
+}
+
+const Spark: FC<{ v: number[] }> = ({ v }) => {
+  if (v.length < 2) return null;
+  const w = 96;
+  const h = 30;
+  const mn = Math.min(...v);
+  const mx = Math.max(...v);
+  const pts = v
+    .map(
+      (x, i) =>
+        `${((i / (v.length - 1)) * w).toFixed(1)},${(h - 2 - ((x - mn) / (mx - mn || 1)) * (h - 4)).toFixed(1)}`,
+    )
+    .join(' ');
+  return (
+    <svg class="hx-spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="rgba(255,255,255,.12)" />
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="rgba(255,255,255,.85)"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
+    </svg>
+  );
+};
+
+/** Bordeaux-Kopf der Übersicht: Datum, Begrüßung, Schnellknöpfe, bis zu 4 Kennzahlen (Ahmed 12.11.: Vorschlag C). */
+export const DashHero: FC<{
+  name: string;
+  today: string;
+  quick: [string, string][];
+  tiles: HeroTile[];
+  customize?: boolean;
+}> = ({ name, today, quick, tiles, customize }) => (
+  <div class="dhero">
+    <div class="hx-top">
+      <div>
+        <div class="hx-date">{longDate(today)}</div>
+        <h1>
+          {greeting()}, {name}
+        </h1>
+      </div>
+      <div class="hx-quick">
+        {quick.map(([href, label], i) => (
+          <a class={`hx-btn${i === 0 ? ' p' : ''}`} href={href}>
+            {label}
+          </a>
+        ))}
+        {customize && (
+          <a
+            class="hx-btn ic"
+            href="/startseite/anpassen"
+            title="Übersicht anpassen: Karten ein-/ausblenden und anordnen"
+          >
+            <Icon name="settings" size={15} />
+          </a>
+        )}
+      </div>
+    </div>
+    {tiles.length > 0 && (
+      <div class="hx-tiles">
+        {tiles.map((t) => {
+          const inner = (
+            <>
+              <div class="hx-l">{t.label}</div>
+              <div class="hx-row">
+                <div class="hx-v num">{t.value}</div>
+                {t.spark && <Spark v={t.spark} />}
+              </div>
+              {t.bar !== undefined && (
+                <div class="hx-bar">
+                  <i style={`width:${Math.round(Math.max(0, Math.min(1, t.bar)) * 100)}%`} />
+                </div>
+              )}
+              {t.sub && <div class={`hx-s ${t.tone ?? ''}`}>{t.sub}</div>}
+            </>
+          );
+          return t.href ? (
+            <a class="hx-k" href={t.href}>
+              {inner}
+            </a>
+          ) : (
+            <div class="hx-k">{inner}</div>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
+
+/** Ablaufende Aufenthaltstitel/Arbeitserlaubnisse (Büro: alle, Objektleitung: ihre Leute) */
+export const PermitCard: FC<{
+  rows: { id: string; name: string; kind: string; until: string | null; sites?: string[] }[];
+  today: string;
+  link?: boolean;
+  days?: number;
+}> = ({ rows, today, link = true, days = 60 }) => {
+  const left = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000);
+  return (
+    <section class="card dash-card">
+      <DashHead title="Ablaufende Aufenthaltstitel" count={rows.length || undefined} />
+      {rows.length === 0 ? (
+        <div class="dash-empty">In den nächsten {days} Tagen läuft nichts ab.</div>
+      ) : (
+        <ul class="dash-list">
+          {rows.slice(0, 6).map((p) => {
+            const n = p.until ? left(p.until) : null;
+            return (
+              <li>
+                <span class={`dot ${n === null || n < 0 || n <= 14 ? 'err' : 'warn'}`} />
+                <div class="dl-main">
+                  {link ? <a href={`/personal/${p.id}`}>{p.name}</a> : p.name}
+                  <div class="dl-sub">
+                    {p.kind}
+                    {p.sites && p.sites.length ? ` · ${p.sites.slice(0, 2).join(', ')}` : ''}
+                  </div>
+                </div>
+                <span class="dl-r">
+                  {n === null
+                    ? 'Angabe fehlt'
+                    : n < 0
+                      ? `abgelaufen ${dateDe(p.until!)}`
+                      : n === 0
+                        ? 'heute'
+                        : `in ${n} ${n === 1 ? 'Tag' : 'Tagen'}`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {rows.length > 6 && <div class="dash-more">+ {rows.length - 6} weitere</div>}
+    </section>
+  );
+};
+
 /** Kopf einer Startseiten-Karte: Titel, Anzahl, Link „alle“ */
-const DashHead: FC<{ title: string; count?: number | undefined; href?: string; more?: string }> = ({
+export const DashHead: FC<{ title: string; count?: number | undefined; href?: string; more?: string }> = ({
   title,
   count,
   href,
@@ -573,21 +720,6 @@ export const Dashboard: FC<{
   /** aktive Mitarbeitende ohne laufenden Einsatz (+ Ziel des Hinweises) */
   noShift?: { n: number; href: string };
   reminders?: { n: number; red: number };
-  /** Nachkalkulation Vormonat: Ampel je Objekt */
-  ampel?: {
-    month: string;
-    targetBp: number;
-    green: number;
-    yellow: number;
-    red: number;
-    worst: {
-      site_id: string;
-      site_no: string;
-      site_name: string;
-      margin: bigint;
-      margin_bp: number | null;
-    }[];
-  } | null;
   /** Bankkonten mit Kontostand (Bankabruf) und Anzahl neuer Umsätze */
   bank?: { iban: string; name: string; balance_cents: bigint | null; open: number }[] | null;
   /** Anfragen aus der App der Objektleitung: NU-Aufträge zur Freigabe, neue Personalbögen */
@@ -596,10 +728,22 @@ export const Dashboard: FC<{
   /** offene Urlaubs-/Abwesenheitsanträge (oben auf der Übersicht) */
   leaveRequests?: AbsenceRow[];
   layout?: DashItem[] | undefined;
-  showAkquise?: boolean;
+  /** Kennzahlen im Bordeaux-Kopf (je Rolle) */
+  hero?: HeroTile[];
+  /** Schnellknöpfe [Ziel, Beschriftung]; erster = Hauptknopf */
+  quick?: [string, string][] | undefined;
+  /** Karten, die diese Rolle sieht (sonst alle) */
+  allowed?: DashCardKey[] | undefined;
 }> = ({
   layout,
-  showAkquise = true,
+  hero = [],
+  quick = [
+    ['/neu?typ=rechnung', '+ Rechnung'],
+    ['/neu?typ=angebot', '+ Angebot'],
+    ['/neu?typ=kunde', '+ Kunde'],
+    ['/neu?typ=aufgabe', '+ Aufgabe'],
+  ],
+  allowed,
   user,
   tasks,
   balances,
@@ -612,7 +756,6 @@ export const Dashboard: FC<{
   missingDocs = 0,
   noShift = { n: 0, href: '' },
   reminders = { n: 0, red: 0 },
-  ampel = null,
   bank = null,
   appRequests = { nu: 0, bogen: 0 },
   absentHref,
@@ -734,16 +877,6 @@ export const Dashboard: FC<{
           },
         ]
       : []),
-    ...hr.permits.map((p) => ({
-      tone: p.residence_permit_until < kpi.today ? 'err' : 'warn',
-      text: (
-        <>
-          {p.kind ?? 'Aufenthaltserlaubnis'} <b>{p.name}</b>{' '}
-          {p.residence_permit_until < kpi.today ? 'abgelaufen' : 'bis'} {dateDe(p.residence_permit_until)}
-        </>
-      ),
-      href: `/personal/${p.id}`,
-    })),
     ...signOverdue.map((d) => ({
       tone: 'err',
       text: (
@@ -791,39 +924,7 @@ export const Dashboard: FC<{
   ];
   return (
     <div class="dash">
-      <div class="dash-hero">
-        <div class="dash-brand">
-          <img
-            src="/static/logo-transparent.png"
-            alt="Viva-Deluxe Gebäudereinigung GmbH"
-            width="280"
-            height="64"
-          />
-        </div>
-        <div>
-          <div class="dash-date">{longDate(kpi.today)}</div>
-          <h1>
-            {greeting()}, {user}
-          </h1>
-        </div>
-        <div class="dash-quick">
-          <a class="btn" href="/neu?typ=rechnung">
-            + Rechnung
-          </a>
-          <a class="btn sec" href="/neu?typ=angebot">
-            + Angebot
-          </a>
-          <a class="btn sec" href="/neu?typ=kunde">
-            + Kunde
-          </a>
-          <a class="btn sec" href="/neu?typ=aufgabe">
-            + Aufgabe
-          </a>
-          <a class="btn sec sm" href="/startseite/anpassen" title="Karten ein-/ausblenden und anordnen">
-            <Icon name="settings" size={14} /> Übersicht anpassen
-          </a>
-        </div>
-      </div>
+      <DashHero name={user} today={kpi.today} quick={quick} tiles={hero} customize />
 
       <LeaveRequestsBox rows={leaveRequests} />
 
@@ -913,47 +1014,6 @@ export const Dashboard: FC<{
               {tasks.length > 5 && (
                 <a class="dash-more" href="/aufgaben">
                   + {tasks.length - 5} weitere
-                </a>
-              )}
-            </section>
-          ),
-          akquise: (
-            <section class="card dash-card accent">
-              <DashHead
-                title="Wiedervorlagen Akquise"
-                count={todo.followups.due.length + todo.followups.week.length}
-                href="/akquise"
-                more="Akquise"
-              />
-              {todo.followups.due.length + todo.followups.week.length === 0 ? (
-                <div class="dash-empty">Keine Wiedervorlagen in den nächsten 7 Tagen.</div>
-              ) : (
-                <ul class="dash-list">
-                  {todo.followups.due.slice(0, 3).map((f) => (
-                    <li>
-                      <span class="dot warn" />
-                      <div class="dl-main">
-                        <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
-                        <div class="dl-sub">Akquise</div>
-                      </div>
-                      <span class="dl-r">{f.followup_on < kpi.today ? 'überfällig' : 'heute'}</span>
-                    </li>
-                  ))}
-                  {todo.followups.week.slice(0, 3).map((f) => (
-                    <li>
-                      <span class="dot" />
-                      <div class="dl-main">
-                        <a href={`/akquise/${f.id}`}>Wiedervorlage: {f.company}</a>
-                        <div class="dl-sub">Akquise</div>
-                      </div>
-                      <span class="dl-r">{dateDe(f.followup_on)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {todo.followups.due.length > 3 && (
-                <a class="dash-more" href="/akquise?filter=due">
-                  + {todo.followups.due.length - 3} weitere Wiedervorlagen fällig
                 </a>
               )}
             </section>
@@ -1080,45 +1140,17 @@ export const Dashboard: FC<{
               )}
             </>
           ),
-          ampel: ampel ? (
-            <section class="card dash-card">
-              <DashHead title={`Nachkalkulation ${ampel.month.slice(5)}/${ampel.month.slice(0, 4)}`} />
-              <div style="display:flex;gap:8px;margin:4px 0 10px">
-                <a class="badge ok" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
-                  {ampel.green} ≥ Ziel
-                </a>
-                <a class="badge warn" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
-                  {ampel.yellow} unter Ziel
-                </a>
-                <a class="badge err" href={`/auswertungen/nachkalkulation?monat=${ampel.month}`}>
-                  {ampel.red} Verlust
-                </a>
-              </div>
-              {ampel.worst.length > 0 ? (
-                <ul class="dash-list">
-                  {ampel.worst.map((w) => (
-                    <li>
-                      <span class={`badge ${w.margin < 0n ? 'err' : 'warn'}`}>
-                        {w.margin_bp == null ? '–' : `${(w.margin_bp / 100).toFixed(0)} %`}
-                      </span>
-                      <div class="dl-main">
-                        <a href={`/objekte/${w.site_id}`}>
-                          {w.site_no} · {w.site_name}
-                        </a>
-                        <div class="dl-sub">Deckungsbeitrag {euro(w.margin)}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div class="dash-empty">
-                  {ampel.green
-                    ? 'Alle Objekte mit Erlös erreichen das Ziel.'
-                    : 'Im Monat keine Objekte mit Erlös.'}
-                </div>
-              )}
-            </section>
-          ) : null,
+          aufenthalt: (
+            <PermitCard
+              rows={hr.permits.map((p) => ({
+                id: p.id,
+                name: p.name,
+                kind: p.kind ?? 'Aufenthaltstitel',
+                until: p.residence_permit_until,
+              }))}
+              today={kpi.today}
+            />
+          ),
           bank:
             bank && bank.length ? (
               <section class="card dash-card">
@@ -1181,7 +1213,7 @@ export const Dashboard: FC<{
         const lay = layout ?? DEFAULT_DASH;
         const col = (n: 1 | 2) =>
           lay
-            .filter((x) => x.col === n && !x.hidden && (x.key !== 'akquise' || showAkquise))
+            .filter((x) => x.col === n && !x.hidden && (!allowed || allowed.includes(x.key)))
             .map((x) => cards[x.key]);
         return (
           <div class="dash-grid">

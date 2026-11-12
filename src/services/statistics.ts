@@ -175,3 +175,14 @@ export async function statKpis(
              where due_date < (now() at time zone 'Europe/Berlin')::date)::bigint as overdue_cents`;
   return k!;
 }
+
+/**
+ * Netto-Umsatz je Monat nach Leistungszeitraum (wie die Statistik: eigene + übernommene Rechnungen, tageweise
+ * verteilt, Abschläge in Schlussrechnungen nicht doppelt). Für die Kennzahlen der Übersicht.
+ */
+export async function monthlyRevenue(sql: Sql, from: string, to: string): Promise<Map<string, bigint>> {
+  const rows = await lineRows(sql, { from, to, basis: 'leistung', group: 'monat' }, false);
+  const out = new Map<string, bigint>();
+  for (const r of rows) out.set(r.month, (out.get(r.month) ?? 0n) + r.cents);
+  return out;
+}

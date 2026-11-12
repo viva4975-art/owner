@@ -76,8 +76,7 @@ await o.click('button:has-text("Passwort speichern")');
 await o.waitForLoadState();
 check(
   'danach Übersicht der Objektleitung',
-  new URL(o.url()).pathname === '/' &&
-    (await o.content()).includes('Aufenthaltstitel &amp; Arbeitserlaubnis'),
+  new URL(o.url()).pathname === '/' && (await o.content()).includes('Ablaufende Aufenthaltstitel'),
   o.url(),
 );
 const menu = await o.locator('nav.menu').innerText();

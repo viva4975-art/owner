@@ -281,8 +281,8 @@ export function canAccess(role: Role, path: string): boolean {
 }
 
 /** Startseite je Rolle (Übersicht enthält Umsätze/Offene Posten → nur Büro). */
-export function homeFor(role: Role): string {
-  return role === 'personal' ? '/zeiterfassung' : '/';
+export function homeFor(_role: Role): string {
+  return '/';
 }
 
 const NEW_TARGET: Record<string, string> = {

@@ -425,4 +425,37 @@ html.glas .menu-top .appside>nav.menu>.grp[open]:not(.on)>summary .ic{color:#fff
 @media (prefers-reduced-transparency:reduce) and (min-width:1025px){html.glas .menu-top .appside{background:var(--g-acc)!important}}
 @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){@media (min-width:1025px){html.glas .menu-top .appside{background:var(--g-acc)!important}}}
 @media print{html.glas body{background:#fff!important;background-image:none!important}html.glas .card,html.glas .panel{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important}}
+/* Übersicht: Bordeaux-Kopf mit Kennzahlen je Rolle (Ahmed 12.11., Vorschlag C) */
+html .dhero{position:relative;overflow:hidden;color:#fff;border-radius:20px;padding:22px 24px 20px;margin:4px 0 18px;
+  background:radial-gradient(620px 300px at 12% 0%,rgba(182,52,98,.55),transparent 70%),
+    radial-gradient(520px 260px at 100% 100%,rgba(40,4,16,.55),transparent 70%),
+    linear-gradient(135deg,#5c0e27,var(--g-acc,#811d40) 58%,#3d0a1b);
+  box-shadow:0 14px 34px rgba(92,14,39,.22)}
+html .hx-top{display:flex;align-items:flex-end;gap:14px 20px;flex-wrap:wrap}
+html .hx-top>div:first-child{flex:1;min-width:220px}
+html .hx-date{font-size:13px;color:rgba(255,255,255,.72)}
+html .dhero h1{margin:2px 0 0;font-size:27px;font-weight:700;letter-spacing:-.01em;color:#fff}
+html .hx-quick{display:flex;flex-wrap:wrap;gap:8px}
+html .hx-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-weight:600;font-size:13.5px;
+  color:#fff;text-decoration:none;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);transition:background .16s}
+html .hx-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+html .hx-btn.p{background:#fff;color:var(--g-acc,#811d40);border-color:#fff}
+html .hx-btn.p:hover{background:#f7edf1;color:var(--g-acc,#811d40)}
+html .hx-btn.ic{padding:8px 10px}
+html .hx-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:18px}
+html .hx-k{display:block;color:#fff;text-decoration:none;border-radius:14px;padding:13px 15px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);transition:background .16s,border-color .16s}
+html a.hx-k:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.28);color:#fff}
+html .hx-l{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.72)}
+html .hx-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+html .hx-v{font-size:25px;font-weight:700;margin:3px 0 2px;letter-spacing:-.01em;white-space:nowrap}
+html .hx-spark{flex:none;margin-bottom:4px}
+html .hx-s{font-size:12.5px;color:rgba(255,255,255,.75)}
+html .hx-s.ok{color:#a8e6c0}html .hx-s.bad{color:#ffb8b8}html .hx-s.warn{color:#ffe0a0}
+html .hx-bar{height:7px;border-radius:9px;background:rgba(255,255,255,.16);margin:6px 0 6px;overflow:hidden}
+html .hx-bar i{display:block;height:100%;border-radius:9px;background:#fff}
+@media (max-width:760px){html .dhero{padding:18px 16px;border-radius:16px}html .dhero h1{font-size:22px}
+  html .hx-tiles{grid-template-columns:1fr 1fr;gap:8px}html .hx-k{padding:11px 12px}html .hx-v{font-size:19px}
+  html .hx-spark{display:none}html .hx-quick{width:100%}}
+@media print{html .dhero{background:#fff!important;color:#000;box-shadow:none}html .dhero *{color:#000!important}html .hx-quick{display:none}}
 `;

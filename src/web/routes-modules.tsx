@@ -1,16 +1,16 @@
 import { vehiclesWithoutRegistration } from '../services/vehicles.js';
 import { accountOverview } from '../services/bank-feed.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
-import { siteCosting } from '../services/costing.js';
+import { monthlyRevenue } from '../services/statistics.js';
+import { plannedShifts } from '../services/time.js';
 import { collectReminders } from '../services/reminders.js';
 import { fullName } from '../services/users.js';
 import { missingDocs } from '../services/hr-required-docs.js';
 import { hoursHistory, plannedDaysPerWeek } from '../services/employee-hours.js';
 import { absentBetween, leaveBalance, listAbsences, plannedAtSites } from '../services/absences.js';
 import { permitWarningsForSites } from '../services/employees.js';
-import { AbsentCard } from './pages-crm.js';
-import { followups } from '../services/prospects.js';
-import { canAccess } from './permissions.js';
+import { AbsentCard, DashHero, PermitCard, type HeroTile } from './pages-crm.js';
+import { canAccess, canOpen } from './permissions.js';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { zipSync } from 'fflate';
@@ -67,6 +67,7 @@ import {
   type DashCardKey,
   Dashboard,
   LeaveRequestsBox,
+  DashHead,
   normalizeDash,
   type DashboardTodo,
   PlannedPage,
@@ -83,6 +84,14 @@ import { uploadConfig } from './routes-files.js';
 import { createReductionVoucher, listReductionVouchers } from '../services/reduction-vouchers.js';
 
 const uuidOr = (v: unknown) => (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) ? v : randomUUID());
+
+/** Betrag kurz für die Kennzahlen der Übersicht: ganze Euro, ab 1 Mio. „3,31 Mio. €“ */
+function euroShort(c: bigint): string {
+  const e = Number(c) / 100;
+  if (Math.abs(e) >= 1_000_000)
+    return `${(e / 1_000_000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Mio. €`;
+  return `${Math.round(e).toLocaleString('de-DE')} €`;
+}
 
 export function registerModuleRoutes(ctx: Ctx) {
   const { app, deps, page, back, shells } = ctx;
@@ -114,116 +123,299 @@ export function registerModuleRoutes(ctx: Ctx) {
   async function olHome(c: Context<AppEnv>) {
     const sites = c.get('sites') ?? [];
     const today = todayBerlin();
-    const [permits, absent, tasks, odd, leave] = await Promise.all([
+    const inScope = (id: string) => sites.includes(id);
+    const [permits, absent, tasks, odd, leave, shifts, pending, qm] = await Promise.all([
       permitWarningsForSites(sql, sites, 42),
       absentBetween(sql, today, addDays(today, 14), sites),
       listTasks(sql, { status: 'open', withinDays: 14, onlyFor: taskViewerOf(c) }),
       timeAnomalies(sql, { managerUserId: c.get('user').id }),
       canAccess('objektleitung', '/urlaub') ? openLeaveRequests(c) : Promise.resolve([]),
+      sites.length ? plannedShifts(sql, { from: today, to: today }) : Promise.resolve([]),
+      sites.length
+        ? sql<{ n: number }[]>`select count(*)::int as n from app.time_entries
+            where status = 'beantragt' and site_id = any(${sites}::uuid[])`
+        : Promise.resolve([{ n: 0 }]),
+      sites.length
+        ? sql<
+            {
+              id: string;
+              site_no: string;
+              name: string;
+              last_date: string | null;
+              last_score: number | null;
+              avg30: number | null;
+              n30: number;
+              tickets: number;
+            }[]
+          >`
+            select s.id, s.site_no, s.name,
+                   (select q.check_date::text from app.quality_checks q where q.site_id = s.id and q.status <> 'entwurf'
+                     order by q.check_date desc limit 1) as last_date,
+                   (select q.score_percent from app.quality_checks q where q.site_id = s.id and q.status <> 'entwurf'
+                     order by q.check_date desc limit 1) as last_score,
+                   (select round(avg(q.score_percent))::int from app.quality_checks q where q.site_id = s.id
+                     and q.status <> 'entwurf' and q.check_date >= current_date - 30) as avg30,
+                   (select count(*)::int from app.quality_checks q where q.site_id = s.id
+                     and q.status <> 'entwurf' and q.check_date >= current_date - 30) as n30,
+                   (select count(*)::int from app.site_tickets t where t.site_id = s.id and t.status <> 'erledigt') as tickets
+              from app.sites s where s.id = any(${sites}::uuid[]) and s.active
+             order by s.name`
+        : Promise.resolve([]),
     ]);
-    const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000);
-    const LINKS: [string, string][] = [
-      ['/zeiterfassung', 'Zeiterfassung'],
-      ['/einsatzplanung', 'Planung'],
-      ['/urlaub/kalender', 'Urlaub & Abwesenheiten'],
-      ['/objekte', 'Meine Objekte'],
-      ['/qm/personalbogen', 'Personalbogen ausfüllen'],
-      ['/qm/qualitaet', 'Qualitätskontrolle (App)'],
-    ];
+    const nowHm = new Date().toLocaleTimeString('de-DE', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    const mine = shifts.filter(
+      (s) => inScope(s.plan.site_id) && s.exception?.kind !== 'ausfall' && !s.holiday,
+    );
+    const st = (s: (typeof mine)[number]) =>
+      s.absence
+        ? 'abwesend'
+        : s.entry && !s.entry.end_at
+          ? 'läuft'
+          : s.entry
+            ? 'erledigt'
+            : s.plan.start_time.slice(0, 5) <= nowHm
+              ? 'fehlt'
+              : 'geplant';
+    const counted = mine.filter((s) => !s.absence);
+    const done = counted.filter((s) => st(s) === 'erledigt').length;
+    const running = counted.filter((s) => st(s) === 'läuft').length;
+    const missing = counted.filter((s) => st(s) === 'fehlt').length;
+    const absToday = absent.filter((a) => a.start_date <= today).length;
+    const absWeek = absent.filter((a) => a.start_date > today && a.start_date <= addDays(today, 7)).length;
+    const qn = qm.reduce((a, q) => a + q.n30, 0);
+    const qavg = qn ? Math.round(qm.reduce((a, q) => a + (q.avg30 ?? 0) * q.n30, 0) / qn) : null;
+    const tickets = qm.reduce((a, q) => a + q.tickets, 0);
+    const tiles = (
+      [
+        {
+          label: 'Einsätze heute',
+          value: `${done} / ${counted.length}`,
+          bar: counted.length ? done / counted.length : 0,
+          sub: counted.length ? `${done} erledigt · ${running} laufen` : 'heute keine Einsätze geplant',
+          href: `/zeiterfassung?datum=${today}`,
+        },
+        {
+          label: 'Nicht gestempelt',
+          value: String(missing),
+          sub: missing ? 'Einsatz hat begonnen, keine Zeit' : 'alles in Ordnung',
+          tone: missing ? 'bad' : 'ok',
+          href: `/zeiterfassung?datum=${today}`,
+        },
+        {
+          label: 'Abwesend',
+          value: `${absToday} heute`,
+          sub: `${absWeek} in den nächsten 7 Tagen`,
+          href: '/urlaub/kalender',
+        },
+        {
+          label: 'Qualität Ø 30 Tage',
+          value: qavg === null ? '–' : `${qavg} %`,
+          sub: `${anz(qn, 'Audit', 'Audits')} · ${anz(tickets, 'Ticket', 'Tickets')} offen`,
+          tone: qavg === null ? undefined : qavg >= 88 ? 'ok' : qavg >= 80 ? 'warn' : 'bad',
+          href: '/qualitaet',
+        },
+      ] as HeroTile[]
+    ).filter((t) => canOpen('objektleitung', t.href!));
+    const rank: Record<string, number> = { fehlt: 0, abwesend: 1, läuft: 2, geplant: 3, erledigt: 4 };
+    const list = [...mine].sort(
+      (a, b) => rank[st(a)]! - rank[st(b)]! || a.plan.start_time.localeCompare(b.plan.start_time),
+    );
+    const todo: { tone: string; text: string; href: string }[] = [
+      ...(leave.length
+        ? [
+            {
+              tone: 'warn',
+              text: anz(leave.length, 'Urlaubsantrag', 'Urlaubsanträge') + ' genehmigen',
+              href: '/urlaub',
+            },
+          ]
+        : []),
+      ...(pending[0]!.n
+        ? [
+            {
+              tone: 'warn',
+              text: anz(pending[0]!.n, 'Nachtrag', 'Nachträge') + ' freigeben',
+              href: `/zeiterfassung?datum=${today}#nachtraege`,
+            },
+          ]
+        : []),
+      ...(odd.length
+        ? [
+            {
+              tone: 'warn',
+              text: anz(odd.length, 'auffällige Zeit', 'auffällige Zeiten') + ' prüfen',
+              href: '/zeiterfassung/auffaellig',
+            },
+          ]
+        : []),
+      ...(tickets
+        ? [{ tone: 'warn', text: anz(tickets, 'Ticket', 'Tickets') + ' offen', href: '/qualitaet' }]
+        : []),
+      ...qm
+        .filter((q) => !q.last_date || q.last_date < addDays(today, -60))
+        .slice(0, 3)
+        .map((q) => ({
+          tone: 'info',
+          text: `Audit fällig: ${q.name}`,
+          href: `/objekte/${q.id}`,
+        })),
+    ].filter((x) => canOpen('objektleitung', x.href.split('#')[0]!));
+    const overdueT = tasks.filter((t) => t.due_date && t.due_date < today).length;
+    const STATE: Record<string, [string, string]> = {
+      fehlt: ['err', 'nicht gestempelt'],
+      abwesend: ['warn', 'abwesend'],
+      läuft: ['warn', 'läuft'],
+      geplant: ['', 'geplant'],
+      erledigt: ['ok', 'erledigt'],
+    };
     return page(
       c,
       'Übersicht',
       'home',
-      <>
-        <PageHead title={`Guten Tag, ${c.get('user').name || c.get('user').login}`} />
-        <p class="actions" style="margin-top:0">
-          {LINKS.filter(([h]) => canAccess('objektleitung', h)).map(([h, l]) => (
-            <a class="btn sec" href={h}>
-              {l}
-            </a>
-          ))}
-        </p>
+      <div class="dash">
+        <DashHero
+          name={c.get('user').name || c.get('user').login}
+          today={today}
+          quick={(
+            [
+              [`/zeiterfassung?datum=${today}`, 'Zeiten heute'],
+              ['/einsatzplanung', 'Planung'],
+              ['/arbeitsscheine', 'Arbeitsscheine'],
+              ['/urlaub/kalender', 'Abwesenheiten'],
+            ] as [string, string][]
+          ).filter(([h]) => canOpen('objektleitung', h.split('?')[0]!))}
+          tiles={tiles}
+        />
         <LeaveRequestsBox rows={leave} />
-        {odd.length > 0 && (
-          <p class="flash warn">
-            <a href="/zeiterfassung/auffaellig">
-              <b>{anz(odd.length, 'auffällige Zeit', 'auffällige Zeiten')}</b>
-            </a>{' '}
-            an Ihren Objekten (Ist weicht stark vom Plan ab oder nicht am Objekt gestempelt) – bitte prüfen.
-          </p>
-        )}
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;align-items:start">
-          <div class="card">
-            <h3>Aufenthaltstitel & Arbeitserlaubnis (nächste 6 Wochen)</h3>
-            {permits.length === 0 ? (
-              <p class="muted">
-                Bei Ihren eingeplanten Mitarbeitenden läuft in den nächsten 6 Wochen nichts ab.
-              </p>
-            ) : (
-              <>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Mitarbeiter</th>
-                      <th>Nachweis</th>
-                      <th>gültig bis</th>
-                      <th>Objekt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permits.map((p) => (
-                      <tr>
-                        <td>{p.name}</td>
-                        <td>{p.kind}</td>
-                        <td>
-                          {p.until === null ? (
-                            <span class="tag err">Angabe fehlt</span>
-                          ) : days(p.until) < 0 ? (
-                            <span class="tag err">abgelaufen {dateDe(p.until)}</span>
-                          ) : (
-                            <span class={`tag ${days(p.until) <= 14 ? 'err' : 'warn'}`}>
-                              {dateDe(p.until)} (in {anz(days(p.until), 'Tag', 'Tagen')})
-                            </span>
-                          )}
-                        </td>
-                        <td class="small">{p.sites.join(', ')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p class="small muted">
-                  Ohne gültigen Aufenthaltstitel mit Arbeitserlaubnis darf die Person nicht arbeiten (§ 4a
-                  AufenthG). Bitte rechtzeitig die neue Kopie einsammeln und ans Büro geben.
-                </p>
-              </>
+        <div class="dash-grid">
+          <div class="dash-col">
+            <section class="card dash-card">
+              <DashHead
+                title="Einsätze heute"
+                count={mine.length || undefined}
+                href={`/zeiterfassung?datum=${today}`}
+                more="Alle Zeiten"
+              />
+              {list.length === 0 ? (
+                <div class="dash-empty">Heute sind an Ihren Objekten keine Einsätze geplant.</div>
+              ) : (
+                <ul class="dash-list">
+                  {list.slice(0, 8).map((s) => {
+                    const [tone, label] = STATE[st(s)]!;
+                    return (
+                      <li>
+                        <span class={`dot ${tone}`} />
+                        <div class="dl-main">
+                          {s.plan.employee_name}
+                          <div class="dl-sub">
+                            {s.plan.site_name} · {s.plan.start_time.slice(0, 5)}–{s.plan.end_time.slice(0, 5)}
+                            {s.exception?.kind === 'vertretung' ? ' · Vertretung' : ''}
+                          </div>
+                        </div>
+                        <span class="dl-r">
+                          {s.entry && !s.entry.end_at
+                            ? `seit ${new Date(s.entry.start_at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}`
+                            : label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {list.length > 8 && (
+                <a class="dash-more" href={`/zeiterfassung?datum=${today}`}>
+                  + {list.length - 8} weitere
+                </a>
+              )}
+            </section>
+            <section class="card dash-card">
+              <DashHead
+                title="Meine Aufgaben"
+                count={tasks.length || undefined}
+                href="/aufgaben"
+                more="Alle Aufgaben"
+              />
+              {overdueT > 0 && (
+                <div class="dash-alert">
+                  {overdueT} Aufgabe{overdueT === 1 ? '' : 'n'} überfällig
+                </div>
+              )}
+              {tasks.length === 0 ? (
+                <div class="dash-empty">Keine offenen Aufgaben.</div>
+              ) : (
+                <ul class="dash-list">
+                  {tasks.slice(0, 6).map((t) => (
+                    <li>
+                      <span
+                        class={`dot ${t.due_date && t.due_date < today ? 'err' : t.due_date === today ? 'warn' : ''}`}
+                      />
+                      <div class="dl-main">
+                        <a href={`/aufgaben/${t.id}/bearbeiten`}>{t.title}</a>
+                        {t.entity_label && <div class="dl-sub">{t.entity_label}</div>}
+                      </div>
+                      <span class="dl-r">
+                        {t.due_date ? (t.due_date === today ? 'heute' : dateDe(t.due_date)) : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {qm.length > 0 && (
+              <section class="card dash-card">
+                <DashHead title="Meine Objekte" count={qm.length} href="/objekte" more="Alle Objekte" />
+                <ul class="dash-list">
+                  {qm.slice(0, 8).map((q) => (
+                    <li>
+                      <div class="dl-main">
+                        <a href={`/objekte/${q.id}`}>{q.name}</a>
+                        <div class="dl-sub">
+                          {q.last_date
+                            ? `letztes Audit ${dateDe(q.last_date)}${q.last_score != null ? ` · ${q.last_score} %` : ''}`
+                            : 'noch kein Audit'}
+                        </div>
+                      </div>
+                      <span class="dl-r">{q.tickets ? anz(q.tickets, 'Ticket', 'Tickets') : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+                {qm.length > 8 && <div class="dash-more">+ {qm.length - 8} weitere</div>}
+              </section>
             )}
           </div>
-          <AbsentCard absent={absent} today={today} href="/urlaub/kalender" />
+          <div class="dash-col">
+            {todo.length > 0 && (
+              <section class="card dash-card accent">
+                <DashHead title="Zu erledigen" count={todo.length} />
+                <ul class="dash-list">
+                  {todo.map((x) => (
+                    <li>
+                      <span class={`dot ${x.tone}`} />
+                      <div class="dl-main">
+                        <a href={x.href}>{x.text}</a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <PermitCard rows={permits} today={today} link={false} days={42} />
+            <AbsentCard absent={absent} today={today} href="/urlaub/kalender" />
+          </div>
         </div>
-        <div class="card">
-          <h3>Meine Aufgaben (14 Tage)</h3>
-          {tasks.length === 0 ? (
-            <p class="muted">Keine offenen Aufgaben.</p>
-          ) : (
-            <ul>
-              {tasks.slice(0, 10).map((t) => (
-                <li>
-                  <a href={`/aufgaben/${t.id}`}>{t.title}</a>
-                  {t.due_date ? <span class="muted small"> · fällig {dateDe(t.due_date)}</span> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          <a href="/aufgaben">Alle Aufgaben</a>
-        </div>
-      </>,
+      </div>,
     );
   }
 
   app.get('/', async (c) => {
     const role = c.get('user').role;
     if (role === 'objektleitung') return olHome(c);
-    if (role !== 'admin' && role !== 'buchhaltung') return c.redirect(homeFor(role));
+    if (role !== 'admin' && role !== 'buchhaltung' && role !== 'personal') return c.redirect(homeFor(role));
     const [tasks, drafts, balances, unsent, hr] = await Promise.all([
       listTasks(sql, { status: 'open', withinDays: 7 }),
       listInvoices(sql, { status: 'draft' }),
@@ -253,7 +445,7 @@ export function registerModuleRoutes(ctx: Ctx) {
         required: e.required,
       })),
       reorder,
-      followups: canAccess(c.get('user').role, '/akquise') ? await followups(sql) : { due: [], week: [] },
+      followups: { due: [], week: [] },
       suppliers,
       devices: devices.filter((d) => d.active && d.days !== null && d.days <= 30),
       proposals: dun.proposals.length,
@@ -289,6 +481,11 @@ export function registerModuleRoutes(ctx: Ctx) {
       monthLabel: MONTHS[Number(today.slice(5, 7)) - 1]!,
       today,
     };
+    const bank = canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null;
+    const leaveRequests = canAccess(role, '/urlaub') ? await openLeaveRequests(c) : [];
+    const missingN = canAccess(role, '/personal/unterlagen')
+      ? (await missingDocs(sql, { siteIds: c.get('sites'), limited: false })).length
+      : 0;
     const [absent, signOverdue] = await Promise.all([
       absentBetween(sql, todayBerlin(), addDays(todayBerlin(), 14), null),
       sql<{ id: string; title: string; open: number }[]>`
@@ -297,6 +494,130 @@ export function registerModuleRoutes(ctx: Ctx) {
          where d.due_date is not null and d.due_date < ${todayBerlin()} and d.archived_at is null
          group by d.id, d.title order by d.title`,
     ]);
+    let hero: HeroTile[];
+    let quick: [string, string][] | undefined;
+    let allowed: DashCardKey[] | undefined;
+    if (role === 'personal') {
+      const [st] = await sql<{ aktiv: number; ein: number; aus: number }[]>`
+        select count(*) filter (where status = 'aktiv')::int as aktiv,
+               count(*) filter (where to_char(entry_date, 'YYYY-MM') = ${today.slice(0, 7)})::int as ein,
+               count(*) filter (where to_char(exit_date, 'YYYY-MM') = ${today.slice(0, 7)})::int as aus
+          from app.employees`;
+      const now = absent.filter((a) => a.start_date <= today);
+      const sick = now.filter((a) => a.kind === 'krank' || a.kind === 'kind_krank').length;
+      hero = [
+        {
+          label: 'Mitarbeitende aktiv',
+          value: String(st!.aktiv),
+          sub: `${anz(st!.ein, 'Eintritt', 'Eintritte')} · ${anz(st!.aus, 'Austritt', 'Austritte')} im Monat`,
+          href: '/personal',
+        },
+        {
+          label: 'Abwesend heute',
+          value: String(now.length),
+          sub: now.length ? `${sick} krank · ${now.length - sick} Urlaub/sonstiges` : 'alle da',
+          href: '/urlaub/kalender',
+        },
+        {
+          label: 'Offene Anträge',
+          value: String(leaveRequests.length),
+          sub: leaveRequests.length ? 'zum Genehmigen' : 'nichts offen',
+          tone: leaveRequests.length ? 'warn' : undefined,
+          href: '/urlaub',
+        },
+        {
+          label: 'Unterlagen fehlen',
+          value: String(missingN),
+          sub: missingN ? 'Mitarbeitende mit Lücken' : 'vollständig',
+          tone: missingN ? 'bad' : 'ok',
+          href: '/personal/unterlagen',
+        },
+      ];
+      quick = (
+        [
+          ['/neu?typ=mitarbeiter', '+ Mitarbeiter'],
+          ['/urlaub/kalender', 'Urlaub & Abwesenheiten'],
+          ['/zeiterfassung/stundenzettel', 'Stundenliste'],
+          ['/bewerber', 'Bewerber'],
+          ['/neu?typ=aufgabe', '+ Aufgabe'],
+        ] as [string, string][]
+      ).filter(([h]) => canOpen(role, h));
+      allowed = ['aufgaben', 'abwesend', 'hinweise', 'aufenthalt', 'geburtstage'];
+    } else {
+      // Umsatz nach Leistungszeitraum (wie Auswertungen → Statistiken), eigene + übernommene Rechnungen
+      const lm = lastMonth();
+      const lmEnd = addDays(`${today.slice(0, 7)}-01`, -1);
+      const sd = new Date(`${lm}-01T12:00:00Z`);
+      sd.setUTCMonth(sd.getUTCMonth() - 11);
+      const y = Number(today.slice(0, 4));
+      const [series, ytd, ytdPrev] = await Promise.all([
+        monthlyRevenue(sql, sd.toISOString().slice(0, 10), lmEnd),
+        monthlyRevenue(sql, `${y}-01-01`, today),
+        monthlyRevenue(sql, `${y - 1}-01-01`, `${y - 1}${today.slice(4)}`),
+      ]);
+      const months: string[] = [];
+      for (const d = new Date(sd); d.toISOString().slice(0, 7) <= lm; d.setUTCMonth(d.getUTCMonth() + 1))
+        months.push(d.toISOString().slice(0, 7));
+      const val = (m: string) => series.get(m) ?? 0n;
+      const prevM = months[months.length - 2] ?? lm;
+      const sum = (mp: Map<string, bigint>) => [...mp.values()].reduce((a, b) => a + b, 0n);
+      const pct = (a: bigint, b: bigint): HeroTile['sub'] => {
+        if (b <= 0n) return 'kein Vergleichswert';
+        const p = (Number(a - b) / Number(b)) * 100;
+        return `${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+      };
+      const tone = (a: bigint, b: bigint) =>
+        b <= 0n ? undefined : a >= b ? ('ok' as const) : ('bad' as const);
+      const opTotal = balances.reduce((s2, b) => s2 + b.open_cents, 0n);
+      const opOver = balances.reduce((s2, b) => s2 + b.overdue_cents, 0n);
+      const bankSum = bank?.some((b) => b.balance_cents != null)
+        ? bank.reduce((a, b) => a + (b.balance_cents ?? 0n), 0n)
+        : null;
+      const bankNew = (bank ?? []).reduce((a, b) => a + b.open, 0);
+      const yCur = sum(ytd);
+      const yPrev = sum(ytdPrev);
+      hero = (
+        [
+          {
+            label: `Umsatz ${MONTHS[Number(lm.slice(5, 7)) - 1]} (netto)`,
+            value: euroShort(val(lm)),
+            sub:
+              val(prevM) > 0n ? <>{pct(val(lm), val(prevM))} ggü. Vormonat</> : 'kein Vergleich zum Vormonat',
+            tone: tone(val(lm), val(prevM)),
+            spark: months.some((m) => val(m) !== 0n) ? months.map((m) => Number(val(m))) : undefined,
+            href: '/auswertungen/statistik',
+          },
+          {
+            label: `Umsatz ${y} bis heute`,
+            value: euroShort(yCur),
+            sub: yPrev > 0n ? <>{pct(yCur, yPrev)} ggü. Vorjahr</> : 'kein Vergleich zum Vorjahr',
+            tone: tone(yCur, yPrev),
+            href: '/auswertungen/statistik',
+          },
+          {
+            label: 'Offene Posten',
+            value: euroShort(opTotal),
+            sub: opOver ? `${euroShort(opOver)} überfällig` : 'nichts überfällig',
+            tone: opOver ? 'bad' : 'ok',
+            href: '/offene-posten',
+          },
+          bankSum !== null
+            ? {
+                label: 'Kontostand',
+                value: euroShort(bankSum),
+                sub: bankNew ? `${bankNew} neue Umsätze zuordnen` : 'alles zugeordnet',
+                tone: bankNew ? 'warn' : undefined,
+                href: '/transfer/kontoumsaetze',
+              }
+            : {
+                label: 'Noch nicht versendet',
+                value: String(unsent[0]!.invoices + unsent[0]!.corrections),
+                sub: 'Rechnungen & Korrekturen',
+                href: '/rechnungen/versand',
+              },
+        ] as HeroTile[]
+      ).filter((t) => canOpen(role, t.href!));
+    }
     return page(
       c,
       'Übersicht',
@@ -309,35 +630,22 @@ export function registerModuleRoutes(ctx: Ctx) {
             >`select dashboard from app.user_prefs where user_id = ${c.get('user').id}`
           )[0]?.dashboard,
         )}
-        showAkquise={canAccess(role, '/akquise')}
         absent={absent}
         absentHref={canAccess(role, '/urlaub/kalender') ? '/urlaub/kalender' : undefined}
-        leaveRequests={canAccess(role, '/urlaub') ? await openLeaveRequests(c) : []}
+        leaveRequests={leaveRequests}
         signOverdue={signOverdue}
-        ampel={await (async () => {
-          const m = lastMonth();
-          const { rows, targetBp } = await siteCosting(sql, m, undefined, { cachedLabor: true });
-          const withRev = rows.filter((r) => r.revenue !== 0n);
-          const red = withRev.filter((r) => r.margin < 0n);
-          const yellow = withRev.filter((r) => r.margin >= 0n && (r.margin_bp ?? 0) < targetBp);
-          return {
-            month: m,
-            targetBp,
-            green: withRev.length - red.length - yellow.length,
-            yellow: yellow.length,
-            red: red.length,
-            worst: [...red, ...yellow].sort((a, b) => (a.margin_bp ?? 0) - (b.margin_bp ?? 0)).slice(0, 5),
-          };
-        })()}
-        reminders={await collectReminders(sql).then((l) => ({
-          n: l.length,
-          red: l.filter((r) => r.level === 'rot').length,
-        }))}
-        missingDocs={
-          canAccess(role, '/personal/unterlagen')
-            ? (await missingDocs(sql, { siteIds: c.get('sites'), limited: false })).length
-            : 0
+        hero={hero}
+        quick={quick}
+        allowed={allowed}
+        reminders={
+          !canAccess(role, '/erinnerungen')
+            ? { n: 0, red: 0 }
+            : await collectReminders(sql).then((l) => ({
+                n: l.length,
+                red: l.filter((r) => r.level === 'rot').length,
+              }))
         }
+        missingDocs={missingN}
         noShift={
           canAccess(role, '/einsatzplanung')
             ? {
@@ -348,7 +656,7 @@ export function registerModuleRoutes(ctx: Ctx) {
               }
             : { n: 0, href: '' }
         }
-        bank={canAccess(role, '/transfer/kontoumsaetze') ? await accountOverview(sql) : null}
+        bank={bank}
         appRequests={{
           fahrzeugschein: canAccess(role, '/fahrzeuge') ? (await vehiclesWithoutRegistration(sql)).length : 0,
           auffaellig: canAccess(role, '/zeiterfassung/auffaellig') ? (await timeAnomalies(sql)).length : 0,

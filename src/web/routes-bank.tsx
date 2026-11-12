@@ -436,7 +436,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
             {(
               [
                 ['uebersicht', 'Übersicht der Kontostände zum Stichtag (mit Unterschrift Geschäftsführung)'],
-                ['auszug', 'Kontoauszug je Konto mit laufendem Saldo'],
+                ['auszug', 'Kontoauszug je Konto (Anfangs- und Endsaldo, alle Buchungen)'],
                 [
                   'bestaetigung',
                   'Bankbestätigung je Bank (von der Bank auszufüllen, zu stempeln und zu unterschreiben)',

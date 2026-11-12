@@ -5389,7 +5389,7 @@ Testadresse.
   Leiharbeitnehmer, Konten (alle angehakt), Teile → ein PDF A4 hoch (nur Logo, kein Briefkopf): **Übersicht** (je Konto
   Saldo am Stichtag + niedrigster Tagesendsaldo im Zeitraum, Summe, Vergleich mit Mindestbetrag 2.000 € je
   Leiharbeitnehmer, mind. 10.000 €, Unterschrift GF), **Kontoauszug je Konto** (Anfangs-/Endsaldo, Eingänge/Ausgänge,
-  jede Buchung mit laufendem Saldo) und **Bankbestätigung je Bank** (Kontoinhaber/IBAN/BIC vorbelegt, Guthaben,
+  jede Buchung mit Betrag – ohne Saldo je Zeile, Ahmed) und **Bankbestätigung je Bank** (Kontoinhaber/IBAN/BIC vorbelegt, Guthaben,
   Kreditlinie, frei verfügbar, Pfändungen von der Bank auszufüllen, Stempel + Unterschrift). Salden aus dem Kontostand
   des Bankabrufs rückwärts über die Umsätze errechnet (Konto ohne Kontostand → „nicht bekannt“, nicht in der Summe).
   Kontoauszug-Seite: Knopf **„PDF (A4)“** (`/transfer/kontoauszug.pdf`) statt Browser-Druck. **Rechtlich:** Die

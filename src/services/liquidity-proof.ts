@@ -1,7 +1,7 @@
 /**
  * Liquiditätsnachweis (Ahmed 12.11.2026, Antrag/Verlängerung der Erlaubnis zur Arbeitnehmerüberlassung bei der
  * Bundesagentur für Arbeit): A4 hoch, alle eigenen Konten zusammen – Übersicht der Kontostände zum Stichtag, je Konto
- * ein Kontoauszug des Zeitraums mit laufendem Saldo, je Bank ein Blatt „Bankbestätigung“ zum Ausfüllen durch die Bank.
+ * ein Kontoauszug des Zeitraums mit Anfangs- und Endsaldo, je Bank ein Blatt „Bankbestätigung“ zum Ausfüllen durch die Bank.
  * Grundlage sind die per Bankabruf (Enable Banking) bzw. CAMT/CSV eingelesenen Umsätze und der Kontostand der Bank.
  * Die Aufstellung ist eine Eigenerklärung – als Nachweis „von der Bank“ gilt nur die von der Bank unterschriebene
  * Bestätigung bzw. ein Kontoauszug der Bank selbst.
@@ -209,18 +209,16 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
       doc.table(
         [
           { label: 'Datum', width: 62 },
-          { label: 'Auftraggeber / Empfänger · Verwendungszweck', width: 266 },
-          { label: 'Betrag', width: 82, align: 'right' },
-          { label: 'Saldo', width: 88, align: 'right' },
+          { label: 'Auftraggeber / Empfänger · Verwendungszweck', width: 346 },
+          { label: 'Betrag', width: 90, align: 'right' },
         ],
         a.rows.length
           ? a.rows.map((r) => [
               d(r.date),
               [r.name, r.purpose].filter(Boolean).join('\n').slice(0, 300),
               eur(r.amount),
-              r.saldo != null ? eur(r.saldo) : '',
             ])
-          : [['', 'Keine Umsätze im Zeitraum', '', '']],
+          : [['', 'Keine Umsätze im Zeitraum', '']],
         { size: 8.5 },
       );
       if (a.bankBalanceAt)

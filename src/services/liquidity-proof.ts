@@ -23,6 +23,8 @@ export interface LiquidityInput {
   workers: number;
   ibans: string[];
   parts: ('uebersicht' | 'auszug' | 'bestaetigung')[];
+  /** Auftraggeber/Empfänger und Verwendungszweck im Kontoauszug schwärzen (Datenschutz, Ahmed 12.11.) */
+  redact?: boolean;
 }
 
 /** Mindestbetrag laut Fachlicher Weisung AÜG: 2.000 € je Leiharbeitnehmer, mindestens 10.000 € */
@@ -185,7 +187,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
     doc.section('Grundlage');
     doc.para(
       'Die Salden sind aus dem elektronisch abgerufenen Kontostand der Bank und den gebuchten Umsätzen ' +
-        'errechnet (Kontoauszüge anbei). Die Bestätigung der Bank liegt bei bzw. wird nachgereicht.',
+        'errechnet (Kontoauszüge anbei). Eine Bestätigung der Bank wird auf Anforderung nachgereicht.',
       { size: 9 },
     );
     doc.signatures(`Unterschrift Geschäftsführung – ${s.legalName}`, '', {
@@ -206,21 +208,41 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
         { k: `Endsaldo ${d(i.date)}`, v: a.balance != null ? eur(a.balance) : '–', accent: true },
       ]);
       doc.y += 4;
-      doc.table(
-        [
-          { label: 'Datum', width: 62 },
-          { label: 'Auftraggeber / Empfänger · Verwendungszweck', width: 346 },
-          { label: 'Betrag', width: 90, align: 'right' },
-        ],
-        a.rows.length
-          ? a.rows.map((r) => [
-              d(r.date),
-              [r.name, r.purpose].filter(Boolean).join('\n').slice(0, 300),
-              eur(r.amount),
-            ])
-          : [['', 'Keine Umsätze im Zeitraum', '']],
-        { size: 8.5 },
-      );
+      if (i.redact)
+        doc.table(
+          [
+            { label: 'Datum', width: 62 },
+            { label: 'Auftraggeber / Empfänger', width: 150, redact: true },
+            { label: 'Verwendungszweck', width: 196, redact: true },
+            { label: 'Betrag', width: 90, align: 'right' },
+          ],
+          a.rows.length
+            ? a.rows.map((r) => [d(r.date), r.name ? 'x' : '', r.purpose ? 'x' : '', eur(r.amount)])
+            : [['', '', '', '']],
+          { size: 8.5 },
+        );
+      else
+        doc.table(
+          [
+            { label: 'Datum', width: 62 },
+            { label: 'Auftraggeber / Empfänger · Verwendungszweck', width: 346 },
+            { label: 'Betrag', width: 90, align: 'right' },
+          ],
+          a.rows.length
+            ? a.rows.map((r) => [
+                d(r.date),
+                [r.name, r.purpose].filter(Boolean).join('\n').slice(0, 300),
+                eur(r.amount),
+              ])
+            : [['', 'Keine Umsätze im Zeitraum', '']],
+          { size: 8.5 },
+        );
+      if (!a.rows.length && i.redact) doc.para('Keine Umsätze im Zeitraum.', { size: 9 });
+      if (i.redact && a.rows.length)
+        doc.para('Auftraggeber/Empfänger und Verwendungszweck aus Datenschutzgründen geschwärzt.', {
+          size: 8,
+          color: FORM_COLORS.MUT,
+        });
       if (a.bankBalanceAt)
         doc.para(
           `Kontostand laut Bank abgerufen am ${a.bankBalanceAt.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}; ` +

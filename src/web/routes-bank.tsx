@@ -378,6 +378,7 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
       parts: (['uebersicht', 'auszug', 'bestaetigung'] as const).filter((t) =>
         (c.req.queries('teil') ?? []).includes(t),
       ),
+      redact: !c.req.queries('schwaerzen') || c.req.queries('schwaerzen')!.includes('1'),
     };
   };
   app.get('/transfer/liquiditaet.pdf', async (c) => pdfResp(await liquidityPdf(sql, liqInput(c))));
@@ -439,18 +440,25 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
                 ['auszug', 'Kontoauszug je Konto (Anfangs- und Endsaldo, alle Buchungen)'],
                 [
                   'bestaetigung',
-                  'Bankbestätigung je Bank (von der Bank auszufüllen, zu stempeln und zu unterschreiben)',
+                  'Bankbestätigung je Bank – nur bei Anforderung (Blatt zum Ausfüllen, Stempeln und Unterschreiben durch die Bank)',
                 ],
               ] as const
             ).map(([k, l]) => (
               <label style="display:flex;gap:8px;align-items:center;font-weight:400">
-                <input type="checkbox" name="teil" value={k} checked /> {l}
+                <input type="checkbox" name="teil" value={k} checked={k !== 'bestaetigung'} /> {l}
               </label>
             ))}
+            <h3>Datenschutz</h3>
+            <input type="hidden" name="schwaerzen" value="0" />
+            <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+              <input type="checkbox" name="schwaerzen" value="1" checked /> Im Kontoauszug
+              Auftraggeber/Empfänger und Verwendungszweck schwärzen (Namen, Rechnungsnummern …) – Datum und
+              Betrag bleiben sichtbar
+            </label>
             <p class="small mut">
-              Wichtig: Die Aufstellung aus der App ist eine eigene Erklärung. Als Nachweis der Bank gilt nur
-              die Bestätigung mit Stempel und Unterschrift der Bank (Blatt „Bankbestätigung“ vorlegen und von
-              der Bank ausfüllen lassen) bzw. ein Kontoauszug, den die Bank selbst erstellt hat.
+              Die Aufstellung aus der App ist eine eigene Erklärung. Verlangt die Agentur eine Bestätigung der
+              Bank, „Bankbestätigung“ ankreuzen und das Blatt von der Bank ausfüllen, stempeln und
+              unterschreiben lassen.
             </p>
             <div class="actions">
               <button class="btn" type="submit">

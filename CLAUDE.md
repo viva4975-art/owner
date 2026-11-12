@@ -5405,3 +5405,7 @@ Testadresse.
   Protokoll `weather_cert`. **Rechtlich:** Wetterbedingter Arbeitsausfall ist grundsätzlich Betriebsrisiko des
   Arbeitgebers (§ 615 S. 3 BGB) – „ohne Entgelt“ nur mit Vereinbarung; Saison-Kurzarbeitergeld gilt nicht für die
   Gebäudereinigung. Kontoauszug-PDF: jede Buchung bleibt auf einer Seite, Tabellenkopf wiederholt sich (geprüft).
+- 2026-11-12: Liquiditätsnachweis (Ahmed): **Bankbestätigung nur bei Anforderung** (nicht mehr vorangekreuzt; Übersicht
+  sagt „Eine Bestätigung der Bank wird auf Anforderung nachgereicht“). **Kontoauszug im Nachweis geschwärzt** (Häkchen
+  „schwärzen“, Standard an): Spalten Auftraggeber/Empfänger und Verwendungszweck als schwarze Balken, Text steht gar
+  nicht im PDF; Datum und Betrag sichtbar. Der normale Kontoauszug (`/transfer/kontoauszug.pdf`) bleibt ungeschwärzt.

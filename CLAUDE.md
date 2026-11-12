@@ -5414,3 +5414,11 @@ Testadresse.
   (`FormDoc.placeDate`, auch in den Word-Fassungen) und unten nur noch „Stempel und Unterschrift Arbeitgeber“ ohne Namen.
   Feld „Unterschrift“ (Name) bei der Witterungs-Bestätigung entfällt. Bankbestätigung behält „Ort, Datum, Stempel und
   Unterschrift der Bank“.
+- 2026-11-12: **Anmeldemaske mit Effekten** (Ahmed: Video „Glassy Login“, „wie die Website: zuerst die Zahlen, dann die
+  Anmeldedaten“): `src/web/login-page.tsx` (gilt für `/app`, `/anmelden`, `/m`): dunkler Bordeaux-Hintergrund mit
+  langsam schwebenden Lichtflecken und ziehenden Lichtbahnen (nur CSS), Logo oben, dann zählen die Kennzahlen hoch
+  (120+ Mitarbeitende, 150+ Objekte, ISO 9001 · 14001 – Werte in `STATS`), schweben nach oben, danach erscheint die
+  Glaskarte mit dem Formular (Glanz-Rand, heller Fokus, Knopf mit Lichtstreif); Siegel und Fußzeile darunter. Ablauf
+  ~2,5 s, „Überspringen“ bzw. Taste beendet ihn sofort; nur beim ersten Aufruf je Tab (sessionStorage `vd_intro`), nicht
+  bei Fehler-/Hinweismeldung, nicht bei „Bewegung reduzieren“, ohne JavaScript sofort das Formular. Feld-IDs/Namen
+  unverändert, `e2e:login` 47 Prüfungen grün.

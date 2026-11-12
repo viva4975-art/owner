@@ -1315,9 +1315,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       to: iso.test(q('bis')) ? q('bis') : mb.end,
       leistung: q('leistung').slice(0, 500),
       geltung: q('geltung').slice(0, 1000),
-      polier: q('polier').slice(0, 200),
-      projektleitung: q('projektleitung').slice(0, 200),
-      gf: q('gf').slice(0, 200),
+      sign: q('unterschrift') === 'mitarbeiter' ? 'mitarbeiter' : 'firma',
       employeeIds: [...new Set((c.req.queries('ma') ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))],
       parts: (['liste', 'mindestlohn'] as const).filter((t) => (c.req.queries('teil') ?? []).includes(t)),
       ort: q('ort').slice(0, 100),
@@ -1405,12 +1403,13 @@ export function registerMasterdataRoutes(ctx: Ctx) {
               rows={2}
               placeholder="z. B. Unterhaltsreinigung Gebäude A–C, Los 2"
             ></textarea>
-            <label for="pe-p">Verantwortlicher Polier</label>
-            <input id="pe-p" name="polier" value={def.polier} />
-            <label for="pe-pl">Projektleitung</label>
-            <input id="pe-pl" name="projektleitung" value={def.polier} />
-            <label for="pe-gf">Geschäftsführung</label>
-            <input id="pe-gf" name="gf" value={def.gf} />
+            <label for="pe-u">Unterschrift</label>
+            <select id="pe-u" name="unterschrift">
+              <option value="firma">durch die Firma (Stempel und Unterschrift Arbeitgeber)</option>
+              <option value="mitarbeiter">
+                jede/r Mitarbeiter/in einzeln (Datum + Unterschrift je Zeile)
+              </option>
+            </select>
             <label for="pe-o">Ort</label>
             <input id="pe-o" name="ort" value="München" />
             <label for="pe-d">Datum</label>

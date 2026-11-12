@@ -472,7 +472,7 @@ export class FormDoc {
   table(
     cols: FormCol[],
     rows: (string[] | { group: string } | { sum: string[]; strong?: boolean })[],
-    o: { size?: number } = {},
+    o: { size?: number; /** Mindesthöhe je Zeile, z. B. für eine Unterschriftsspalte */ rowH?: number } = {},
   ) {
     const size = o.size ?? 8.5;
     const xs: number[] = [];
@@ -504,7 +504,7 @@ export class FormDoc {
       const strong = 'sum' in r ? !!r.strong : false;
       const wrapped = cols.map((c, i) => this.wrap(cells[i] ?? '', c.width - 6, size, strong));
       const lines = Math.max(1, ...wrapped.map((w) => w.length));
-      const h = lines * (size + 3) + 5;
+      const h = Math.max('sum' in r ? 0 : (o.rowH ?? 0), lines * (size + 3) + 5);
       this.ensure(h, head);
       wrapped.forEach((ls, i) => {
         if (cols[i]!.redact) {

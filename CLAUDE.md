@@ -5378,3 +5378,8 @@ Testadresse.
   `FormDoc.signatures` zeichnet ohne rechte Beschriftung nur noch eine Linie. **Datenschutz:** Geburtsdatum/Personalnr.
   nur weitergeben, wenn der Auftraggeber sie braucht; die Bestätigung „Mindestlohn eingehalten“ muss stimmen
   (Auftraggeberhaftung § 13 MiLoG).
+- 2026-11-12: Personaleinsatzliste (Ahmed): Felder Polier, Projektleitung, Geschäftsführung entfernt. Neu Auswahl
+  **Unterschrift**: durch die Firma (wie bisher, Stempel + Unterschrift Arbeitgeber) oder **jede/r Mitarbeiter/in einzeln**
+  – dann Spalten Datum + Unterschrift je Zeile (Liste: „bestätige, dass ich eingesetzt bin“; Mindestlohnbestätigung:
+  „bestätige, dass ich mindestens den Mindestlohn erhalten habe“), keine Arbeitgeber-Unterschrift. PDF und Word.
+  `FormDoc.table` hat dafür `rowH` (Mindesthöhe je Zeile).

@@ -5395,3 +5395,13 @@ Testadresse.
   Kontoauszug-Seite: Knopf **„PDF (A4)“** (`/transfer/kontoauszug.pdf`) statt Browser-Druck. **Rechtlich:** Die
   Aufstellung aus der App ist eine Eigenerklärung – als Nachweis der Bank gilt nur die von der Bank unterschriebene
   Bestätigung bzw. ein Auszug der Bank selbst (die BA verlangt Bestätigung von Bank, Steuerberater oder Wirtschaftsprüfer).
+- 2026-11-12: **Bestätigung witterungsbedingter Arbeitsausfall** (Ahmed: „kann wegen Witterung von … bis … nicht arbeiten,
+  ist bei uns als Glasreiniger/Vorarbeiter, fängt ab … wieder an“): Mitarbeiter → Dokumente → Knopf „Bestätigung
+  Witterung“ (`/personal/:id/witterung`, Admin/Personal, `src/services/weather-cert.ts`). Felder: kein Einsatz vom/bis,
+  fängt wieder an ab (leer = Tag nach dem Ende), beschäftigt als (Glasreiniger/Vorarbeiter/Reinigungskraft/Objektleiter,
+  Vorschlag aus den Tags, „andere …“ frei; bei Frau „-in“), Begründung (vorbelegt), Entgelt im Zeitraum (keine Angabe /
+  ruht ohne Entgelt / wird weitergezahlt), zur Vorlage bei (optional), Geburtsdatum nennen (optional), Ort, Datum,
+  Unterschrift (vorbelegt GF). Ausgabe PDF (Briefpapier „edel“), Word oder PDF + Ablage unter Personalunterlagen;
+  Protokoll `weather_cert`. **Rechtlich:** Wetterbedingter Arbeitsausfall ist grundsätzlich Betriebsrisiko des
+  Arbeitgebers (§ 615 S. 3 BGB) – „ohne Entgelt“ nur mit Vereinbarung; Saison-Kurzarbeitergeld gilt nicht für die
+  Gebäudereinigung. Kontoauszug-PDF: jede Buchung bleibt auf einer Seite, Tabellenkopf wiederholt sich (geprüft).

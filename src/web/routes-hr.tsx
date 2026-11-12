@@ -52,6 +52,15 @@ import {
 } from '../services/training-cert.js';
 import { storeFile } from '../services/uploads.js';
 import { uuidFrom } from '../services/photo-stamp.js';
+import {
+  WEATHER_ACTIVITIES,
+  WEATHER_PAY,
+  WEATHER_REASON_DEFAULT,
+  type WeatherCertInput,
+  suggestActivity,
+  weatherCertDocx,
+  weatherCertPdf,
+} from '../services/weather-cert.js';
 
 /** Personal wie Fortytools: Dokumente je Mitarbeiter, Vorlagen/Serienbrief, Lohnstufen, Einsatzkalender. */
 /** Kategorien zum Hochladen (ohne „Entwurf (aus Vorlage)“). */
@@ -358,6 +367,11 @@ export function registerHrRoutes(ctx: Ctx) {
                           label: 'Vertragsänderung',
                           href: `/personal/${e.id}/vertragsaenderung`,
                           hint: 'nur was sich ändert · bisher → neu',
+                        },
+                        {
+                          label: 'Bestätigung Witterung',
+                          href: `/personal/${e.id}/witterung`,
+                          hint: 'kann wegen Witterung von … bis … nicht arbeiten · Wiederbeginn ab …',
                         },
                         {
                           label: 'Schulungsnachweis Objektleitung',
@@ -697,6 +711,153 @@ export function registerHrRoutes(ctx: Ctx) {
     }),
   );
 
+  // Bestätigung witterungsbedingter Arbeitsausfall (Ahmed 12.11.2026)
+  app.get(`/personal/:id{${UUID}}/witterung`, (c) =>
+    shells.employee!(c, 'dokumente', async (head) => {
+      ccGuard(c);
+      const [e] = await sql<{ tags: string[] | null; birth: boolean }[]>`
+        select e.tags, p.birth_date is not null as birth
+          from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${head.id}`;
+      const [co] = await sql<{ managing_director: string | null }[]>`
+        select managing_director from app.company where id = 1`;
+      const today = todayBerlin();
+      const sug = suggestActivity(e?.tags ?? null);
+      return (
+        <div class="card" style="max-width:900px">
+          <h3 style="margin-top:0">Bestätigung witterungsbedingter Arbeitsausfall</h3>
+          <p class="small mut" style="margin-top:-4px">
+            Bestätigt, dass die Person wegen der Witterung im Zeitraum nicht arbeiten kann, weiter bei uns
+            beschäftigt ist und ab dem genannten Tag wieder anfängt. Ausdrucken, stempeln, unterschreiben.
+          </p>
+          <form method="post" action={`/personal/${head.id}/witterung`} target="_blank">
+            <div class="grid">
+              <label for="wt-from">Kein Einsatz vom</label>
+              <input id="wt-from" type="date" name="from" value={today} required />
+              <label for="wt-to">bis</label>
+              <input id="wt-to" type="date" name="to" required />
+              <label for="wt-res">Fängt wieder an ab</label>
+              <input id="wt-res" type="date" name="resume" />
+              <label for="wt-act">Beschäftigt als</label>
+              <select id="wt-act" name="activity" data-reveal="#wt-act-other">
+                {WEATHER_ACTIVITIES.map((a) => (
+                  <option value={a} selected={a === sug}>
+                    {a}
+                  </option>
+                ))}
+                <option value="">andere …</option>
+              </select>
+              <span id="wt-act-other" hidden style="display:contents">
+                <label for="wt-act2">Tätigkeit</label>
+                <input id="wt-act2" name="activity_other" placeholder="z. B. Hausmeister" />
+              </span>
+              <label for="wt-reason">Begründung</label>
+              <textarea id="wt-reason" name="reason" rows={3}>
+                {WEATHER_REASON_DEFAULT}
+              </textarea>
+              <label for="wt-pay">Entgelt im Zeitraum</label>
+              <select id="wt-pay" name="pay">
+                {WEATHER_PAY.map(([v, l]) => (
+                  <option value={v}>{l}</option>
+                ))}
+              </select>
+              <label for="wt-rec">Zur Vorlage bei</label>
+              <input
+                id="wt-rec"
+                name="recipient"
+                placeholder="optional, z. B. Agentur für Arbeit, Jobcenter, Vermieter"
+              />
+              <label for="wt-birth">Geburtsdatum angeben</label>
+              <label style="font-weight:400">
+                <input id="wt-birth" type="checkbox" name="birth" value="1" disabled={!e?.birth} />{' '}
+                {e?.birth ? 'ja, im Schreiben nennen' : 'kein Geburtsdatum hinterlegt'}
+              </label>
+              <label for="wt-place">Ort</label>
+              <input id="wt-place" name="place" placeholder="leer = Firmensitz" />
+              <label for="wt-date">Ausgestellt am</label>
+              <input id="wt-date" type="date" name="date" value={today} />
+              <label for="wt-sig">Unterschrift</label>
+              <input id="wt-sig" name="signer" value={co?.managing_director ?? ''} />
+            </div>
+            <p class="small mut">
+              Leer bei „Fängt wieder an ab“ = Tag nach dem Ende. Hinweis: Fällt die Arbeit wetterbedingt aus,
+              trägt grundsätzlich der Arbeitgeber das Risiko (§ 615 Satz 3 BGB) – „ohne Entgelt“ nur mit
+              Vereinbarung (z. B. Ruhens-Klausel im Vertrag). Saison-Kurzarbeitergeld gibt es für die
+              Gebäudereinigung nicht.
+            </p>
+            <div class="formfoot">
+              <button class="btn" name="aktion" value="pdf" data-noback>
+                PDF erstellen
+              </button>
+              <button class="btn sec" name="aktion" value="word" formtarget="_self" data-noback>
+                Als Word herunterladen
+              </button>
+              <button class="btn sec" name="aktion" value="ablegen" formtarget="_self" data-noback>
+                PDF erstellen und in der Personalakte ablegen
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }),
+  );
+
+  app.post(`/personal/:id{${UUID}}/witterung`, async (c) => {
+    ccGuard(c);
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const input: WeatherCertInput = {
+      from: str(b, 'from') ?? '',
+      to: str(b, 'to') ?? '',
+      resume: str(b, 'resume') ?? '',
+      activity: str(b, 'activity') || str(b, 'activity_other') || '',
+      reason: str(b, 'reason') ?? '',
+      pay: str(b, 'pay') ?? '',
+      recipient: str(b, 'recipient') ?? '',
+      withBirth: str(b, 'birth') === '1',
+      place: str(b, 'place') ?? '',
+      date: str(b, 'date') ?? '',
+      signer: str(b, 'signer') ?? '',
+    };
+    const aktion = str(b, 'aktion');
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'weather_cert', 'employee', ${id},
+                      ${sql.json({ from: input.from, to: input.to, aktion: aktion ?? 'pdf' })})`;
+    if (aktion === 'word') {
+      const { data, name } = await weatherCertDocx(sql, id, input);
+      return new Response(data, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `attachment; filename="${name}"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+    const { pdf, name } = await weatherCertPdf(sql, id, input);
+    if (aktion === 'ablegen') {
+      const fileId = uuidFrom(`${id}:witterung:${createHash('sha256').update(pdf).digest('hex')}`);
+      await storeFile(
+        sql,
+        cfg,
+        {
+          id: fileId,
+          name,
+          type: 'application/pdf',
+          data: pdf,
+          link: { type: 'employee', id },
+          category: 'Personalunterlagen',
+        },
+        c.get('actor'),
+      );
+      return back(c, `/personal/${id}/dokumente`, { ok: `${name} unter Personalunterlagen abgelegt.` });
+    }
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${name}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
   // Schulungsnachweis Objektleitung / internes Zeugnis (Ahmed 05.11.2026)
   app.get(`/personal/:id{${UUID}}/schulungsnachweis`, (c) =>
     shells.employee!(c, 'dokumente', async (head) => {

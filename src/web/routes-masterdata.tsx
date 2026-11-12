@@ -107,6 +107,14 @@ import { OfferTable } from './pages-offers.js';
 import { ContactsPanel, TaskBox, TaskForm } from './pages-crm.js';
 import { registerNoteRoutes } from './routes-notes.js';
 import { DOSSIER_PARTS, buildCustomerDossierPdf } from '../services/customer-dossier.js';
+import {
+  type StaffListInput,
+  loadStaff,
+  staffAtSites,
+  staffListDefaults,
+  staffListDocx,
+  staffListPdf,
+} from '../services/staff-list.js';
 import { saveRiskCheckForCustomer } from '../services/site-folder.js';
 import { Icon } from './icons.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
@@ -1294,6 +1302,209 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     { name: 'Sonstiges', hint: 'Alles andere' },
   ];
 
+  // Personaleinsatzliste mit Mindestlohnbestätigung (Ahmed 12.11.2026, Vorlage VD-PE-2026-V1) – nur Büro
+  const staffListInput = (c: Context<AppEnv>, id: string): StaffListInput => {
+    const q = (k: string) => (c.req.query(k) ?? '').trim();
+    const sitesQ = c.req.queries('objekt_id') ?? [];
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const mb = monthBounds(todayBerlin().slice(0, 7));
+    return {
+      customerId: id,
+      siteIds: sitesQ.filter((x) => /^[0-9a-f-]{36}$/i.test(x)),
+      from: iso.test(q('von')) ? q('von') : mb.start,
+      to: iso.test(q('bis')) ? q('bis') : mb.end,
+      leistung: q('leistung').slice(0, 500),
+      geltung: q('geltung').slice(0, 1000),
+      polier: q('polier').slice(0, 200),
+      projektleitung: q('projektleitung').slice(0, 200),
+      gf: q('gf').slice(0, 200),
+      employeeIds: [...new Set((c.req.queries('ma') ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))],
+      parts: (['liste', 'mindestlohn'] as const).filter((t) => (c.req.queries('teil') ?? []).includes(t)),
+      ort: q('ort').slice(0, 100),
+      datum: iso.test(q('datum')) ? q('datum') : todayBerlin(),
+    };
+  };
+  app.get(`/kunden/:id{${UUID}}/personaleinsatzliste`, async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro');
+    const id = c.req.param('id');
+    const mb = monthBounds(todayBerlin().slice(0, 7));
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    const von = iso.test(c.req.query('von') ?? '') ? c.req.query('von')! : mb.start;
+    const bis = iso.test(c.req.query('bis') ?? '') ? c.req.query('bis')! : mb.end;
+    const want = c.req.query('objekt') ?? 'alle';
+    const sites = await sql<{ id: string; site_no: string; name: string; street: string | null }[]>`
+      select id, site_no, name, street from app.sites where customer_id = ${id} and active order by site_no`;
+    const siteIds =
+      want === 'alle' ? sites.map((s) => s.id) : sites.filter((s) => s.id === want).map((s) => s.id);
+    const def = await staffListDefaults(sql, id, siteIds);
+    const used = await loadStaff(sql, await staffAtSites(sql, siteIds, von, bis));
+    const others = await sql<{ id: string; label: string }[]>`
+      select id, last_name || ', ' || first_name || ' (' || personnel_no || ')' as label from app.employees
+       where status = 'aktiv' and not (id = any(${used.map((u) => u.id)}::uuid[]))
+       order by last_name, first_name`;
+    const fmt = (x: string | null) => (x ? formatDateDe(x) : '–');
+    return customerPage(c, 'dokumente', () => (
+      <>
+        <div class="card">
+          <h2 style="margin-top:0">Personaleinsatzliste mit Mindestlohnbestätigung</h2>
+          <p class="help">
+            Eingesetzte Mitarbeitende kommen aus der Einsatzplanung, Vertretungen und erfassten Zeiten des
+            Zeitraums. Alle Angaben sind vorbelegt und änderbar; weitere Mitarbeitende lassen sich dazuwählen.
+          </p>
+          <form
+            method="get"
+            action={`/kunden/${id}/personaleinsatzliste`}
+            class="actions"
+            style="align-items:end"
+          >
+            <label>
+              Objekt
+              <select name="objekt">
+                <option value="alle">alle aktiven Objekte ({sites.length})</option>
+                {sites.map((s) => (
+                  <option value={s.id} selected={s.id === want}>
+                    {s.site_no} · {s.name}
+                    {s.street ? ` – ${s.street}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Zeitraum von
+              <input type="date" name="von" value={von} />
+            </label>
+            <label>
+              bis
+              <input type="date" name="bis" value={bis} />
+            </label>
+            <button class="btn sec" type="submit">
+              Anzeigen
+            </button>
+          </form>
+        </div>
+        <form
+          method="get"
+          action={`/kunden/${id}/personaleinsatzliste.pdf`}
+          target="_blank"
+          class="card"
+          data-noskip
+        >
+          {siteIds.map((s) => (
+            <input type="hidden" name="objekt_id" value={s} />
+          ))}
+          <input type="hidden" name="von" value={von} />
+          <input type="hidden" name="bis" value={bis} />
+          <h3 style="margin-top:0">Angaben im Kopf</h3>
+          <div class="grid">
+            <label for="pe-l">Leistung / Baustelle</label>
+            <input id="pe-l" name="leistung" value={def.leistung} />
+            <label for="pe-g">Geltungsbereich</label>
+            <textarea
+              id="pe-g"
+              name="geltung"
+              rows={2}
+              placeholder="z. B. Unterhaltsreinigung Gebäude A–C, Los 2"
+            ></textarea>
+            <label for="pe-p">Verantwortlicher Polier</label>
+            <input id="pe-p" name="polier" value={def.polier} />
+            <label for="pe-pl">Projektleitung</label>
+            <input id="pe-pl" name="projektleitung" value={def.polier} />
+            <label for="pe-gf">Geschäftsführung</label>
+            <input id="pe-gf" name="gf" value={def.gf} />
+            <label for="pe-o">Ort</label>
+            <input id="pe-o" name="ort" value="München" />
+            <label for="pe-d">Datum</label>
+            <input id="pe-d" type="date" name="datum" value={todayBerlin()} />
+          </div>
+          <h3>Eingesetzte Mitarbeiter ({used.length})</h3>
+          {used.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Name, Vorname</th>
+                  <th>Personal-Nr.</th>
+                  <th>Geburtsdatum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {used.map((u) => (
+                  <tr>
+                    <td>
+                      <input type="checkbox" name="ma" value={u.id} checked aria-label={u.name} />
+                    </td>
+                    <td>{u.name}</td>
+                    <td>{u.personnel_no}</td>
+                    <td>{fmt(u.birth_date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p class="empty">
+              Im Zeitraum ist an diesen Objekten niemand eingeplant – bitte unten auswählen.
+            </p>
+          )}
+          <div data-multi="ma" style="margin-top:10px">
+            <div class="multi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"></div>
+            <label>
+              Weitere Mitarbeiter hinzufügen
+              <select>
+                <option value="">+ Mitarbeiter auswählen …</option>
+                {others.map((o) => (
+                  <option value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <h3>Teile</h3>
+          <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+            <input type="checkbox" name="teil" value="liste" checked /> Personaleinsatzliste
+          </label>
+          <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+            <input type="checkbox" name="teil" value="mindestlohn" checked /> Mindestlohnbestätigung (Anlage)
+          </label>
+          <p class="small mut">
+            Datenschutz: Geburtsdatum und Personalnummer nur weitergeben, wenn der Auftraggeber sie zur
+            Prüfung braucht (z. B. Zutritt, § 13 MiLoG). Die Bestätigung „Mindestlohn eingehalten“ muss
+            stimmen.
+          </p>
+          <div class="actions">
+            <button class="btn" type="submit">
+              <Icon name="download" /> PDF erstellen
+            </button>
+            <button
+              class="btn sec"
+              type="submit"
+              formaction={`/kunden/${id}/personaleinsatzliste.docx`}
+              formtarget="_self"
+            >
+              Als Word herunterladen
+            </button>
+          </div>
+        </form>
+      </>
+    ));
+  });
+  app.get(`/kunden/:id{${UUID}}/personaleinsatzliste.pdf`, async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro');
+    const { pdf, name } = await staffListPdf(sql, staffListInput(c, c.req.param('id')));
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+  app.get(`/kunden/:id{${UUID}}/personaleinsatzliste.docx`, async (c) => {
+    if (c.get('sites') !== null) throw new BusinessError('Nur das Büro');
+    const { data, name } = await staffListDocx(sql, staffListInput(c, c.req.param('id')));
+    return c.body(data as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
+
   // Verträge beim Kunden (Ahmed 20.10.): Vertrag bezieht sich auf ein Objekt (Leistungen, Einsatzort) → Objekt wählen
   app.get(`/kunden/:id{${UUID}}/vertrag`, async (c) => {
     const id = c.req.param('id');
@@ -1371,6 +1582,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                     <a href={`/kunden/${cust.id}/vertrag?art=aue`}>Arbeitnehmerüberlassungsvertrag</a>
                     <a href="#dok-uebersicht">Objekt- und Personalübersicht (PDF)</a>
                     <a href="#dok-anwesenheit">Anwesenheitsliste</a>
+                    {allowed === null && (
+                      <a href={`/kunden/${cust.id}/personaleinsatzliste`}>
+                        Personaleinsatzliste + Mindestlohnbestätigung
+                      </a>
+                    )}
                     {allowed === null && attSites.length > 0 && (
                       <a href="#dok-gbu">Wirksamkeitskontrolle eintragen</a>
                     )}

@@ -5368,3 +5368,13 @@ Testadresse.
   Bestellungen nach Ausführung ohne Enddatum galten nie als beendet → nie „Rechnung fehlt“. Jetzt gilt der Beginn als
   Ausführungstag (vorbei = Rechnung fehlt, Monat = Monat des Beginns); Zeitraum steht als „am TT.MM.JJJJ (ohne Enddatum)“.
   Laufende Monate, heute und künftige Ausführungen zählen weiterhin nicht.
+- 2026-11-12: **Personaleinsatzliste mit Mindestlohnbestätigung beim Kunden** (Ahmed, Vorlage VD-PE-2026-V1): Kunde →
+  Dokumente → „Dokument erstellen ▾“ → „Personaleinsatzliste + Mindestlohnbestätigung“ (`/kunden/:id/personaleinsatzliste`,
+  nur Büro, `src/services/staff-list.ts`). Objekt (alle aktiven oder eins) + Zeitraum → eingesetzte Mitarbeitende aus
+  Einsatzplanung, Vertretungen und erfassten Zeiten des Zeitraums vorangekreuzt, weitere über „+ Mitarbeiter auswählen“.
+  Kopf vorbelegt und änderbar: Leistung/Baustelle (Objekt + Adresse), **Geltungsbereich (freies Feld)**, Polier und
+  Projektleitung (Objektleitung), Geschäftsführung, Ort, Datum. Teile wählbar (Liste, Mindestlohnbestätigung als Anlage)
+  → **PDF** (Briefpapier „edel“, lange Angaben umgebrochen) oder **Word** (schlichte .docx). Nichts wird abgelegt.
+  `FormDoc.signatures` zeichnet ohne rechte Beschriftung nur noch eine Linie. **Datenschutz:** Geburtsdatum/Personalnr.
+  nur weitergeben, wenn der Auftraggeber sie braucht; die Bestätigung „Mindestlohn eingehalten“ muss stimmen
+  (Auftraggeberhaftung § 13 MiLoG).

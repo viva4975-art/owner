@@ -601,7 +601,7 @@ export class FormDoc {
       });
     }
     this.line(L, L + half - 30, this.y, INK, 0.5);
-    this.line(L + half + 12, this.R, this.y, INK, 0.5);
+    if (rightLabel || o.png || o.rightText) this.line(L + half + 12, this.R, this.y, INK, 0.5);
     const lx = { left: L, right: L + half + 12 } as const;
     if (o.mark) {
       const lab = o.mark === 'left' ? leftLabel : rightLabel;

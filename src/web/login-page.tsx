@@ -33,13 +33,10 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
 .lg{position:relative;z-index:1;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:calc(28px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom))}
 .lg-logo{width:210px;height:auto;margin-bottom:22px}
-/* Kennzahlen */
-.lg-stats{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:26px}
-.lg-stat{min-width:118px;text-align:center;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.lg-num{display:block;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums;
-  background:linear-gradient(180deg,#fff 30%,#f3b6c9);-webkit-background-clip:text;background-clip:text;color:transparent}
-.lg-lbl{display:block;margin-top:5px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.65)}
+/* Kurzbeschreibung unter dem Logo (statt Kennzahlen, Ahmed 12.11.) */
+.lg-tag{max-width:440px;text-align:center;margin:-6px 0 24px;font-size:15px;line-height:1.5;color:rgba(255,255,255,.72)}
+.lg-tag b{display:block;font-size:19px;font-weight:700;letter-spacing:-.01em;margin-bottom:2px;
+  background-image:linear-gradient(180deg,#fff 30%,#f0b4c7);-webkit-background-clip:text;background-clip:text;color:transparent}
 /* Glaskarte */
 .lg-card{position:relative;width:100%;max-width:420px;padding:30px 28px 24px;border-radius:22px;
   background:linear-gradient(160deg,rgba(255,255,255,.13),rgba(255,255,255,.04));
@@ -83,26 +80,16 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
 
 /* Ablauf: Logo + Zahlen erscheinen und zählen, dann Karte (nur mit JS, Klasse .intro am <html>) */
 .intro .lg-logo{animation:lgIn .7s cubic-bezier(.2,.8,.2,1) both}
-.intro .lg-stat{animation:lgPop .7s cubic-bezier(.2,.9,.25,1.2) both}
-.intro .lg-stat:nth-child(1){animation-delay:.15s}.intro .lg-stat:nth-child(2){animation-delay:.3s}.intro .lg-stat:nth-child(3){animation-delay:.45s}
-.intro .lg-stats{animation:lgLift .8s cubic-bezier(.2,.8,.2,1) 1.9s both}
-.intro .lg-card{animation:lgCard .9s cubic-bezier(.2,.8,.2,1) 2.1s both}
-.intro .lg-seals,.intro .lg-foot{animation:lgIn .8s ease 2.5s both}
+.intro .lg-tag{animation:lgPop .7s cubic-bezier(.2,.8,.2,1) .2s both}
+.intro .lg-card{animation:lgCard .7s cubic-bezier(.2,.8,.2,1) .45s both}
+.intro .lg-seals,.intro .lg-foot{animation:lgIn .6s ease .8s both}
 @keyframes lgIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-@keyframes lgPop{from{opacity:0;transform:translateY(24px) scale(.85);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
-@keyframes lgLift{from{transform:translateY(90px) scale(1.12)}to{transform:none}}
+@keyframes lgPop{from{opacity:0;transform:translateY(12px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
 @keyframes lgCard{from{opacity:0;transform:translateY(40px) scale(.96);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
-.lg-skip{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:3;font:inherit;font-size:13px;color:rgba(255,255,255,.7);
-  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 14px;cursor:pointer;display:none}
-.intro .lg-skip{display:block;animation:lgOut .3s ease 2.4s forwards}
-@keyframes lgOut{to{opacity:0;visibility:hidden}}
 @media (max-width:560px){
   .lg-logo{width:170px;margin-bottom:16px}
-  .lg-stats{gap:8px;margin-bottom:18px}
-  .lg-stat{min-width:0;flex:1 1 auto;padding:10px 8px;border-radius:14px}
-  .lg-num{font-size:24px}.lg-lbl{font-size:9.5px;letter-spacing:.02em}
+  .lg-tag{font-size:14px;margin:-4px 0 18px}.lg-tag b{font-size:17px}
   .lg-card{padding:24px 18px 18px;border-radius:18px}.lg-card h1{font-size:23px}
-  @keyframes lgLift{from{transform:translateY(60px) scale(1.15)}to{transform:none}}
 }
 @media (prefers-reduced-motion:reduce){
   .lg-blob,.lg-streaks,.lg-btn::after{animation:none}
@@ -120,31 +107,24 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
   rgba(255,255,255,.04) 40%,rgba(255,255,255,.25) 70%,rgba(255,255,255,.04));animation:lgRing 9s linear infinite}
 @keyframes lgRing{to{--lg-a:360deg}}
 .lg-card h1{color:rgba(255,255,255,.94)}
-.lg-sub{color:rgba(255,255,255,.58)}
-.lg-f label{color:rgba(255,255,255,.78)}
-.lg-in input{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.95)}
+.lg-sub{color:rgba(255,255,255,.66)}
+.lg-f label{color:rgba(255,255,255,.88)}
+.lg-in input{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:#fff}
+.lg-in input::placeholder{color:rgba(255,255,255,.5)}
 .lg-in input:focus{background:rgba(255,255,255,.08);border-color:rgba(240,163,188,.7);box-shadow:0 0 0 4px rgba(240,120,160,.12)}
 .lg-btn{background:linear-gradient(135deg,rgba(179,40,90,.92),rgba(125,20,53,.92) 60%,rgba(95,14,41,.92));
   box-shadow:0 10px 26px rgba(125,20,53,.4),inset 0 1px 0 rgba(255,255,255,.18)}
-.lg-stat{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.09)}
-.lg-num{background-image:linear-gradient(180deg,rgba(255,255,255,.95) 30%,#e9a7bd)}
 .lg-seals{opacity:.6}
 @media (prefers-reduced-motion:reduce){.lg-card::before{animation:none}.lg-card{transition:none}}`;
 
-/** Kennzahlen wie auf der Website (Werte aus dem Briefing; bei Änderung hier anpassen) */
-const STATS: { n: number; suffix: string; label: string; text?: string }[] = [
-  { n: 120, suffix: '+', label: 'Mitarbeitende' },
-  { n: 150, suffix: '+', label: 'Objekte' },
-  { n: 0, suffix: '', label: '9001 · 14001', text: 'ISO' },
-];
-
 /**
- * Startet den Ablauf vor dem ersten Zeichnen: nur einmal je Tab, nicht bei Meldungen, nicht bei
- * „Bewegung reduzieren“. Zählt die Zahlen hoch; Tippen/Taste überspringt.
+ * Startet den kurzen Ablauf (Beschreibung, dann Karte, ~1,2 s) vor dem ersten Zeichnen: höchstens einmal am Tag
+ * je Gerät, nicht bei Meldungen, nicht bei „Bewegung reduzieren“.
  */
 const INTRO_HEAD = `(function(){try{var d=document.documentElement;
-if(d.getAttribute('data-msg')||sessionStorage.getItem('vd_intro')||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-sessionStorage.setItem('vd_intro','1');d.classList.add('intro');}catch(e){}})();`;
+var t=new Date().toISOString().slice(0,10);
+if(d.getAttribute('data-msg')||localStorage.getItem('vd_intro')===t||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+localStorage.setItem('vd_intro',t);d.classList.add('intro');}catch(e){}})();`;
 const INTRO_BODY = `(function(){var bg=document.querySelector('.lg-bg'),card=document.querySelector('.lg-card'),
 fine=matchMedia('(pointer:fine) and (min-width:900px)').matches&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 function mv(x,y){if(bg){bg.style.setProperty('--mx',x+'px');bg.style.setProperty('--my',y+'px');}
@@ -154,14 +134,7 @@ addEventListener('pointermove',function(e){mv(e.clientX,e.clientY);},{passive:tr
 addEventListener('touchmove',function(e){var t=e.touches[0];if(t)mv(t.clientX,t.clientY);},{passive:true});
 document.addEventListener('mouseleave',function(){if(card)card.style.transform='';});})();
 (function(){var d=document.documentElement;if(!d.classList.contains('intro'))return;
-var els=document.querySelectorAll('.lg-num[data-n]');
-els.forEach(function(el,i){var n=+el.getAttribute('data-n'),s=el.getAttribute('data-s')||'',t0=null,dur=1300,delay=250+i*150;
-el.textContent='0'+s;function f(t){if(t0===null)t0=t;var p=Math.min(1,Math.max(0,(t-t0-delay)/dur));var e=1-Math.pow(1-p,3);
-el.textContent=Math.round(n*e).toLocaleString('de-DE')+s;if(p<1)requestAnimationFrame(f);}requestAnimationFrame(f);});
-function skip(){d.classList.remove('intro');els.forEach(function(el){el.textContent=(+el.getAttribute('data-n')).toLocaleString('de-DE')+(el.getAttribute('data-s')||'');});
-document.removeEventListener('keydown',skip);}
-var b=document.querySelector('.lg-skip');if(b)b.addEventListener('click',skip);
-document.addEventListener('keydown',skip);setTimeout(function(){document.removeEventListener('keydown',skip);d.classList.remove('intro');},3400);})();`;
+setTimeout(function(){d.classList.remove('intro');},1500);})();`;
 
 const USER = (
   <svg
@@ -282,20 +255,10 @@ export function loginHtml(p: {
               width="210"
               height="48"
             />
-            <div class="lg-stats">
-              {STATS.map((s) => (
-                <div class="lg-stat">
-                  {s.text ? (
-                    <span class="lg-num">{s.text}</span>
-                  ) : (
-                    <span class="lg-num" data-n={String(s.n)} data-s={s.suffix}>
-                      {s.n.toLocaleString('de-DE') + s.suffix}
-                    </span>
-                  )}
-                  <span class="lg-lbl">{s.label}</span>
-                </div>
-              ))}
-            </div>
+            <p class="lg-tag">
+              <b>Eine App für den ganzen Betrieb.</b>
+              Zeiten, Einsätze, Objekte und Abrechnung – im Büro und unterwegs.
+            </p>
             <main class="lg-card">
               <h1>{p.title}</h1>
               <p class="lg-sub">{p.sub}</p>
@@ -369,9 +332,6 @@ export function loginHtml(p: {
               {p.env && p.env !== 'live' && <span class="lg-env">{p.env === 'dev' ? 'Lokal' : 'Test'}</span>}
             </div>
           </div>
-          <button type="button" class="lg-skip">
-            Überspringen
-          </button>
           <script dangerouslySetInnerHTML={{ __html: INTRO_BODY }} />
         </body>
       </html>,

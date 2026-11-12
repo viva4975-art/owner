@@ -5430,3 +5430,8 @@ Testadresse.
   nicht in den Augen weh tut“) – ersetzt Fassung 3: wieder dunkler Bordeaux-Hintergrund (Fassung 2), Karte durchsichtiger
   (Weiß 8 → 2 %, Unschärfe 30 px), Texte/Felder/Knopf gedämpft, sanft umlaufender Lichtrand, schwacher rosé Lichtschein
   folgt Maus/Finger; keine weiße Karte, kein Kippen.
+- 2026-11-12: **Anmeldung: Beschreibung statt Zahlen** (Ahmed): Statt Kennzahlen steht unter dem Logo „Eine App für den
+  ganzen Betrieb. Zeiten, Einsätze, Objekte und Abrechnung – im Büro und unterwegs.“ – gleich für Handy und PC. Ablauf
+  nur noch ~1,2 s (Beschreibung blendet ein, dann die Karte), höchstens einmal am Tag je Gerät (localStorage
+  `vd_intro` = Datum), kein „Überspringen“ mehr nötig. Feldbeschriftung und Eingaben etwas kontrastreicher (lesbar
+  draußen am Handy). Dunkles Glas-Design (Fassung 4) bleibt.

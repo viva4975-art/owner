@@ -73,7 +73,7 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
 .lg-help{margin-top:18px;border-top:1px solid rgba(255,255,255,.12);padding-top:14px;font-size:13.5px;color:rgba(255,255,255,.7);line-height:1.55}
 .lg-help summary{cursor:pointer;font-weight:600;color:rgba(255,255,255,.9)}
 .lg-help a{color:#f3b6c9}.lg-help b{color:#fff}
-.lg-seals{width:100%;max-width:420px;margin-top:22px;opacity:.75}
+.lg-seals{width:100%;max-width:420px;margin-top:22px;opacity:1}
 .lg-seals img{display:block;width:100%;height:auto}
 .lg-foot{margin-top:14px;font-size:12px;color:rgba(255,255,255,.45);text-align:center}
 .lg-env{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff3cd;color:#7a5b00;font-weight:700;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase}
@@ -114,7 +114,7 @@ body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#fff;
 .lg-in input:focus{background:rgba(255,255,255,.08);border-color:rgba(240,163,188,.7);box-shadow:0 0 0 4px rgba(240,120,160,.12)}
 .lg-btn{background:linear-gradient(135deg,rgba(179,40,90,.92),rgba(125,20,53,.92) 60%,rgba(95,14,41,.92));
   box-shadow:0 10px 26px rgba(125,20,53,.4),inset 0 1px 0 rgba(255,255,255,.18)}
-.lg-seals{opacity:.6}
+.lg-seals{opacity:1}.lg-seals img{filter:brightness(0) invert(1)}
 @media (prefers-reduced-motion:reduce){.lg-card::before{animation:none}.lg-card{transition:none}}`;
 
 /**

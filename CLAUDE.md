@@ -5409,3 +5409,8 @@ Testadresse.
   sagt „Eine Bestätigung der Bank wird auf Anforderung nachgereicht“). **Kontoauszug im Nachweis geschwärzt** (Häkchen
   „schwärzen“, Standard an): Spalten Auftraggeber/Empfänger und Verwendungszweck als schwarze Balken, Text steht gar
   nicht im PDF; Datum und Betrag sichtbar. Der normale Kontoauszug (`/transfer/kontoauszug.pdf`) bleibt ungeschwärzt.
+- 2026-11-12: **Ort/Datum oben, Unterschrift ohne Namen** (Ahmed): Bestätigung Witterung, Personaleinsatzliste +
+  Mindestlohnbestätigung und Liquiditätsnachweis (Übersicht) haben „München, den …“ rechts oben unter dem Titel
+  (`FormDoc.placeDate`, auch in den Word-Fassungen) und unten nur noch „Stempel und Unterschrift Arbeitgeber“ ohne Namen.
+  Feld „Unterschrift“ (Name) bei der Witterungs-Bestätigung entfällt. Bankbestätigung behält „Ort, Datum, Stempel und
+  Unterschrift der Bank“.

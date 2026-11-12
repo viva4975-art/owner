@@ -304,6 +304,12 @@ export class FormDoc {
     this.y += 12;
   }
 
+  /** „München, den …“ rechtsbündig oben unter dem Titel (Ahmed 12.11.) */
+  placeDate(t: string) {
+    this.right(t, this.R, this.y + 9, { size: 9.5, color: INK });
+    this.y += 18;
+  }
+
   /** Großer Titel rechtsbündig (Bestellung) mit Hinweis darunter */
   titleRight(t: string, sub?: string) {
     this.right(t, this.R, this.y + 14, { size: 13, bold: true, color: INK });

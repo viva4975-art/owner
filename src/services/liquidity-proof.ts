@@ -128,6 +128,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
   if (i.parts.includes('uebersicht')) {
     page();
     doc.title('LIQUIDITÄTSNACHWEIS', `Stichtag ${d(i.date)}`);
+    doc.placeDate(`${s.city}, den ${d(todayBerlin())}`);
     doc.para(firm, { size: 10, bold: true });
     doc.para(
       'Aufstellung der Guthaben auf den Geschäftskonten zur Vorlage bei der Bundesagentur für Arbeit ' +
@@ -190,9 +191,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
         'errechnet (Kontoauszüge anbei). Eine Bestätigung der Bank wird auf Anforderung nachgereicht.',
       { size: 9 },
     );
-    doc.signatures(`Unterschrift Geschäftsführung – ${s.legalName}`, '', {
-      leftText: `${s.city}, den ${d(todayBerlin())}`,
-    });
+    doc.signatures('Stempel und Unterschrift Arbeitgeber', '');
   }
 
   if (i.parts.includes('auszug'))

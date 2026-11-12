@@ -180,6 +180,7 @@ export async function staffListPdf(sql: Sql, i: StaffListInput) {
   if (i.parts.includes('liste')) {
     first = false;
     doc.title('PERSONALEINSATZLISTE', 'mit Mindestlohnbestätigung');
+    doc.placeDate(k.place);
     headBox(doc, k.head);
     doc.section('Eingesetzte Mitarbeiter');
     if (ma) {
@@ -198,11 +199,12 @@ export async function staffListPdf(sql: Sql, i: StaffListInput) {
       );
     doc.section('Hinweise');
     for (const h of HINTS) doc.para(`–  ${h}`, { size: 8.5 });
-    if (!ma) doc.signatures('Stempel und Unterschrift Arbeitgeber', '', { leftText: k.place });
+    if (!ma) doc.signatures('Stempel und Unterschrift Arbeitgeber', '');
   }
   if (i.parts.includes('mindestlohn')) {
     if (!first) doc.newPage();
     doc.title('MINDESTLOHNBESTÄTIGUNG', 'Anlage zur Personaleinsatzliste');
+    doc.placeDate(k.place);
     headBox(doc, k.head);
     doc.para(ma ? ML_TEXT_MA : ML_TEXT, { size: 9 });
     doc.y += 4;
@@ -220,10 +222,7 @@ export async function staffListPdf(sql: Sql, i: StaffListInput) {
         { size: 9 },
       );
     doc.para(ML_FOOT, { size: 8.5 });
-    if (!ma)
-      doc.signatures(`Stempel und Unterschrift Arbeitgeber – ${k.seller.legalName}`, '', {
-        leftText: k.place,
-      });
+    if (!ma) doc.signatures('Stempel und Unterschrift Arbeitgeber', '');
   }
   return { pdf: await doc.save(), name: `${k.file}.pdf` };
 }
@@ -252,8 +251,7 @@ export async function staffListDocx(sql: Sql, i: StaffListInput) {
     '</w:tbl>';
   const pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
   const sign = (label: string) =>
-    par('', 360) +
-    par(run(k.place), 600) +
+    par('', 900) +
     par(run('_______________________________________'), 0) +
     par(run(label, { sz: 16, color: '6B6266' }), 0);
   const ma = i.sign === 'mitarbeiter';
@@ -262,7 +260,8 @@ export async function staffListDocx(sql: Sql, i: StaffListInput) {
   if (i.parts.includes('liste'))
     parts.push(
       par(run('PERSONALEINSATZLISTE', { b: true, sz: 32 }), 40) +
-        par(run(`mit Mindestlohnbestätigung · ${k.seller.legalName}`, { b: true, color: '7D1435' }), 200) +
+        par(run(`mit Mindestlohnbestätigung · ${k.seller.legalName}`, { b: true, color: '7D1435' }), 120) +
+        `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="200"/></w:pPr>${run(k.place)}</w:p>` +
         tbl(k.head, [3000, 6200], undefined, true) +
         par('', 120) +
         par(run('Eingesetzte Mitarbeiter', { b: true, color: '7D1435' }), 80) +
@@ -279,8 +278,9 @@ export async function staffListDocx(sql: Sql, i: StaffListInput) {
       par(run('MINDESTLOHNBESTÄTIGUNG', { b: true, sz: 32 }), 40) +
         par(
           run(`Anlage zur Personaleinsatzliste · ${k.seller.legalName}`, { b: true, color: '7D1435' }),
-          200,
+          120,
         ) +
+        `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="200"/></w:pPr>${run(k.place)}</w:p>` +
         tbl(k.head, [3000, 6200], undefined, true) +
         par('', 120) +
         par(run(ma ? ML_TEXT_MA : ML_TEXT, { sz: 19 }), 160) +
@@ -293,7 +293,7 @@ export async function staffListDocx(sql: Sql, i: StaffListInput) {
             )) +
         par('', 120) +
         par(run(ML_FOOT, { sz: 18 })) +
-        (ma ? '' : sign(`Stempel und Unterschrift Arbeitgeber – ${k.seller.legalName}`)),
+        (ma ? '' : sign('Stempel und Unterschrift Arbeitgeber')),
     );
   const body =
     parts.join(pageBreak) +

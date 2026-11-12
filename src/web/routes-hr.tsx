@@ -718,8 +718,6 @@ export function registerHrRoutes(ctx: Ctx) {
       const [e] = await sql<{ tags: string[] | null; birth: boolean }[]>`
         select e.tags, p.birth_date is not null as birth
           from app.employees e left join app.employee_private p on p.employee_id = e.id where e.id = ${head.id}`;
-      const [co] = await sql<{ managing_director: string | null }[]>`
-        select managing_director from app.company where id = 1`;
       const today = todayBerlin();
       const sug = suggestActivity(e?.tags ?? null);
       return (
@@ -775,8 +773,6 @@ export function registerHrRoutes(ctx: Ctx) {
               <input id="wt-place" name="place" placeholder="leer = Firmensitz" />
               <label for="wt-date">Ausgestellt am</label>
               <input id="wt-date" type="date" name="date" value={today} />
-              <label for="wt-sig">Unterschrift</label>
-              <input id="wt-sig" name="signer" value={co?.managing_director ?? ''} />
             </div>
             <p class="small mut">
               Leer bei „Fängt wieder an ab“ = Tag nach dem Ende. Hinweis: Fällt die Arbeit wetterbedingt aus,

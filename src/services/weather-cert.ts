@@ -133,6 +133,7 @@ export async function weatherCertPdf(sql: Sql, employeeId: string, i: WeatherCer
     author: k.seller.legalName,
   });
   doc.title(k.title.toUpperCase(), k.subtitle);
+  doc.placeDate(k.place);
   if (k.recipient) doc.para(`Zur Vorlage bei: ${k.recipient}`, { size: 10, bold: true });
   doc.kvBox(k.facts.map(([key, v], n) => ({ k: key, v, strong: n === 0 })));
   doc.y += 4;
@@ -143,7 +144,7 @@ export async function weatherCertPdf(sql: Sql, employeeId: string, i: WeatherCer
   }
   doc.y += 4;
   doc.para('Mit freundlichen Grüßen', { size: 10.5 });
-  doc.signatures(`Stempel und Unterschrift Arbeitgeber – ${k.signer}`, '', { leftText: k.place });
+  doc.signatures('Stempel und Unterschrift Arbeitgeber', '');
   return { pdf: await doc.save(), name: `${k.file}.pdf` };
 }
 
@@ -168,16 +169,17 @@ export async function weatherCertDocx(sql: Sql, employeeId: string, i: WeatherCe
     '</w:tbl>';
   const body =
     par(run(k.title.toUpperCase(), { b: true, sz: 32 }), 40) +
-    par(run(`${k.subtitle} · ${k.seller.legalName}`, { b: true, color: '7D1435' }), 200) +
+    par(run(`${k.subtitle} · ${k.seller.legalName}`, { b: true, color: '7D1435' }), 120) +
+    `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="200"/></w:pPr>${run(k.place)}</w:p>` +
     (k.recipient ? par(run(`Zur Vorlage bei: ${k.recipient}`, { b: true })) : '') +
     facts +
     par('', 160) +
     par(run('Sehr geehrte Damen und Herren,')) +
     k.paras.map((p) => par(run(p))).join('') +
     par(run('Mit freundlichen Grüßen'), 360) +
-    par(run(k.place), 700) +
+    par('', 700) +
     par(run('_______________________________________'), 0) +
-    par(run(`Stempel und Unterschrift Arbeitgeber – ${k.signer}`, { sz: 16, color: '6B6266' }), 0) +
+    par(run('Stempel und Unterschrift Arbeitgeber', { sz: 16, color: '6B6266' }), 0) +
     '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1134" w:bottom="1134" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr>';
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
   const { strToU8, zipSync } = await import('fflate');

@@ -14,6 +14,12 @@ import {
   type PsuInfo,
 } from '../services/bank-feed.js';
 import { BusinessError } from '../services/errors.js';
+import {
+  type LiquidityInput,
+  liquidityPdf,
+  requiredLiquidity,
+  statementPdf,
+} from '../services/liquidity-proof.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
@@ -342,6 +348,120 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
     );
   });
 
+  // ---------------------------------------------------------------- Kontoauszug als PDF (A4 hoch)
+  const pdfResp = (r: { pdf: Uint8Array; name: string }) =>
+    new Response(r.pdf, {
+      headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${r.name}"` },
+    });
+  app.get('/transfer/kontoauszug.pdf', async (c) => {
+    const konto = c.req.query('konto') ?? '';
+    const today = todayBerlin();
+    const to = isDate(c.req.query('bis')) ? c.req.query('bis')! : today;
+    const from = isDate(c.req.query('von')) ? c.req.query('von')! : `${to.slice(0, 7)}-01`;
+    return pdfResp(await statementPdf(sql, { iban: konto, from, to }));
+  });
+
+  // ---------------------------------------------------------------- Liquiditätsnachweis (AÜ-Erlaubnis)
+  const liqInput = (c: {
+    req: { query(k: string): string | undefined; queries(k: string): string[] | undefined };
+  }): LiquidityInput => {
+    const today = todayBerlin();
+    const date =
+      isDate(c.req.query('stichtag')) && c.req.query('stichtag')! <= today ? c.req.query('stichtag')! : today;
+    const from = isDate(c.req.query('von')) ? c.req.query('von')! : addDays(date, -91);
+    const n = Number.parseInt(c.req.query('leih') ?? '', 10);
+    return {
+      date,
+      from,
+      workers: Number.isFinite(n) && n > 0 && n < 10000 ? n : 0,
+      ibans: c.req.queries('konto') ?? [],
+      parts: (['uebersicht', 'auszug', 'bestaetigung'] as const).filter((t) =>
+        (c.req.queries('teil') ?? []).includes(t),
+      ),
+    };
+  };
+  app.get('/transfer/liquiditaet.pdf', async (c) => pdfResp(await liquidityPdf(sql, liqInput(c))));
+  app.get('/transfer/liquiditaet', async (c) => {
+    const accounts = await accountOverview(sql);
+    const i = liqInput(c);
+    const today = todayBerlin();
+    return page(
+      c,
+      'Liquiditätsnachweis',
+      'transfer',
+      <>
+        <PageHead title="Liquiditätsnachweis" crumbs={[['Kontoumsätze', '/transfer/kontoumsaetze']]} />
+        <div class="card">
+          <p>
+            Für die Erlaubnis zur Arbeitnehmerüberlassung (Antrag/Verlängerung bei der Bundesagentur für
+            Arbeit): Kontostände aller Geschäftskonten zum Stichtag, Kontoauszüge und je Bank ein Blatt zur
+            Bestätigung – als ein PDF in DIN A4 hoch.
+          </p>
+          <form method="get" action="/transfer/liquiditaet.pdf" target="_blank" data-noskip>
+            <div class="grid">
+              <label for="lq-s">Stichtag</label>
+              <input id="lq-s" type="date" name="stichtag" value={i.date} max={today} required />
+              <label for="lq-v">Kontoauszüge ab</label>
+              <input id="lq-v" type="date" name="von" value={i.from} max={today} required />
+              <label for="lq-n">Geplante Leiharbeitnehmer</label>
+              <input
+                id="lq-n"
+                type="number"
+                name="leih"
+                min="0"
+                step="1"
+                value={i.workers || ''}
+                placeholder="z. B. 5"
+              />
+            </div>
+            <p class="small mut">
+              Mindestbetrag laut Bundesagentur: 2.000 € je Leiharbeitnehmer, mindestens 10.000 €
+              {i.workers ? ` – hier ${euro(requiredLiquidity(i.workers))}` : ''}. Leer = ohne Vergleich.
+            </p>
+            <h3>Konten</h3>
+            {accounts.map((a) => (
+              <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+                <input type="checkbox" name="konto" value={a.iban} checked />
+                {a.name} · {ibanShort(a.iban)}
+                {a.balance_cents != null ? (
+                  <span class="mut">
+                    · {euro(a.balance_cents)} {a.balance_at ? `(abgerufen ${at(a.balance_at)})` : ''}
+                  </span>
+                ) : (
+                  <span class="badge warn">kein Kontostand der Bank – Bankabruf verbinden</span>
+                )}
+              </label>
+            ))}
+            <h3>Teile</h3>
+            {(
+              [
+                ['uebersicht', 'Übersicht der Kontostände zum Stichtag (mit Unterschrift Geschäftsführung)'],
+                ['auszug', 'Kontoauszug je Konto mit laufendem Saldo'],
+                [
+                  'bestaetigung',
+                  'Bankbestätigung je Bank (von der Bank auszufüllen, zu stempeln und zu unterschreiben)',
+                ],
+              ] as const
+            ).map(([k, l]) => (
+              <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+                <input type="checkbox" name="teil" value={k} checked /> {l}
+              </label>
+            ))}
+            <p class="small mut">
+              Wichtig: Die Aufstellung aus der App ist eine eigene Erklärung. Als Nachweis der Bank gilt nur
+              die Bestätigung mit Stempel und Unterschrift der Bank (Blatt „Bankbestätigung“ vorlegen und von
+              der Bank ausfüllen lassen) bzw. ein Kontoauszug, den die Bank selbst erstellt hat.
+            </p>
+            <div class="actions">
+              <button class="btn" type="submit">
+                PDF erstellen
+              </button>
+            </div>
+          </form>
+        </div>
+      </>,
+    );
+  });
   // ---------------------------------------------------------------- Kontoauszug
   app.get('/transfer/kontoauszug', async (c) => {
     const accounts = await accountOverview(sql);
@@ -391,9 +511,16 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
               <input id="q" name="q" value={q} placeholder="Name, Verwendungszweck, Betrag" />
             </div>
             <button class="btn sec">Aktualisieren</button>
-            <button type="button" class="btn sec" onclick="window.print()">
-              Drucken / PDF
-            </button>
+            <a
+              class="btn sec"
+              target="_blank"
+              href={`/transfer/kontoauszug.pdf?konto=${konto}&von=${from}&bis=${to}`}
+            >
+              PDF (A4)
+            </a>
+            <a class="btn sec" href="/transfer/liquiditaet">
+              Liquiditätsnachweis
+            </a>
           </form>
           <dl class="kv" style="margin-top:12px">
             <dt>{dateDe(from)} errechneter Anfangs-Saldo</dt>

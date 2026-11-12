@@ -1716,6 +1716,7 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
   [
     { label: 'Kontoumsätze zuordnen', href: '/transfer/kontoumsaetze' },
     { label: 'Kontoauszug', href: '/transfer/kontoauszug' },
+    { label: 'Liquiditätsnachweis', href: '/transfer/liquiditaet' },
   ],
   [
     { label: 'Dokumenteneingang', href: '/transfer/dokumenteneingang' },

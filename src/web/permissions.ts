@@ -194,7 +194,7 @@ export const PERM_GROUPS: { label: string; areas: PermArea[] }[] = [
       {
         key: 'bank',
         label: 'Bank (Kontoumsätze, Kontoauszug)',
-        prefixes: ['/transfer/kontoumsaetze', '/transfer/kontoauszug'],
+        prefixes: ['/transfer/kontoumsaetze', '/transfer/kontoauszug', '/transfer/liquiditaet'],
       },
       {
         key: 'dokumente',

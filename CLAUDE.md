@@ -5383,3 +5383,15 @@ Testadresse.
   – dann Spalten Datum + Unterschrift je Zeile (Liste: „bestätige, dass ich eingesetzt bin“; Mindestlohnbestätigung:
   „bestätige, dass ich mindestens den Mindestlohn erhalten habe“), keine Arbeitgeber-Unterschrift. PDF und Word.
   `FormDoc.table` hat dafür `rowH` (Mindesthöhe je Zeile).
+- 2026-11-12: **Liquiditätsnachweis für die AÜ-Erlaubnis** (Ahmed: „für die Agentur für Arbeit, beide Konten, als Nachweis
+  der Bank“, „DIN A4 hoch, gut sichtbar“): Verwaltung → Bank → Reiter **Liquiditätsnachweis** (`/transfer/liquiditaet`,
+  Recht wie Bank, `src/services/liquidity-proof.ts`): Stichtag, Kontoauszüge ab (Standard 3 Monate), geplante
+  Leiharbeitnehmer, Konten (alle angehakt), Teile → ein PDF A4 hoch (nur Logo, kein Briefkopf): **Übersicht** (je Konto
+  Saldo am Stichtag + niedrigster Tagesendsaldo im Zeitraum, Summe, Vergleich mit Mindestbetrag 2.000 € je
+  Leiharbeitnehmer, mind. 10.000 €, Unterschrift GF), **Kontoauszug je Konto** (Anfangs-/Endsaldo, Eingänge/Ausgänge,
+  jede Buchung mit laufendem Saldo) und **Bankbestätigung je Bank** (Kontoinhaber/IBAN/BIC vorbelegt, Guthaben,
+  Kreditlinie, frei verfügbar, Pfändungen von der Bank auszufüllen, Stempel + Unterschrift). Salden aus dem Kontostand
+  des Bankabrufs rückwärts über die Umsätze errechnet (Konto ohne Kontostand → „nicht bekannt“, nicht in der Summe).
+  Kontoauszug-Seite: Knopf **„PDF (A4)“** (`/transfer/kontoauszug.pdf`) statt Browser-Druck. **Rechtlich:** Die
+  Aufstellung aus der App ist eine Eigenerklärung – als Nachweis der Bank gilt nur die von der Bank unterschriebene
+  Bestätigung bzw. ein Auszug der Bank selbst (die BA verlangt Bestätigung von Bank, Steuerberater oder Wirtschaftsprüfer).

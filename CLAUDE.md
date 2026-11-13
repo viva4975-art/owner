@@ -5474,3 +5474,48 @@ Testadresse.
   **Word-Datei mit Logo und Briefkopf:** das Briefpapier (`assets/briefpapier/viva-deluxe-a4.jpg`, Kopf + Fußzeile mit Bank/
   Siegeln) liegt als ganzseitiges Bild hinter dem Text in der Kopfzeile (jede Seite), Ränder wie im PDF, Anschrift links und
   Datum/Zeichen rechts in einer randlosen Tabelle. Mit LibreOffice geprüft; in Word lässt sich der Text normal bearbeiten.
+- 2026-11-13: **Neue Oberfläche nach Vorbild Blink** (Ahmed: „bau alles komplett ein, aber so, dass wir zurück können“).
+  **Rücksprung:** Stand vorher = Commit `835d981`. Je Benutzer umschaltbar: Mein Konto → „Neue Oberfläche / Bisherige
+  Oberfläche“ bzw. im Benutzermenü (`app.user_prefs.ui`, Standard neu; Migration `20270124000001`). Alles Neue ist nur
+  ergänzt (keine Daten gelöscht, keine Spalten entfernt); die neuen Tabellen/Spalten stören die bisherige Oberfläche nicht.
+  - **Menü links** (`NUI_*` in `layout.tsx`, CSS `src/web/nui-css.ts`, nur mit `body.nui`): oben Tagesarbeit (Übersicht,
+    Eingang mit Zahl, Planung, Zeiten & Freigabe, Arbeitsscheine, Formulare), darunter klappbare Gruppen (Kunden &
+    Aufträge, Personal, Rechnungen & Zahlungen, Einkauf & Nachunternehmer, Betrieb, Auswertungen, Verwaltung).
+    Objektleitung: Meine Objekte, Mein Team, Zeiten, Qualität … Adressen und Rechte unverändert.
+  - **Startseite als Cockpit:** schmaler Bordeaux-Balken, Kennzahlen als weiße Karten, Zeile Eingang / Personal (Ringe)
+    / Objekte (Vertretung fehlt, Tickets, Audit fällig) – `src/web/cockpit.tsx`; Objektleitung mit Eingang-Karte.
+  - **Eingang** (`/eingang`, `routes-inbox.tsx`): Urlaubsanträge (Genehmigen/Ablehnen direkt), Nachträge, Tickets,
+    Aufgaben (erledigt direkt), neue Personalbögen, ablaufende Aufenthaltstitel und Qualifikationen, auffällige Zeiten –
+    nur gelesen und verlinkt, je Rolle gefiltert; Zahl am Menüpunkt 60 s zwischengespeichert.
+  - **Zeilen mit ≥ 3 Knöpfen → „⋮“-Menü** (client.ts, nur neue Oberfläche).
+  - **Mitarbeiter:** Status wie Blink (Bewerber, In Einstellung, Vertrag unterschrieben, Aktiv, Ruhend, Gekündigt,
+    Freigestellt, Ausgeschieden; `employees.hr_stage`, gekündigt/ausgeschieden aus dem Austrittsdatum, maßgeblich für
+    Planung/Lohn bleibt `status`), „Aktionen ▾“ im Kopf, **Checkliste Einstellung** (Personalbogen, Stammdaten,
+    Aufenthaltstitel, Vertrag, Sofortmeldung/Lexware/App von Hand abhaken, Unterweisung, Kleidung, Schlüssel, Einsatz –
+    erkennt vieles selbst; komplett → automatisch „Aktiv“) und **Checkliste Austritt** (Kleidung/Schlüssel/Geräte zurück,
+    Abmeldung, letzte Abrechnung, Bescheinigung), eigene Punkte (`app.employee_checklist`, Migration `…002`,
+    `src/services/hr-stage.ts`). **Qualifikationen** mit Ablaufdatum (`app.employee_qualifications`, `…005`) → Eingang.
+  - **Objekt:** je Leistung Stand (abgerechnet / noch nicht abgerechnet / ausgeführt, nicht abgerechnet / fällig seit),
+    Reiter **Kosten & Ertrag** (Nachkalkulation des Objekts).
+  - **Leistungsarten ohne Preis** (Ahmed: „Preise überall anders“, „Leistungswert unnötig“): Einheit, übliche
+    Abrechnung, Standardtext, Arbeitsschein (`…003`); füllen neue Leistungen vor. Beim Anlegen einer Leistung
+    **Preis-Orientierung** „bisher bei uns: von–bis, Ø, n Objekte“ (nur Hinweis, nie vorbelegt).
+  - **Angebot → ins Objekt übernehmen** mit Häkchen Anlaufplan, Aufgabe „Einsätze planen“, Aufgabe „Nachunternehmer
+    beauftragen“ (feste IDs).
+  - **Rechnung automatisch nach Unterschrift** je Leistung (`site_services.auto_invoice`, `…004`, Standard aus): Schein mit
+    so einer Leistung unterschrieben → Rechnungsentwurf entsteht (ausgestellt wird weiter von Hand).
+  - **Planung:** je Person geplante Std. / Vertragssoll im Zeitraum mit Balken, Warnung Aufenthaltstitel (60 Tage).
+  - **Mitarbeiter-App:** „Krank melden“ (sofort eingetragen, ersetzt Urlaub § 9 BUrlG, Aufgabe „Vertretung einplanen“
+    je betroffenem Objekt für die Objektleitung) und „Problem melden“ (Ticket am Objekt), 7 Sprachen. **Rechtlich:**
+    Krankmeldung ersetzt nicht die AU vom Arzt (spätestens ab Tag 4, § 5 EFZG; eAU-Abruf durch den Arbeitgeber).
+  - **Formular-Baukasten** (`/formulare`, `src/services/forms.ts`, `routes-forms.tsx`, `…006`): Vorlagen mit Seiten
+    und Feldern (Text, Zahl, Datum, Auswahl, Ja/Nein, Häkchen, Fotos, Unterschrift, Hinweis), Pflichtfelder, für
+    Mitarbeiter/Objekt/ohne; ausfüllen am PC oder Handy (Objektleitung nur ihre Objekte/Leute) → PDF write-once in die
+    Akte, Eintrag mit Stand der Vorlage unveränderbar. Startvorlagen: Führerscheinkontrolle, Objektbegehung,
+    Adressänderung, Mitarbeiterumfrage. Noch nicht: Ausfüllen in der Mitarbeiter-App (/m), mehrsprachige Vorlagen.
+  - **Nicht gebaut:** Kundenportal (fragt vorher, weil Kunden dann Zugriff auf Daten bekommen); Formularfelder mit
+    Beschriftung im Feld (globaler Formular-Umbau, eigenes Vorhaben).
+  - Tests: 693 Unit-/DB-Tests grün; rot nur die schon vorher roten (Resturlaub-Übertrag, Arbeitstage, Rechnungsgruppen,
+    „immer unfertig“ – KoSIT lokal nicht gestartet bzw. datumsabhängig). Browser-Tests menu (17), login 47, planung 27,
+    rechte 48 grün. Fund: Prüfsumme von `20270123000002_brief_gruss.sql` war mit einem Zwischenstand eingetragen
+    (Datei seit dem Commit unverändert) → korrigiert.

@@ -79,13 +79,13 @@ check(
   new URL(o.url()).pathname === '/' && (await o.content()).includes('Ablaufende Aufenthaltstitel'),
   o.url(),
 );
-const menu = await o.locator('nav.menu').innerText();
+const menu = await o.locator('nav.menu, nav.nmenu').innerText();
 check(
   'Menü ohne Rechnungen/Angebote/Lieferanten/Transfer/Auswertungen',
   !/Rechnungen|Angebote|Lieferanten|Transfer|Auswertungen/.test(menu),
   menu.replace(/\s+/g, ' '),
 );
-const menuAll = (await o.locator('nav.menu').textContent()) ?? '';
+const menuAll = (await o.locator('nav.menu, nav.nmenu').textContent()) ?? '';
 check(
   'Menü mit Offenen Stellen und Personalbogen',
   /Offene Stellen/.test(menuAll) && /Personalbogen/.test(menuAll),
@@ -147,7 +147,7 @@ if (empOpt) {
 check('Objektleitung: Personalakte weiter gesperrt', (await o.goto(B + '/personal')).status() === 403);
 // Mein Team (PC): Liste mit Suche, Person mit Unterlagen
 check('Objektleitung: Mein Team erreichbar', (await o.goto(B + '/team')).status() === 200);
-check('Mein Team im Menü', /Mein Team/.test((await o.locator('nav.menu').textContent()) ?? ''));
+check('Mein Team im Menü', /Mein Team/.test((await o.locator('nav.menu, nav.nmenu').textContent()) ?? ''));
 const teamLink = o.locator('table.list a[href^="/team/"]').first();
 if (await teamLink.count()) {
   const nm = (await teamLink.innerText()).split(',')[0].trim();

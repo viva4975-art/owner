@@ -53,7 +53,7 @@ await a
   .evaluate((e, v) => (e.value = v), 'Entsorgung');
 await a.locator('#lines tbody tr').nth(1).locator('[name=price]').fill('80,00');
 await a.waitForTimeout(400);
-await a.click('nav.menu a.item:has-text("Übersicht")');
+await a.click('nav.menu a.item:has-text("Übersicht"), nav.nmenu a:has-text("Übersicht")');
 await a.waitForURL(B + '/');
 await a.goBack();
 await a.waitForLoadState();

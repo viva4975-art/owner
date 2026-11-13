@@ -1,6 +1,6 @@
 // Menü oben/links: Umschalten über das Benutzermenü, Aufklapp-Menü, Rücksprung (lokal)
 import { chromium } from 'playwright-core';
-const B = 'http://localhost:3000';
+const B = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const OUT = process.env.OUT ?? 'var/e2e';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 const ctx = await browser.newContext({
@@ -13,6 +13,14 @@ const check = (n, c) => {
   console.log(`${c ? '✓' : '✗'} ${n}`);
   if (!c) fails++;
 };
+await p.goto(B + '/konto');
+// Neue Oberfläche (Standard, Ahmed 13.11.): Menü links mit Gruppen; Umschalten auf „bisherige“ und zurück
+await p.goto(B + '/kunden');
+check('neue Oberfläche ist Standard', await p.evaluate(() => document.body.classList.contains('nui')));
+await p.goto(B + '/konto');
+await p.click('main button:has-text("Bisherige Oberfläche")');
+await p.goto(B + '/kunden');
+check('bisherige Oberfläche wählbar', !(await p.evaluate(() => document.body.classList.contains('nui'))));
 await p.goto(B + '/konto');
 await p.click('button:has-text("Oben (Menüleiste)")'); // Ausgangslage: Standard „oben“
 await p.goto(B + '/kunden');
@@ -80,6 +88,9 @@ check('über Mein Konto auf links', !(await p.evaluate(() => document.body.class
 await p.click('button:has-text("Oben (Menüleiste)")');
 await p.waitForLoadState();
 check('über Mein Konto wieder oben', await p.evaluate(() => document.body.classList.contains('menu-top')));
+await p.click('main button:has-text("Neue Oberfläche")');
+await p.goto(B + '/kunden');
+check('zurück zur neuen Oberfläche', await p.evaluate(() => document.body.classList.contains('nui')));
 await browser.close();
 console.log(`${fails ? 'FEHLER' : 'ok'}: ${fails} fehlgeschlagen`);
 process.exit(fails ? 1 : 0);

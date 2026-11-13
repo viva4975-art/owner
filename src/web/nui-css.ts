@@ -194,4 +194,17 @@ html body.nui main .tabbody,html.glas body.nui main .tabbody{background:transpar
 html body.nui main .tabbody>.tbl,html body.nui main .tabbody>div>.tbl{background:#fff!important;border:1px solid var(--n-l)!important;border-radius:14px!important;overflow:auto}
 html body.nui main .tabbody>.card,html body.nui main .tabbody .cols>.card,html body.nui main .tabbody .cols>div>.card{box-shadow:0 1px 2px rgba(0,0,0,.03)!important}
 body.nui .tabs a,body.nui .tabs summary{font-size:14px}
+
+/* Objekt-Übersicht schlicht: Gruppen als Karten in zwei Spalten (Ahmed 13.11.: „Objektübersicht alles einfach“) */
+body.nui .ent-av-ic{color:var(--n-b)}
+body.nui .ent-sub a{color:inherit;text-decoration:underline;text-decoration-color:#d0d0d6;text-underline-offset:2px}
+body.nui .ent-chips .eh-tag a{color:inherit}
+html body.nui .site-ov{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+html body.nui .site-ov>*{margin:0!important;min-width:0}
+html body.nui .site-ov>:first-child{grid-column:1/-1}
+html body.nui .site-ov>section,html body.nui .site-ov>div:not(.tbl){background:#fff;border:1px solid var(--n-l);border-radius:16px;padding:16px 18px!important;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+html body.nui .site-ov .panel-title,html body.nui .site-ov .ov-tasks>h2{font-size:15px;margin:0 0 8px!important}
+html body.nui .site-ov .ov-tasks .tbl{border:0!important;margin:0 -18px -16px!important;border-radius:0 0 16px 16px!important}
+html body.nui .site-ov .calm-cols{grid-template-columns:1fr 1fr}
+@media (max-width:900px){html body.nui .site-ov{grid-template-columns:minmax(0,1fr)}}
 `;

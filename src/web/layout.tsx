@@ -2396,7 +2396,7 @@ export const AppSwitch: FC<{ active: AppMode; ownTime?: boolean }> = ({ active, 
 };
 
 /** „+ Objekt anlegen“ als Hauptknopf, weitere Arten im kleinen Menü daneben (statt Auswahlliste + „Anlegen“). */
-const NewMenu: FC<{
+export const NewMenu: FC<{
   create: {
     options: [string, string][];
     selected?: string;

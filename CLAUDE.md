@@ -5527,3 +5527,9 @@ Testadresse.
   Kunde, Objekt …): Karten und Tabellen liegen als eigene weiße Karten auf dem grauen Grund statt Karte-in-Karte; Reiter bei
   Kunde/Objekt enger. Qualifikationen als eine Zeile (Name, Datum, Hinzufügen). Bisherige Oberfläche unverändert.
   Browser-Tests rechte 48, login 47, personal 11 grün.
+- 2026-11-13: **Objektübersicht einfach** (Ahmed: „Objektübersicht alles einfach“), nur neue Oberfläche: Objektseite ohne
+  linke Infospalte, Kopf als Karte wie beim Mitarbeiter (`SiteShell` mit `nui`): Symbol, Name + Nr., Adresse · Kunde
+  (Link), Schilder aktiv / Objektleitung (+ Telefon) / n Reinigungskräfte, rechts Bearbeiten, Inaktiv setzen, „+ Neu ▾“,
+  Reiter unten in der Karte (passen in eine Zeile). Übersicht als Karten in zwei Spalten: Aufgaben (ganze Breite),
+  Leistungen | Reinigungskräfte, Kunde & Ansprechpartner | Besonderheiten, Schließzeiten | Schule (`.site-ov`).
+  `NewMenu` aus `layout.tsx` exportiert. e2e rechte 48 grün; objekt/objektseiten scheitern wie vorher am Zurück/Vor-Schritt.

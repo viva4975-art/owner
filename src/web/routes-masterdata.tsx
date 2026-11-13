@@ -2043,6 +2043,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         counts={counts!}
         active={active}
         role={c.get('user').role}
+        nui={!!c.get('uiNew')}
         info={{ manager: manager ?? null, cleaners: cl!.n, customer: customer! }}
       >
         {content}

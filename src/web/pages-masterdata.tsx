@@ -15,7 +15,7 @@ import { Icon } from './icons.js';
 import { canAccess } from './permissions.js';
 import type { Role } from '../services/users.js';
 import { PaymentTermsField } from './payment-terms-field.js';
-import { FORMAT_LABEL, NEW_OPTIONS, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
+import { FORMAT_LABEL, NEW_OPTIONS, NewMenu, PageHead, type Tab, Tabs, euro, initials } from './layout.js';
 
 export const Field: FC<{
   name: string;
@@ -913,8 +913,10 @@ export const SiteShell: FC<{
   info: SiteInfo;
   role: Role;
   aside?: Child;
+  /** neue Oberfläche: Kopf als Karte (wie Mitarbeiter), keine linke Infospalte */
+  nui?: boolean;
   children?: Child;
-}> = ({ s, counts, active, info, role, aside, children }) => {
+}> = ({ s, counts, active, info, role, aside, nui, children }) => {
   const base = `/objekte/${s.id}`;
   const all: (Tab & { main?: boolean })[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base, main: true },
@@ -962,6 +964,100 @@ export const SiteShell: FC<{
   const more = visible.filter((t) => !t.main);
   const c = info.customer;
   const st = customerStatusOf(c as Customer);
+  const createOpts = {
+    options: [
+      ['aufgabe', 'Aufgabe'],
+      ['rechnung', 'Rechnung'],
+      ['angebot', 'Angebot'],
+      ...(role !== 'objektleitung'
+        ? ([
+            ['reinigungsvertrag', 'Reinigungsvertrag'],
+            ['aue-vertrag', 'Arbeitnehmerüberlassungsvertrag'],
+            ['material', 'Materialausgabe (interner Lieferschein)'],
+          ] as [string, string][])
+        : []),
+    ] as [string, string][],
+    suffix: 'für dieses Objekt',
+    context: { objekt: s.id, kunde: s.customer_id },
+  };
+  if (nui) {
+    const addr = [s.street, [s.postal_code, s.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    return (
+      <>
+        <div class="crumbs">
+          <a class="crumb-back" href="/objekte">
+            ‹ Zurück zu Objekte
+          </a>
+        </div>
+        <section class="ent-head">
+          <div class="ent-top">
+            <span class="ent-av ent-av-ic">
+              <Icon name="building" size={26} />
+            </span>
+            <div class="ent-name">
+              <h1>
+                {s.name}
+                <span class="no">{s.site_no}</span>
+              </h1>
+              <div class="ent-sub">
+                {addr && <span>{addr}</span>}
+                {addr && ' · '}
+                Kunde {canAccess(role, `/kunden/${c.id}`) ? (
+                  <a href={`/kunden/${c.id}`}>{c.name}</a>
+                ) : (
+                  c.name
+                )}{' '}
+                ({c.customer_no})
+              </div>
+              <div class="ent-chips">
+                {s.active ? <span class="tag ok">aktiv</span> : <span class="tag err">inaktiv</span>}
+                <span class="eh-tag">
+                  Objektleitung: {info.manager ? info.manager.name : 'keine'}
+                  {info.manager?.phone && (
+                    <>
+                      {' · '}
+                      <a href={`tel:${info.manager.phone.replace(/\s/g, '')}`}>{info.manager.phone}</a>
+                    </>
+                  )}
+                </span>
+                <span class="eh-tag">{info.cleaners} Reinigungskräfte</span>
+              </div>
+            </div>
+            <div class="ent-acts">
+              {canAccess(role, `${base}/bearbeiten`) && (
+                <a class="btn sec sm" href={`${base}/bearbeiten`}>
+                  <Icon name="pencil" /> Bearbeiten
+                </a>
+              )}
+              {role !== 'objektleitung' && (
+                <form method="post" action="/objekte/status" class="inline-form">
+                  <input type="hidden" name="ids" value={s.id} />
+                  <input type="hidden" name="zurueck" value={base} />
+                  {s.active ? (
+                    <button
+                      class="btn ghost sm"
+                      name="aktion"
+                      value="inaktiv"
+                      data-confirm="Objekt inaktiv setzen? Kein Monatslauf, keine Planung/Stempeln mehr; Daten bleiben erhalten."
+                    >
+                      Inaktiv setzen
+                    </button>
+                  ) : (
+                    <button class="btn sec sm" name="aktion" value="aktiv">
+                      Wieder aktiv setzen
+                    </button>
+                  )}
+                </form>
+              )}
+              <NewMenu create={createOpts} />
+            </div>
+          </div>
+          <Tabs tabs={tabs} more={more} active={active} />
+        </section>
+        <div class="tabbody">{children}</div>
+      </>
+    );
+  }
   return (
     <>
       <PageHead
@@ -1178,8 +1274,8 @@ export const SiteOverview: FC<{
     </li>
   );
   return (
-    <div class="main-col">
-      {tasksSlot}
+    <div class="main-col site-ov">
+      <section class="ov-tasks">{tasksSlot}</section>
       <section>
         <h2 class="panel-title">
           Aktive Leistungen <span class="cnt">({kinds.length})</span>

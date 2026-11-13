@@ -585,11 +585,6 @@ export function registerPurchasingRoutes(ctx: Ctx) {
       subcontracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
       true,
     );
-    const tracking = await billingTracking(
-      sql,
-      subcontracts.map((x) => x.id),
-      { limit: 13 },
-    );
     // Monatsaufteilung (Ahmed 30.10.): aktueller und nächster Monat – Zeiträume bis Ende des nächsten Monats
     const nextMonth = (() => {
       const [y, mo] = curMonth.split('-').map(Number) as [number, number];
@@ -733,9 +728,8 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         for (const [m, x] of parts) if (x !== 0n) e.byMonth.set(m, (e.byMonth.get(m) ?? 0n) + x);
         // „Rechnung fehlt“ je Monat mit dem Anteil dieses Monats
         if (v === null) {
-          if (sc.billing !== 'stunde')
-            addMiss(sc.id, rec ? p.start : (ms[0] ?? p.start), null, p.end < today, true, spanLabel);
-        } else if (v !== 0n || sc.billing !== 'stunde') {
+          addMiss(sc.id, rec ? p.start : (ms[0] ?? p.start), null, p.end < today, true, spanLabel);
+        } else {
           if (!parts.size) parts.set(rec ? p.start : (ms[0] ?? p.start), 0n);
           for (const [m, x] of parts) addMiss(sc.id, m, x, p.end < today, true, spanLabel);
         }
@@ -938,47 +932,21 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     ].sort((x, y) => y.number.localeCompare(x.number, 'de', { numeric: true }));
     // Je Nachunternehmer (Ahmed 11.11.): Auswahl Unterschrift fehlt / Rechnung nicht eingegangen / alle.
     // „Nicht eingegangen“ = Zeitraum vorbei ohne Eingangsrechnung; eine eingegangene (auch unbezahlte) Rechnung zählt.
-    const scById = new Map(subcontracts.map((x) => [x.id, x]));
     // Monat der fehlenden Rechnung (Ahmed 11.11.): monatlich = Monat des Zeitraums, nach Ausführung = Monat des Endes,
     // Material = Liefer- bzw. Bestellmonat
     const month = view === 'rechnung' && /^\d{4}-\d{2}$/.test(q.monat ?? '') ? q.monat! : '';
-    const missingOf = (r: Row): { label: string; v: bigint | null; m: string }[] => {
-      if (r.kind === 'material') {
-        const o = orders.find((x) => x.id === r.id);
-        return o && o.status === 'geliefert' && !invoiced.has(o.id)
-          ? [
-              {
-                label: `geliefert ${dateDe(o.delivery_date ?? o.order_date)}`,
-                v: o.net_cents,
-                m: (o.delivery_date ?? o.order_date).slice(0, 7),
-              },
-            ]
-          : [];
-      }
-      const sc = scById.get(r.id);
-      if (!sc) return [];
-      // ohne Enddatum: nach Ausführung = Ausführungstag ist der Beginn (Ahmed 11.11.: 05.11. ohne Ende stand nicht da)
-      const endDay = sc.valid_to ?? (isRecurringOrder(sc.frequency) ? null : sc.valid_from);
-      const ended = sc.status === 'beendet' || (!!endDay && endDay < today);
-      const mm = missBy.get(r.id);
-      return (tracking.get(r.id) ?? [])
-        .filter((p) => p.state === 'offen' || (p.state === 'bedarf' && ended))
-        .map((p) => {
-          let v: bigint | null = 0n;
-          let any = false;
-          for (const [k, x] of mm ?? [])
-            if (k >= p.start && k <= p.end.slice(0, 7)) {
-              any = true;
-              v = v === null || x.v === null ? null : v + x.v;
-            }
-          return {
-            label: p.state === 'bedarf' ? `nach Ausführung ${MON(p.start)}` : MON(p.start),
-            v: any ? v : null,
-            m: p.state === 'bedarf' ? p.end.slice(0, 7) : p.start,
-          };
-        })
-        .reverse();
-    };
+    // Alle Zeiträume ohne Rechnung je Monat – auch laufende Monate und noch nicht fertige Bestellungen nach Ausführung
+    // (Ahmed 13.11.: „alle für den jeweiligen Monat, egal ob fertig oder noch nicht, auch die monatlichen“).
+    // Grundlage sind dieselben Monatsanteile wie bei „erwartet“ (missBy): monatlich = Monat des Zeitraums, nach
+    // Ausführung = jeder Monat der Laufzeit mit seinem Anteil, Material = Bestellmonat (bestellt oder geliefert).
+    const missingOf = (r: Row): { label: string; v: bigint | null; m: string }[] =>
+      [...(missBy.get(r.id) ?? new Map<string, Miss>())]
+        .sort(([x], [y]) => y.localeCompare(x))
+        .map(([m, x]) => ({
+          label: `${x.span ? `${MON(m)} · ${x.span}` : MON(m)}${x.due ? '' : m > curMonth ? ' · kommt noch' : ' · läuft noch'}`,
+          v: x.v,
+          m,
+        }));
     const missingIn = (r: Row) => missingOf(r).filter((x) => !month || x.m === month);
     const stageOf = (r: Row) =>
       r.phase === 'erledigen' ? (r.unsigned ? (r.recurring ? 'laufend' : 'einmalig') : 'entwurf') : r.phase;
@@ -1278,11 +1246,11 @@ export function registerPurchasingRoutes(ctx: Ctx) {
         })}
         <details class="small mut bs-explain">
           <summary>So wird gezählt</summary>
-          Rechnung nicht eingegangen = Abrechnungszeitraum ist vorbei (monatliche Bestellungen: Monat
-          abgelaufen; nach Ausführung: Bestellung beendet bzw. ohne Enddatum der Ausführungstag vorbei) und es
-          ist keine Eingangsrechnung dafür erfasst. Sobald eine Rechnung erfasst ist – auch wenn sie noch
-          nicht bezahlt ist –, steht die Bestellung nicht mehr dort. Material: geliefert, aber keine Rechnung.
-          Nachunternehmer ab Oktober 2026. Beträge netto, geschätzt laut Bestellung.
+          Rechnung nicht eingegangen = für den Monat ist noch keine Eingangsrechnung erfasst – egal ob der
+          Zeitraum schon vorbei ist oder noch läuft („läuft noch“): monatliche Bestellungen je Monat (auch der
+          laufende und der nächste), nach Ausführung in jedem Monat der Laufzeit, Material ab Bestellung.
+          Sobald eine Rechnung erfasst ist – auch wenn sie noch nicht bezahlt ist –, steht der Monat nicht
+          mehr dort. Nachunternehmer ab Oktober 2026. Beträge netto, geschätzt laut Bestellung.
         </details>
         {allRows
           .filter((r) => r.canFinish)

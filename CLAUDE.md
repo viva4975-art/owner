@@ -5452,3 +5452,9 @@ Testadresse.
     Aufenthaltstitel, Abwesend, Meine Aufgaben, Meine Objekte (letztes Audit).
   - Karten „Wiedervorlagen Akquise“ und „Nachkalkulation Vormonat“ entfernt (gespeicherte Startseiten verwerfen sie);
     neue Karte **„Ablaufende Aufenthaltstitel“** fürs Büro (60 Tage, statt Zeilen in den Hinweisen).
+- 2026-11-13: **„Rechnung nicht eingegangen“ je Monat vollständig** (Ahmed: „alle für den jeweiligen Monat, egal ob fertig
+  oder noch nicht, auch die monatlichen selbst“): Der Reiter zeigt jetzt jeden Monat ohne erfasste Eingangsrechnung –
+  monatliche Bestellungen auch im laufenden Monat („läuft noch“) und im nächsten („kommt noch“), Bestellungen nach
+  Ausführung in jedem Monat ihrer Laufzeit, auch wenn sie noch nicht beendet sind, Material ab Bestellung (bestellt oder
+  geliefert). Auch „je Stunde“ ohne erfasste Stunden steht drin. Grundlage sind dieselben Monatsanteile wie die
+  erwarteten Beträge (`missBy` in `routes-purchasing.tsx`); vorher nur abgelaufene Zeiträume. Monats-Chips zählen danach.

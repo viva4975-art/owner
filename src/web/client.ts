@@ -924,6 +924,135 @@ export const CLIENT_JS = String.raw`
     document.addEventListener('click', function (e) {
       Array.prototype.forEach.call(document.querySelectorAll('details.kb[open]'), function (k) { if (!k.contains(e.target)) k.open = false; });
     });
+    // ---- Schritt für Schritt beim Neu-Anlegen (Ahmed 13.11.: „Eingabe, bei der man durchgeführt wird und immer auf Weiter geht“) ----
+    // Nur neue Datensätze (data-version ohne Zahl) oder data-wizard; Abschnitte = Überschriften im Formular, sonst je 4 Felder.
+    (function wizard() {
+      var wzOff = false, wzSet = null; try { wzSet = localStorage.getItem('vd_wz'); } catch (e) {}
+      wzOff = wzSet === 'off';
+      // Automatische Browser-Tests füllen alle Felder auf einmal: dort aus, ausser ausdrücklich eingeschaltet (vd_wz=on)
+      if (navigator.webdriver && wzSet !== 'on') return;
+      var forms = Array.prototype.filter.call(document.querySelectorAll('main form'), function (f) {
+        if ((f.getAttribute('method') || '').toLowerCase() !== 'post' || f.hasAttribute('data-nowizard') || f.querySelector('[data-step]')) return false;
+        if (!f.hasAttribute('data-wizard')) {
+          var v = f.getAttribute('data-version');
+          if (v === null || /[0-9]/.test(v)) return false;
+        }
+        return f.querySelectorAll('label').length >= 6;
+      });
+      forms.forEach(function (f) {
+        if (wzOff) {
+          var sw = document.createElement('p'); sw.className = 'wz-switch';
+          sw.innerHTML = '<button type="button" class="wz-all">Schritt für Schritt eingeben</button>';
+          f.insertBefore(sw, f.firstChild);
+          sw.querySelector('button').onclick = function () { try { localStorage.removeItem('vd_wz'); } catch (e) {} location.reload(); };
+          return;
+        }
+        var foot = null, steps = [], cur = null;
+        Array.prototype.slice.call(f.children).forEach(function (e) {
+          if (e.matches('.actions,.formfoot')) { foot = e; return; }
+          if (e.tagName === 'SCRIPT' || (e.tagName === 'INPUT' && e.type === 'hidden')) return;
+          if (/^H[23]$/.test(e.tagName)) { cur = { title: e.textContent.replace('*', '').replace(/[(].*[)]/, '').trim(), els: [e] }; steps.push(cur); return; }
+          if (!cur) { cur = { title: '', els: [] }; steps.push(cur); }
+          cur.els.push(e);
+        });
+        function hasField(els) {
+          return els.some(function (e) { return e.matches('input:not([type=hidden]),select,textarea') || e.querySelector('input:not([type=hidden]),select,textarea'); });
+        }
+        steps = steps.filter(function (s) { return hasField(s.els); });
+        if (steps.length < 2) {
+          var grids = Array.prototype.filter.call(f.querySelectorAll('.grid'), function (g) { return g.closest('form') === f; });
+          var g = grids.sort(function (a, b) { return b.children.length - a.children.length; })[0];
+          if (!g || g.children.length < 6) return;
+          steps = []; var kids = Array.prototype.slice.call(g.children).filter(function (k) { return !k.matches('.formfoot'); });
+          for (var i = 0; i < kids.length; i += 4) {
+            var first = kids[i].querySelector('label');
+            steps.push({ title: first ? first.textContent.replace('*', '').trim() : '', els: kids.slice(i, i + 4) });
+          }
+          // Rest des Formulars (ausserhalb des Rasters) gehört zum letzten Schritt
+          Array.prototype.slice.call(f.children).forEach(function (e) {
+            if (e === g || e === foot || e.contains(g) || e.tagName === 'SCRIPT' || (e.tagName === 'INPUT' && e.type === 'hidden')) return;
+            if (hasField([e])) steps[steps.length - 1].els.push(e);
+          });
+        }
+        if (steps.length < 2 || !foot) return;
+        steps.forEach(function (s, n) { if (!s.title) s.title = 'Schritt ' + (n + 1); if (/^H[23]$/.test(s.els[0].tagName)) s.els[0].classList.add('wz-hh'); });
+        var bar = document.createElement('div'); bar.className = 'wz-bar';
+        bar.innerHTML = '<div class="wz-top"><div><div class="wz-n"></div><b></b></div><button type="button" class="wz-all">Alle Felder auf einmal anzeigen</button></div><div class="wz-prog"><span></span></div><ol class="wz-dots"></ol>';
+        var dots = bar.querySelector('.wz-dots');
+        steps.forEach(function (s, n) {
+          var li = document.createElement('li'); var b = document.createElement('button'); b.type = 'button';
+          b.innerHTML = '<i>' + (n + 1) + '</i><span></span>'; b.querySelector('span').textContent = s.title;
+          b.onclick = function () { if (n < at || okUpTo(n)) show(n); };
+          li.appendChild(b); dots.appendChild(li);
+        });
+        var firstEl = steps[0].els[0]; if (firstEl.parentNode !== f) { var gp = firstEl.closest('.grid'); if (gp) firstEl = gp; } firstEl.parentNode.insertBefore(bar, firstEl);
+        var nav = document.createElement('div'); nav.className = 'wz-nav';
+        nav.innerHTML = '<button type="button" class="btn sec" data-wz-back>‹ Zurück</button><button type="button" class="btn" data-wz-next>Weiter ›</button>';
+        foot.appendChild(nav);
+        var back = nav.querySelector('[data-wz-back]'), next = nav.querySelector('[data-wz-next]'), at = 0;
+        function fieldsOf(s) {
+          var out = [];
+          s.els.forEach(function (e) {
+            if (e.matches('input,select,textarea')) out.push(e);
+            Array.prototype.forEach.call(e.querySelectorAll('input,select,textarea'), function (x) { out.push(x); });
+          });
+          return out.filter(function (x) { return x.type !== 'hidden' && !x.closest('[hidden]') && !x.disabled; });
+        }
+        function valid(n, report) {
+          var fs = fieldsOf(steps[n]);
+          for (var i = 0; i < fs.length; i++) if (!fs[i].checkValidity()) {
+            if (report) {
+              show(n); var x = fs[i];
+              if (!x.offsetParent) {
+                var vis = Array.prototype.filter.call(x.parentElement.querySelectorAll('input,button'), function (y) { return y.offsetParent && y.type !== 'hidden'; })[0];
+                if (vis && vis.setCustomValidity) { vis.setCustomValidity('Bitte auswählen.'); vis.reportValidity(); vis.addEventListener('input', function () { vis.setCustomValidity(''); }, { once: true }); setTimeout(function () { vis.setCustomValidity(''); }, 4000); }
+                else x.parentElement.scrollIntoView({ block: 'center' });
+              } else x.reportValidity();
+            }
+            return false;
+          }
+          return true;
+        }
+        function okUpTo(n) { for (var i = at; i < n; i++) if (!valid(i, true)) return false; return true; }
+        function show(n) {
+          at = n;
+          steps.forEach(function (s, i) { s.els.forEach(function (e) { e.classList.toggle('wz-off', i !== n); }); });
+          var last = n === steps.length - 1;
+          Array.prototype.forEach.call(foot.children, function (c) { if (c !== nav) c.classList.toggle('wz-off', !last); });
+          back.classList.toggle('wz-off', n === 0); next.classList.toggle('wz-off', last);
+          nav.classList.toggle('wz-last', last);
+          bar.querySelector('.wz-n').textContent = 'Schritt ' + (n + 1) + ' von ' + steps.length;
+          bar.querySelector('b').textContent = steps[n].title;
+          bar.querySelector('.wz-prog span').style.width = Math.round((n + 1) / steps.length * 100) + '%';
+          Array.prototype.forEach.call(dots.querySelectorAll('button'), function (b, i) { b.classList.toggle('on', i === n); b.classList.toggle('done', i < n); });
+        }
+        function goNext() {
+          if (!valid(at, true)) return;
+          show(Math.min(steps.length - 1, at + 1));
+          var fs = fieldsOf(steps[at]); if (fs[0]) try { fs[0].focus({ preventScroll: true }); } catch (e) {}
+          bar.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        next.onclick = goNext;
+        back.onclick = function () { show(Math.max(0, at - 1)); bar.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+        bar.querySelector('.wz-all').onclick = function () {
+          try { localStorage.setItem('vd_wz', 'off'); } catch (e) {}
+          steps.forEach(function (s) { s.els.forEach(function (e) { e.classList.remove('wz-off', 'wz-hh'); }); });
+          Array.prototype.forEach.call(foot.children, function (c) { c.classList.remove('wz-off'); });
+          nav.remove(); bar.remove();
+        };
+        f.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter' || !bar.isConnected || at === steps.length - 1) return;
+          var t = e.target; if (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.closest('.cbx')) return;
+          e.preventDefault(); goNext();
+        });
+        // Beim Speichern: ungültiges Feld in einem anderen Schritt → dorthin springen
+        f.addEventListener('invalid', function (e) {
+          if (!bar.isConnected) return;
+          for (var i = 0; i < steps.length; i++) if (fieldsOf(steps[i]).indexOf(e.target) >= 0) { if (i !== at) show(i); break; }
+        }, true);
+        show(0);
+      });
+    })();
   }
 
   // ---- Tabellenköpfe bleiben beim Scrollen oben stehen (Ahmed 29.10.: „Überschriften sollen mitscrollen“) ----

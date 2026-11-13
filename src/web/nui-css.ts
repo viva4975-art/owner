@@ -207,4 +207,66 @@ html body.nui .site-ov .panel-title,html body.nui .site-ov .ov-tasks>h2{font-siz
 html body.nui .site-ov .ov-tasks .tbl{border:0!important;margin:0 -18px -16px!important;border-radius:0 0 16px 16px!important}
 html body.nui .site-ov .calm-cols{grid-template-columns:1fr 1fr}
 @media (max-width:900px){html body.nui .site-ov{grid-template-columns:minmax(0,1fr)}}
+
+/* Eingabefelder im neuen Design (Ahmed 13.11.): Beschriftung über dem Feld, zwei Spalten, ruhige graue Felder */
+html body.nui main form[method="post" i] .grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px 18px!important;max-width:940px}
+html body.nui main form[method="post" i] .grid>div:not(.chk){display:flex!important;flex-direction:column;gap:6px;align-items:stretch;grid-column:auto!important}
+html body.nui main form[method="post" i] .grid>div:not(.chk)>:not(label){grid-column:auto}
+html body.nui main form[method="post" i] .grid>div:has(textarea),html body.nui main form[method="post" i] .grid>div:has(fieldset),html body.nui main form[method="post" i] .grid>div:has(.chips),html body.nui main form[method="post" i] .grid>div:has(table),html body.nui main form[method="post" i] .grid>.full,html body.nui main form[method="post" i] .grid>.formfoot{grid-column:1/-1!important}
+html body.nui main form[method="post" i] .grid>.chk{padding-left:0!important;align-self:end;min-height:42px;display:flex;align-items:center;gap:8px}
+html body.nui main form[method="post" i] label{font-size:13px;font-weight:600;color:var(--n-t2);margin:0;letter-spacing:.005em}
+html body.nui main form[method="post" i] .chk label,html body.nui main form[method="post" i] label:has(input[type=checkbox]),html body.nui main form[method="post" i] label:has(input[type=radio]){font-size:14.5px;font-weight:500;color:var(--n-t)}
+html body.nui main form input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=submit]):not([type=range]),html body.nui main form select,html body.nui main form textarea{min-height:42px;border-radius:10px!important;border:1px solid #e3e3e8!important;background:#f7f7f9!important;font-size:15px;padding:9px 12px;box-shadow:none!important;transition:background .15s,border-color .15s,box-shadow .15s;width:100%}
+html body.nui main form textarea{min-height:92px;line-height:1.45}
+html body.nui main form input:hover:not(:focus):not([type=checkbox]):not([type=radio]),html body.nui main form select:hover:not(:focus),html body.nui main form textarea:hover:not(:focus){border-color:#d2d2d8!important}
+html body.nui main form input:focus:not([type=checkbox]):not([type=radio]),html body.nui main form select:focus,html body.nui main form textarea:focus{background:#fff!important;border-color:var(--n-b)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--n-b) 16%,transparent)!important;outline:0}
+html body.nui main form input[type=checkbox],html body.nui main form input[type=radio]{accent-color:var(--n-b);width:18px;height:18px}
+html body.nui main form h2.form-section,html body.nui main form[method="post" i]>h3{font-size:16px;font-weight:650;color:var(--n-t);margin:26px 0 12px;padding:0;border:0}
+html body.nui main form h2.form-section:first-of-type,html body.nui main form[method="post" i]>h3:first-of-type{margin-top:2px}
+html body.nui main form .help,html body.nui main form .hint{font-size:13px;color:var(--n-t2)}
+html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start}
+@media (max-width:760px){html body.nui main form[method="post" i] .grid{grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
+
+/* Schritt für Schritt (Neu anlegen) */
+html body.nui main form .wz-off,html body.nui main form[method] .grid>div.wz-off.wz-off,html body.nui main form[method]>.wz-off,html body.nui main form[method] .wz-off{display:none!important}
+body.nui .wz-bar{margin:0 0 18px}
+body.nui .wz-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+body.nui .wz-top b{font-size:18px;color:var(--n-t)}
+body.nui .wz-top .wz-n{font-size:13px;color:var(--n-t2);font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+body.nui .wz-all{background:none;border:0;color:var(--n-b);font-size:13.5px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+body.nui .wz-prog{height:6px;background:#efeff2;border-radius:6px;overflow:hidden;margin:10px 0 12px}
+body.nui .wz-prog span{display:block;height:100%;background:var(--n-b);border-radius:6px;transition:width .25s}
+body.nui .wz-dots{display:flex;gap:6px;flex-wrap:wrap;list-style:none;margin:0;padding:0}
+body.nui .wz-dots button{border:1px solid var(--n-l);background:#fff;color:var(--n-t2);border-radius:999px;padding:4px 11px 4px 6px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+body.nui .wz-dots button i{font-style:normal;width:20px;height:20px;border-radius:50%;background:#efeff2;display:grid;place-items:center;font-size:11.5px;font-weight:650}
+body.nui .wz-dots button.on{border-color:var(--n-b);color:var(--n-b);background:var(--n-bh)}
+body.nui .wz-dots button.on i,body.nui .wz-dots button.done i{background:var(--n-b);color:#fff}
+body.nui .wz-nav{display:flex;gap:8px;margin-left:auto}
+body.nui .wz-switch{margin:0 0 14px;font-size:13.5px}
+@media (max-width:760px){body.nui .wz-dots button span{display:none}body.nui .wz-dots button{padding:4px}body.nui .wz-nav:not(.wz-last){margin-left:0;width:100%}body.nui .wz-nav .btn{flex:1}}
+
+/* Kopfkarte am Handy kompakt (Ahmed 13.11.: „Objekte beim Namen komisch“) */
+@media (max-width:760px){
+html body.nui .ent-head{padding:14px 16px 0}
+body.nui .ent-top{grid-template-columns:auto minmax(0,1fr)!important;gap:10px 12px;align-items:start;padding-bottom:12px}
+body.nui .ent-av{width:42px;height:42px;font-size:15px}
+body.nui .ent-av svg{width:20px;height:20px}
+html body.nui .ent-name h1{font-size:19px;line-height:1.25}
+body.nui .ent-name h1 .no{display:block;margin:2px 0 0;font-size:13px}
+body.nui .ent-sub{font-size:13px;margin-top:4px}
+body.nui .ent-chips{gap:5px;margin-top:8px}
+body.nui .ent-chips .eh-tag,body.nui .ent-chips .tag,body.nui .ent-chips .pill{font-size:12px;padding:2px 8px}
+body.nui .ent-acts{grid-column:1/-1;margin:0!important;display:flex;flex-wrap:nowrap;gap:6px;justify-content:flex-start}
+body.nui .ent-acts>*{flex:0 1 auto}
+body.nui .ent-acts .btn,body.nui .ent-acts summary{min-height:36px;padding:6px 12px;font-size:14px;white-space:nowrap}
+body.nui .ent-acts>details:last-child,body.nui .ent-acts>.newmenu{margin-left:auto}
+html body.nui .ent-head .tabs{margin:0 -16px!important;padding:10px 12px!important;display:flex!important;flex-wrap:wrap!important;gap:6px!important}
+html body.nui .ent-head .tabs>a,html body.nui .ent-head .tabs>details>summary{border:1px solid var(--n-l)!important;border-radius:999px!important;padding:5px 11px!important;font-size:13.5px!important;margin:0!important;background:#fff}
+html body.nui .ent-head .tabs>a.on{background:var(--n-bh)!important;border-color:var(--n-b)!important;color:var(--n-b)!important;box-shadow:none!important}
+html body.nui .ent-head .tabs>a::after{display:none!important}
+}
+
+html body.nui main form[method]>.wz-hh,html body.nui main form[method] h2.wz-hh{display:none!important}
+html body.nui main form[method="post" i]>label{display:block;margin:16px 0 6px}
+html body.nui main form[method="post" i]>input:not([type=hidden]),html body.nui main form[method="post" i]>textarea,html body.nui main form[method="post" i]>select{max-width:940px}
 `;

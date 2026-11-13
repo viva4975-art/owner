@@ -5533,3 +5533,15 @@ Testadresse.
   Reiter unten in der Karte (passen in eine Zeile). Übersicht als Karten in zwei Spalten: Aufgaben (ganze Breite),
   Leistungen | Reinigungskräfte, Kunde & Ansprechpartner | Besonderheiten, Schließzeiten | Schule (`.site-ov`).
   `NewMenu` aus `layout.tsx` exportiert. e2e rechte 48 grün; objekt/objektseiten scheitern wie vorher am Zurück/Vor-Schritt.
+- 2026-11-13: **Eingabefelder im neuen Design + Schritt für Schritt** (Ahmed: „Eingabefelder auch im neuen Design“, „Eingabe,
+  bei der man durchgeführt wird und immer auf Weiter geht“, „Objekte am Handy beim Namen komisch“), nur neue Oberfläche
+  (`nui-css.ts`, `client.ts`): Formulare (POST) mit Beschriftung über dem Feld, zwei Spalten am PC (Textfelder/Tabellen
+  ganze Breite), graue Felder 42 px mit Bordeaux-Fokusring, Speichern-Leiste unten mitlaufend. **Neu anlegen Schritt für
+  Schritt:** Formulare neuer Datensätze (`data-version` ohne Zahl, z. B. Mitarbeiter, Kunde, Objekt; oder `data-wizard`)
+  zeigen je Abschnitt (Überschrift im Formular, sonst je 4 Felder) einen Schritt mit Fortschrittsbalken, Punkten zum
+  Springen, Zurück/Weiter; Weiter prüft die Pflichtfelder des Schritts, Enter = Weiter, Speichern erst im letzten
+  Schritt (ungültiges Feld woanders → Sprung dorthin). „Alle Felder auf einmal anzeigen“ schaltet je Browser ab
+  (localStorage `vd_wz`). Bearbeiten bestehender Datensätze bleibt ein Formular. Unter automatischen Browser-Tests
+  (`navigator.webdriver`) aus, außer `vd_wz=on`. Objektkopf am Handy: kleineres Symbol, Name 19 px mit Nummer darunter,
+  Knöpfe in einer Zeile, Reiter als Pillen. e2e personal, rechte, login, leistungen, einkauf grün; uebergabe 1 Fehler
+  wie vorher (Objekt-Reiter Übergaben für Objektleitung).

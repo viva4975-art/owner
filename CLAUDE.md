@@ -5458,3 +5458,12 @@ Testadresse.
   Ausführung in jedem Monat ihrer Laufzeit, auch wenn sie noch nicht beendet sind, Material ab Bestellung (bestellt oder
   geliefert). Auch „je Stunde“ ohne erfasste Stunden steht drin. Grundlage sind dieselben Monatsanteile wie die
   erwarteten Beträge (`missBy` in `routes-purchasing.tsx`); vorher nur abgelaufene Zeiträume. Monats-Chips zählen danach.
+- 2026-11-13: **Freier Brief: Anschrift optional, Word, Bearbeiten** (Ahmed, Brief an eine Botschaft): Anschrift ist ein
+  freies Textfeld ohne Pflicht (Verwaltung → Briefe und Briefe bei Kunde/Objekt/Lieferant/Mitarbeiter). Passt der Text auf
+  Name/Straße/„PLZ Ort“, wird er aufgeteilt, sonst stehen die Zeilen wie eingegeben im Brief (z. B. „Botschaft …“ + Ort),
+  leer = Brief ohne Anschrift (`addressFromText` in `letters.ts`). Knopf **„Als Word herunterladen“** neben „PDF erstellen“
+  (schlichte .docx, legt den Brief ebenfalls ab); im Briefarchiv je Brief **Word** und **Bearbeiten**: Formular mit allen
+  Angaben vorbelegt, Speichern = neue Fassung mit neuer Nummer und Verweis (`letters.based_on`, Migration
+  `20270123000001`, „neue Fassung von BR-…“), der alte Brief bleibt write-once. Brief-ID jetzt aus Formular + Inhalt →
+  doppelt absenden legt nichts doppelt an, geänderter Text im selben Formular = neuer Brief. Formulare mit
+  `data-resubmit` sperren nach dem Absenden nur 1,5 s (PDF/Word, Seite bleibt stehen).

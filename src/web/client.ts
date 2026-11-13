@@ -400,7 +400,8 @@ export const CLIENT_JS = String.raw`
     if (f.dataset.sent === '1') { e.preventDefault(); return; }
     if (f.method && f.method.toLowerCase() === 'post') {
       f.dataset.sent = '1';
-      setTimeout(function () { f.dataset.sent = ''; }, 8000);
+      // data-resubmit: Formular öffnet PDF/Download, Seite bleibt stehen → nur kurz sperren
+      setTimeout(function () { f.dataset.sent = ''; }, f.hasAttribute('data-resubmit') ? 1500 : 8000);
     }
   });
   // Beim Zurückkommen aus dem bfcache Formulare wieder freigeben

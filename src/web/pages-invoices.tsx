@@ -149,7 +149,13 @@ export const toEditorLine = (l: LineRow): EditorLine => ({
  * Leistungsart. Bisherige Texte, die keiner Leistungsart entsprechen, bleiben als eigene Auswahl („bisher“) erhalten.
  */
 export const TypeSelect: FC<{
-  types: (ServiceTypeOption & { labor_share_bp?: number | null })[];
+  types: (ServiceTypeOption & {
+    labor_share_bp?: number | null;
+    unit_code?: string | null;
+    default_cycle?: string | null;
+    default_text?: string | null;
+    price_hint?: string | null;
+  })[];
   typeId?: string | null | undefined;
   desc?: string | null | undefined;
   name?: string;
@@ -185,6 +191,10 @@ export const TypeSelect: FC<{
             data-labor={
               t.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : undefined
             }
+            data-unit={t.unit_code ?? undefined}
+            data-cycle={t.default_cycle ?? undefined}
+            data-text={t.default_text ?? undefined}
+            data-price={t.price_hint ?? undefined}
           >
             {t.name}
           </option>

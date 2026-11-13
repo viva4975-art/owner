@@ -27,7 +27,8 @@ import {
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
-import { formatDateDe, monthBounds, monthLabelDe, todayBerlin } from '../domain/invoice/calc.js';
+import { UNIT_LABELS } from '../domain/invoice/types.js';
+import { CYCLE_LABEL, formatDateDe, monthBounds, monthLabelDe, todayBerlin } from '../domain/invoice/calc.js';
 import { billingPreview, parseBillAddress, runMonthly } from '../services/invoices.js';
 import {
   groupBillingInput,
@@ -43,6 +44,7 @@ import {
   listCustomers,
   getService,
   listServiceTypes,
+  servicePriceHints,
   listServices,
   saveServiceType,
   listSites,
@@ -2488,13 +2490,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           copy = true;
         }
       }
-      const [types, groups, targets, buyer] = await Promise.all([
+      const [rawTypes, groups, targets, buyer, hints] = await Promise.all([
         listServiceTypes(sql),
         listInvoiceGroups(sql, s.customer_id),
         sql<{ id: string; site_no: string; name: string }[]>`
           select id, site_no, name from app.sites where customer_id = ${s.customer_id} and active order by site_no`,
         buildBuyerSnapshot(sql, s.customer_id, s.id).catch(() => null),
+        servicePriceHints(sql),
       ]);
+      const types = rawTypes.map((t) => ({ ...t, price_hint: hints.get(t.id) ?? null }));
       return (
         <ServiceForm
           defaultAddress={
@@ -2567,12 +2571,20 @@ export function registerMasterdataRoutes(ctx: Ctx) {
           angehakte Leistungsarten zählen in der Nachkalkulation mit ihrem Umsatz beim internen Objekt
           „Sonderreinigung“ (dort laufen auch Zeiten und Kosten der Sonderreiniger), nicht beim Kunden-Objekt.
         </p>
-        <div class="tbl" style="max-width:780px">
+        <p class="mut small" style="max-width:780px">
+          Einheit, übliche Abrechnung, Standardtext und Arbeitsschein werden bei neuen Leistungen
+          vorgeschlagen. Einen Preis gibt es hier bewusst nicht – er steht je Objekt bzw. im Angebot. Beim
+          Anlegen einer Leistung zeigt die App, was wir für diese Leistungsart bisher verlangen.
+        </p>
+        <div class="tbl" style="max-width:1100px">
           <table>
             <thead>
               <tr>
                 <th>Leistungsart</th>
+                <th>Einheit</th>
+                <th>übliche Abrechnung</th>
                 <th class="r">Lohnkostenanteil %</th>
+                <th>Arbeitsschein</th>
                 <th>Sonderreinigung</th>
                 <th>aktiv</th>
                 <th></th>
@@ -2594,6 +2606,41 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                         placeholder="neue Leistungsart"
                         aria-label="Leistungsart"
                       />
+                      <details class="lt-text">
+                        <summary class="small">
+                          {t?.default_text ? 'Standardtext ✓' : 'Standardtext …'}
+                        </summary>
+                        <textarea
+                          form={f}
+                          name="default_text"
+                          rows={3}
+                          maxlength={1000}
+                          aria-label="Standardtext für Angebot und Rechnung"
+                          placeholder="Text, der bei neuen Leistungen als Beschreibung vorgeschlagen wird"
+                        >
+                          {t?.default_text ?? ''}
+                        </textarea>
+                      </details>
+                    </td>
+                    <td style="width:130px">
+                      <select form={f} name="unit_code" aria-label="Einheit">
+                        <option value="">–</option>
+                        {Object.entries(UNIT_LABELS).map(([k, v]) => (
+                          <option value={k} selected={t?.unit_code === k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style="width:150px">
+                      <select form={f} name="default_cycle" aria-label="übliche Abrechnung">
+                        <option value="">–</option>
+                        {Object.entries(CYCLE_LABEL).map(([k, v]) => (
+                          <option value={k} selected={t?.default_cycle === k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td style="width:150px">
                       <input
@@ -2604,6 +2651,15 @@ export function registerMasterdataRoutes(ctx: Ctx) {
                           t?.labor_share_bp != null ? String(t.labor_share_bp / 100).replace('.', ',') : ''
                         }
                         aria-label="Lohnkostenanteil"
+                      />
+                    </td>
+                    <td style="width:100px">
+                      <input
+                        type="checkbox"
+                        form={f}
+                        name="work_report"
+                        checked={!!t?.work_report}
+                        aria-label="Arbeitsschein üblich"
                       />
                     </td>
                     <td style="width:120px">
@@ -2652,6 +2708,11 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       laborShareBp: ls == null ? null : Math.round(ls * 100),
       active: b.active === 'on',
       specialCleaning: b.special_cleaning === 'on',
+      unitCode: typeof b.unit_code === 'string' && b.unit_code in UNIT_LABELS ? b.unit_code : null,
+      defaultText: typeof b.default_text === 'string' ? b.default_text : null,
+      defaultCycle:
+        typeof b.default_cycle === 'string' && b.default_cycle in CYCLE_LABEL ? b.default_cycle : null,
+      workReport: b.work_report === 'on',
       expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
     });
     return back(c, '/einstellungen/leistungsarten', { ok: 'Gespeichert.' });
@@ -2678,6 +2739,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       parsed.data.labor_share = t.labor_share_bp;
     }
     if (body.attach_timesheet_field === '1') parsed.data.attach_timesheet = body.attach_timesheet === 'on';
+    if (body.auto_invoice_field === '1') parsed.data.auto_invoice = body.auto_invoice === 'on';
     await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress, {
       reason: typeof body.change_reason === 'string' ? body.change_reason : null,
       requireReason: true,

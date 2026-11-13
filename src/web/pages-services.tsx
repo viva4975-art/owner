@@ -82,6 +82,7 @@ const ServiceGroup: FC<{
                     sv.type_name,
                     sv.always_unfinished ? 'immer unfertig' : null,
                     sv.attach_timesheet ? 'mit Stundennachweis' : null,
+                    sv.auto_invoice ? 'Rechnung nach Unterschrift' : null,
                     sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
                     target(sv) === 'wie Objekt' ? null : target(sv),
                   ]
@@ -298,7 +299,7 @@ export const ServiceForm: FC<{
   siteId: string;
   id: string;
   sv: SiteService | null;
-  types: ServiceType[];
+  types: (ServiceType & { price_hint?: string | null })[];
   groups: InvoiceGroupRow[];
   today: string;
   siteNo?: string;
@@ -387,8 +388,18 @@ export const ServiceForm: FC<{
               typeId={sv?.service_type_id}
               desc={sv?.description}
               required
-              onchange="var o=this.options[this.selectedIndex],d=this.form.querySelector('[name=description]');if(d)d.value=o&&(o.value||o.hasAttribute('data-keep'))?o.text:'';var l=document.getElementById('labor_share');if(l&&!l.value.trim()&&o&&o.dataset.labor)l.value=o.dataset.labor"
+              onchange={`var o=this.options[this.selectedIndex],f=this.form,d=f.querySelector('[name=description]');if(d)d.value=o&&(o.value||o.hasAttribute('data-keep'))?o.text:'';var l=document.getElementById('labor_share');if(l&&!l.value.trim()&&o&&o.dataset.labor)l.value=o.dataset.labor;${sv ? '' : "if(o&&o.dataset.unit){var u=document.getElementById('unit_code');if(u){u.value=o.dataset.unit;u.dispatchEvent(new Event('change',{bubbles:true}))}}if(o&&o.dataset.cycle){var y=document.getElementById('billing_cycle');if(y){y.value=o.dataset.cycle;y.dispatchEvent(new Event('change',{bubbles:true}))}}"}var n=document.getElementById('note');if(n&&!n.value.trim()&&o&&o.dataset.text)n.value=o.dataset.text;var h=document.getElementById('price-hint');if(h){h.textContent=o&&o.dataset.price?'Bisher bei uns: '+o.dataset.price+' – nur zur Orientierung, nicht vorbelegt.':'';h.hidden=!(o&&o.dataset.price)}`}
             />
+            <div
+              id="price-hint"
+              class="small price-hint"
+              hidden={!types.find((t) => t.id === sv?.service_type_id)?.price_hint}
+            >
+              {(() => {
+                const h = types.find((t) => t.id === sv?.service_type_id)?.price_hint;
+                return h ? `Bisher bei uns: ${h} – nur zur Orientierung, nicht vorbelegt.` : '';
+              })()}
+            </div>
           </div>
           <div style="grid-column:1/-1">
             <label for="note">Beschreibung (Zusatztext auf der Rechnung)</label>
@@ -640,6 +651,15 @@ ids.forEach(function(i){var e=document.getElementById(i);if(e){e.addEventListene
             Stundennachweis an die Rechnung anhängen (Stunden je Tag, Namen geschwärzt – z. B. für die
             Unterhaltsreinigung). Die Stunden kommen aus der Einsatzplanung; Nachunternehmer unter Objekt →
             Erfasste Zeiten → „Stundennachweis für Kunden“ ergänzen.
+          </label>
+        </div>
+
+        <div class="chk" style="margin-top:6px">
+          <input type="hidden" name="auto_invoice_field" value="1" />
+          <input type="checkbox" id="auto_invoice" name="auto_invoice" checked={sv?.auto_invoice ?? false} />
+          <label for="auto_invoice">
+            Rechnung automatisch vorbereiten: Sobald ein Arbeitsschein mit dieser Leistung unterschrieben ist,
+            entsteht der Rechnungsentwurf von selbst (Schein hängt an). Ausgestellt wird weiter von Hand.
           </label>
         </div>
 

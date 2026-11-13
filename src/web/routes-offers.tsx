@@ -1,6 +1,8 @@
 import type { Cents, Quantity } from '../domain/money/money.js';
 import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
+import { addDays } from '../domain/time/holidays.js';
+import { createStartupPlan } from '../services/site-startup.js';
 import { getTender, linkOffer } from '../services/tenders.js';
 import { BusinessError } from '../services/errors.js';
 import { getCustomer, getSite, listCustomers, listServiceTypes, listSites } from '../services/masterdata.js';
@@ -419,13 +421,50 @@ export function registerOfferRoutes({ app, deps, page, back }: Ctx) {
     const from = str(body, 'valid_from');
     if (!siteId || !from) throw new BusinessError('Bitte Objekt und Leistungsbeginn wählen');
     const n = await acceptIntoSite(sql, id, siteId, from, c.get('actor'));
+    // Gleich mit erledigen (Ahmed 13.11.: „alles soll zusammenhängen“) – feste IDs, nichts doppelt
+    const extra: string[] = [];
+    if (str(body, 'anlauf') === '1') {
+      await createStartupPlan(sql, siteId, from, c.get('actor'));
+      extra.push('Anlaufplan');
+    }
+    const [site] = await sql<{ site_no: string; name: string; login: string | null }[]>`
+      select s.site_no, s.name, a.login from app.sites s left join app.user_accounts a on a.id = s.manager_user_id
+       where s.id = ${siteId}`;
+    const task = async (key: string, title: string, desc: string, due: string) => {
+      await sql`
+        insert into app.tasks (id, title, description, due_date, assignee, entity_type, entity_id, created_by)
+        values (md5(${`angebot:${id}:${key}`})::uuid, ${title}, ${desc}, ${due}, ${site?.login ?? null}, 'site',
+                ${siteId}, ${c.get('actor')})
+        on conflict (id) do nothing`;
+    };
+    if (str(body, 'planen') === '1' && site) {
+      const due = addDays(from, -7) < todayBerlin() ? todayBerlin() : addDays(from, -7);
+      await task(
+        'planen',
+        `Einsätze planen: ${site.name} (${site.site_no})`,
+        `Leistungsbeginn ${from.split('-').reverse().join('.')} – Einsätze und Personal einplanen.`,
+        due,
+      );
+      extra.push('Aufgabe Einsätze planen');
+    }
+    if (str(body, 'nu') === '1' && site) {
+      await task(
+        'nu',
+        `Nachunternehmer beauftragen: ${site.name} (${site.site_no})`,
+        'Bestellung an den Nachunternehmer anlegen (Einkauf → Bestellungen) und unterschreiben lassen.',
+        addDays(from, -10) < todayBerlin() ? todayBerlin() : addDays(from, -10),
+      );
+      extra.push('Aufgabe Nachunternehmer');
+    }
     // Interessent mit Zuschlag wird Kunde
     await sql`update app.customers set status = 'kunde'
                where id = (select customer_id from app.offers where id = ${id}) and status = 'interessent'`;
     return back(c, `/objekte/${siteId}/leistungen`, {
-      ok: n
-        ? `${anz(n, 'Leistung', 'Leistungen')} aus dem Angebot übernommen.`
-        : 'Leistungen waren bereits übernommen – nichts doppelt angelegt.',
+      ok:
+        (n
+          ? `${anz(n, 'Leistung', 'Leistungen')} aus dem Angebot übernommen.`
+          : 'Leistungen waren bereits übernommen – nichts doppelt angelegt.') +
+        (extra.length ? ` Dazu: ${extra.join(', ')}.` : ''),
     });
   });
 

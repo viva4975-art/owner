@@ -130,6 +130,9 @@ span.cl-box{cursor:default}
 .svc-step{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;border-radius:7px;padding:2px 8px}
 .svc-step.ok{background:#E3F4EA;color:#1F7A45}.svc-step.now{background:#FDF2DC;color:#8a5a00}
 .svc-step.open{background:#F1F1F4;color:#55555a}.svc-step.err{background:#FBE5E5;color:#B42323}
+/* Leistungsarten / Preis-Orientierung */
+.price-hint{margin-top:6px;background:#F7EDF1;color:#64152F;border-radius:8px;padding:6px 10px}
+.lt-text{margin-top:4px}.lt-text summary{cursor:pointer;color:#6E6E73}.lt-text textarea{margin-top:4px;width:100%}
 @media (max-width:1024px){
   body.nui .mainc{margin-left:0}
   body.nui .appside.nside{transform:translateX(-100%);transition:transform .2s ease}

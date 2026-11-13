@@ -921,6 +921,25 @@ export async function signWorkReport(
             values (${actor}, 'sign', 'work_report', ${id}, ${sql.json({ signed_by: p.name.trim(), sha256 })})`;
   await archiveWorkReportPdf(deps, id);
   await attachToDraftInvoice(deps, id, actor);
+  await autoInvoiceAfterSignature(deps, id);
+}
+
+/**
+ * Automatik (Ahmed 13.11.): Enthält der Schein eine Leistung mit „Rechnung automatisch vorbereiten“ und hängt er
+ * noch an keiner Rechnung, entsteht der Rechnungsentwurf von selbst. Fehler halten die Unterschrift nicht auf.
+ */
+async function autoInvoiceAfterSignature(deps: Deps, id: string) {
+  try {
+    const [w] = await deps.sql<{ site_id: string | null }[]>`
+      select w.site_id from app.work_reports w
+       where w.id = ${id} and w.draft_invoice_id is null and w.invoice_id is null
+         and exists (select 1 from app.work_report_lines l join app.site_services s on s.id = l.service_id
+                      where l.work_report_id = w.id and s.auto_invoice)`;
+    if (!w?.site_id) return;
+    await reportsToInvoice(deps, w.site_id, [id], 'automatisch');
+  } catch (e) {
+    console.error('Automatische Rechnung nach Unterschrift fehlgeschlagen', id, e);
+  }
 }
 
 /** Zu einem Rechnungsentwurf gehörender Schein → PDF nach dem Abschließen gleich an die Rechnung hängen. */

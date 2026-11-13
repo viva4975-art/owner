@@ -5,7 +5,13 @@ import type { Sql, Tx } from '../db/client.js';
 import { assertVersion } from './crm.js';
 import type { BillingCycle } from '../domain/invoice/calc.js';
 import { BusinessError } from './errors.js';
-import type { BankAccount, BuyerSnapshot, InvoiceFormat, SellerSnapshot } from '../domain/invoice/types.js';
+import {
+  UNIT_LABELS,
+  type BankAccount,
+  type BuyerSnapshot,
+  type InvoiceFormat,
+  type SellerSnapshot,
+} from '../domain/invoice/types.js';
 import { parseEuro, parseQuantity } from '../domain/money/money.js';
 
 // ---------------------------------------------------------------------------
@@ -385,6 +391,8 @@ export interface SiteService {
   always_unfinished: boolean;
   /** geschwärzten Stundennachweis des Objekts an die Rechnung hängen */
   attach_timesheet: boolean;
+  /** Rechnungsentwurf automatisch nach Unterschrift des Arbeitsscheins */
+  auto_invoice?: boolean;
   work_days: number[] | null;
   hours_per_day_milli: bigint | null;
   invoice_group_id: string | null;
@@ -497,6 +505,9 @@ export const serviceInput = z.object({
   attach_timesheet: z
     .preprocess((v) => (typeof v === 'string' ? v === 'on' || v === '1' || v === 'true' : v), z.boolean())
     .optional(),
+  auto_invoice: z
+    .preprocess((v) => (typeof v === 'string' ? v === 'on' || v === '1' || v === 'true' : v), z.boolean())
+    .optional(),
   /** Menge nach Arbeitstagen (Einheit Tag/Stunde): Wochentage 1–7, Stunden je Tag */
   work_days: z
     .preprocess(
@@ -597,6 +608,7 @@ export async function saveService(
     order_reference: input.order_reference ? input.order_reference.slice(0, 100) : null,
     always_unfinished: input.always_unfinished,
     ...(input.attach_timesheet !== undefined ? { attach_timesheet: input.attach_timesheet } : {}),
+    ...(input.auto_invoice !== undefined ? { auto_invoice: input.auto_invoice } : {}),
     separate_invoice: input.invoice_target === 'separat',
     invoice_group_id:
       input.invoice_target && /^[0-9a-f-]{36}$/.test(input.invoice_target) ? input.invoice_target : null,
@@ -896,12 +908,46 @@ export interface ServiceType {
   active: boolean;
   /** Umsatz zählt in der Nachkalkulation beim internen Objekt „Sonderreinigung“ */
   special_cleaning: boolean;
+  /** Vorbelegung neuer Leistungen (Katalog ohne Preis, Ahmed 13.11.) */
+  unit_code: string | null;
+  default_text: string | null;
+  default_cycle: string | null;
+  work_report: boolean;
   version: number;
 }
 
 export async function listServiceTypes(sql: Sql, all = false) {
   return sql<ServiceType[]>`
     select * from app.service_types where ${all ? sql`true` : sql`active`} order by sort_order, name`;
+}
+
+/**
+ * Preis-Orientierung je Leistungsart (Ahmed 13.11.): was wir bisher an aktiven Objekten verlangen – nur als Hinweis,
+ * wird nie vorbelegt. Je Einheit: Anzahl Objekte, niedrigster, höchster und mittlerer Einzelpreis.
+ */
+export async function servicePriceHints(sql: Sql): Promise<Map<string, string>> {
+  const rows = await sql<
+    { type_id: string; unit_code: string; n: number; lo: bigint; hi: bigint; avg: bigint }[]
+  >`
+    select ss.service_type_id as type_id, ss.unit_code, count(distinct ss.site_id)::int as n,
+           min(ss.unit_price_cents)::bigint as lo, max(ss.unit_price_cents)::bigint as hi,
+           round(avg(ss.unit_price_cents))::bigint as avg
+      from app.site_services ss join app.sites s on s.id = ss.site_id
+     where ss.active and s.active and ss.service_type_id is not null and ss.unit_price_cents > 0
+       and ss.valid_from <= current_date and (ss.valid_to is null or ss.valid_to >= current_date)
+     group by 1, 2 order by 1, n desc`;
+  const eur = (c: bigint) =>
+    (Number(c) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const unit = UNIT_LABELS[r.unit_code] ?? r.unit_code;
+    const txt =
+      r.lo === r.hi
+        ? `${eur(r.lo)} je ${unit} (${r.n} ${r.n === 1 ? 'Objekt' : 'Objekte'})`
+        : `${eur(r.lo)} – ${eur(r.hi)} je ${unit}, Ø ${eur(r.avg)} (${r.n} ${r.n === 1 ? 'Objekt' : 'Objekte'})`;
+    out.set(r.type_id, out.has(r.type_id) ? `${out.get(r.type_id)} · ${txt}` : txt);
+  }
+  return out;
 }
 
 export async function saveServiceType(
@@ -912,20 +958,29 @@ export async function saveServiceType(
     laborShareBp: number | null;
     active: boolean;
     specialCleaning?: boolean;
+    unitCode?: string | null;
+    defaultText?: string | null;
+    defaultCycle?: string | null;
+    workReport?: boolean;
     expectedVersion: number | null;
   },
 ) {
   if (!p.name.trim()) throw new BusinessError('Bitte Bezeichnung angeben');
+  if ((p.defaultText ?? '').length > 1000) throw new BusinessError('Standardtext höchstens 1.000 Zeichen');
   const [cur] = await sql<{ version: number }[]>`select version from app.service_types where id = ${id}`;
   assertVersion(cur?.version, p.expectedVersion, 'Die Leistungsart');
   try {
     await sql`
-      insert into app.service_types (id, name, labor_share_bp, sort_order, active, special_cleaning)
+      insert into app.service_types (id, name, labor_share_bp, sort_order, active, special_cleaning,
+                                     unit_code, default_text, default_cycle, work_report)
       values (${id}, ${p.name.trim()}, ${p.laborShareBp},
               (select coalesce(max(sort_order), 0) + 10 from app.service_types), ${p.active},
-              ${p.specialCleaning ?? false})
+              ${p.specialCleaning ?? false}, ${p.unitCode || null}, ${p.defaultText?.trim() || null},
+              ${p.defaultCycle || null}, ${p.workReport ?? false})
       on conflict (id) do update set name = excluded.name, labor_share_bp = excluded.labor_share_bp,
-                                     active = excluded.active, special_cleaning = excluded.special_cleaning`;
+                                     active = excluded.active, special_cleaning = excluded.special_cleaning,
+                                     unit_code = excluded.unit_code, default_text = excluded.default_text,
+                                     default_cycle = excluded.default_cycle, work_report = excluded.work_report`;
   } catch (e) {
     if ((e as { code?: string }).code === '23505')
       throw new BusinessError(`„${p.name.trim()}“ gibt es schon`);

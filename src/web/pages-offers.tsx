@@ -1031,6 +1031,21 @@ export const OfferDetail: FC<{
                   <input id="valid_from" type="date" name="valid_from" value={today} required />
                 </div>
               </div>
+              <div class="accept-more">
+                <div class="small mut">Gleich mit erledigen (neue Oberfläche):</div>
+                <label class="chk">
+                  <input type="checkbox" name="anlauf" value="1" checked /> Anlaufplan Objektübernahme (12
+                  Aufgaben für die Objektleitung)
+                </label>
+                <label class="chk">
+                  <input type="checkbox" name="planen" value="1" checked /> Aufgabe „Einsätze planen“ eine
+                  Woche vor Beginn
+                </label>
+                <label class="chk">
+                  <input type="checkbox" name="nu" value="1" /> Aufgabe „Nachunternehmer beauftragen“ (für
+                  Positionen, die ein Nachunternehmer ausführt)
+                </label>
+              </div>
               <div class="actions" style="margin-bottom:0">
                 <button class="btn sec" disabled={sites.length === 0}>
                   Ins Objekt übernehmen

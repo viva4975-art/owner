@@ -55,11 +55,14 @@ const qtyNow = (sv: SiteServiceRow): bigint => {
 const lineTotal = (sv: SiteServiceRow) => (qtyNow(sv) * sv.unit_price_cents + 500n) / 1000n;
 
 /** Leistungen als ruhige Zeilen (Ahmed 08.10.: „übersichtlicher“): Titel + Art, Zeitraum/Zyklus, Menge × Preis, Gesamt. */
-const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }> = ({
-  title,
-  rows,
-  siteId,
-}) =>
+/** Stand je Leistung (neue Oberfläche): abgerechnet, offen, vorgemerkt, fällig */
+export type SvcStep = { t: string; tone: 'ok' | 'now' | 'open' | 'err' };
+const ServiceGroup: FC<{
+  title: string;
+  rows: SiteServiceRow[];
+  siteId: string;
+  progress?: Map<string, SvcStep[]> | undefined;
+}> = ({ title, rows, siteId, progress }) =>
   rows.length === 0 ? null : (
     <div class="svc-group">
       {title && (
@@ -85,6 +88,16 @@ const ServiceGroup: FC<{ title: string; rows: SiteServiceRow[]; siteId: string }
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
+                {progress?.get(sv.id)?.length ? (
+                  <div class="svc-steps">
+                    {progress.get(sv.id)!.map((x) => (
+                      <span class={`svc-step ${x.tone}`}>
+                        {x.tone === 'ok' && <Icon name="check" size={12} />}
+                        {x.t}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {lines.length > 0 && (
                   <div class="svc-note small" title={sv.note ?? ''}>
                     {lines.slice(0, 2).join(' · ')}
@@ -162,7 +175,8 @@ export const ServicesPanel: FC<{
     billedInvoice: string | null;
     billedNumber: string | null;
   }[];
-}> = ({ siteId, services, newServiceId, siteGroup, month, invoiceDate, preview }) => {
+  progress?: Map<string, SvcStep[]> | undefined;
+}> = ({ siteId, services, newServiceId, siteGroup, month, invoiceDate, preview, progress }) => {
   const active = services.filter((s) => s.active);
   const inactive = services.filter((s) => !s.active);
   const open = preview.filter((p) => !p.billedInvoice);
@@ -190,8 +204,13 @@ export const ServicesPanel: FC<{
         )}
       </div>
       {active.length === 0 && <div class="empty">Noch keine aktiven Leistungen.</div>}
-      <ServiceGroup title="Regelmäßige Leistungen" rows={regular} siteId={siteId} />
-      <ServiceGroup title="Nach Ausführung (je Ausführung, einmalig, Zyklus)" rows={perRun} siteId={siteId} />
+      <ServiceGroup title="Regelmäßige Leistungen" rows={regular} siteId={siteId} progress={progress} />
+      <ServiceGroup
+        title="Nach Ausführung (je Ausführung, einmalig, Zyklus)"
+        rows={perRun}
+        siteId={siteId}
+        progress={progress}
+      />
       {inactive.length > 0 && (
         <details class="svc-old">
           <summary>Inaktive Leistungen ({inactive.length})</summary>

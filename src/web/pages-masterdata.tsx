@@ -935,6 +935,13 @@ export const SiteShell: FC<{
     },
     { key: 'einsaetze', label: 'Einsätze', href: `${base}/einsaetze`, main: true },
     { key: 'zeiten', label: 'Erfasste Zeiten', href: `${base}/zeiten`, main: true },
+    // Nachkalkulation des Objekts direkt vom Objekt aus (neue Oberfläche, Ahmed 13.11.)
+    {
+      key: 'kosten',
+      label: 'Kosten & Ertrag',
+      href: `/auswertungen/nachkalkulation/detail?objekt=${s.id}`,
+      main: true,
+    },
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: counts.tasks },
     { key: 'angebote', label: 'Angebote', href: `${base}/angebote` },
     { key: 'arbeitsscheine', label: 'Arbeitsscheine', href: `${base}/arbeitsscheine` },

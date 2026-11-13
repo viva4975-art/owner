@@ -27,7 +27,7 @@ import {
 } from '../services/crm.js';
 import { BusinessError } from '../services/errors.js';
 import { assigneeOptions } from '../services/crm.js';
-import { formatDateDe, monthBounds, todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, monthBounds, monthLabelDe, todayBerlin } from '../domain/invoice/calc.js';
 import { billingPreview, parseBillAddress, runMonthly } from '../services/invoices.js';
 import {
   groupBillingInput,
@@ -118,7 +118,7 @@ import {
 import { saveRiskCheckForCustomer } from '../services/site-folder.js';
 import { Icon } from './icons.js';
 import { OpenItemsTable } from './pages-hr-finance.js';
-import { ServiceForm, ServicesPanel } from './pages-services.js';
+import { ServiceForm, ServicesPanel, type SvcStep } from './pages-services.js';
 import { ExecutePanel } from './pages-drafts.js';
 import {
   deleteExecution,
@@ -2366,9 +2366,40 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         executableServices(sql, s.id),
         listOpenExecutions(sql, { siteId: s.id }),
       ]);
+      // Stand je Leistung (neue Oberfläche, Ahmed 13.11.)
+      const progress = new Map<string, SvcStep[]>();
+      const add = (id: string, x: SvcStep) => progress.set(id, [...(progress.get(id) ?? []), x]);
+      const cur = today.slice(0, 7);
+      if (month === cur)
+        for (const p of preview)
+          add(
+            (p.service as { id: string }).id,
+            p.billedInvoice
+              ? {
+                  t: `${monthLabelDe(cur)} abgerechnet${p.billedNumber ? ` (${p.billedNumber})` : ' (Entwurf)'}`,
+                  tone: 'ok',
+                }
+              : { t: `${monthLabelDe(cur)} noch nicht abgerechnet`, tone: 'now' },
+          );
+      for (const x of execServices) {
+        if (x.open_count) add(x.id, { t: `${x.open_count} ausgeführt, noch nicht abgerechnet`, tone: 'now' });
+        if (x.next_due)
+          add(
+            x.id,
+            x.next_due <= today
+              ? { t: `fällig seit ${dateDe(x.next_due)}`, tone: 'err' }
+              : { t: `nächste Ausführung ${dateDe(x.next_due)}`, tone: 'open' },
+          );
+        else if (x.billing_cycle === 'einmalig' && x.done_at)
+          add(x.id, { t: `ausgeführt ${dateDe(x.done_at)}`, tone: 'ok' });
+      }
+      for (const sv of services)
+        if (sv.active && sv.last_billed_month && !progress.get(sv.id)?.some((x) => x.tone === 'ok'))
+          add(sv.id, { t: `zuletzt abgerechnet ${monthLabelDe(sv.last_billed_month)}`, tone: 'ok' });
       return (
         <>
           <ServicesPanel
+            progress={c.get('uiNew') ? progress : undefined}
             siteId={s.id}
             services={services}
             newServiceId={randomUUID()}

@@ -125,6 +125,11 @@ span.cl-box{cursor:default}
 .cl-i{font-size:12px;color:#8a8a90;white-space:nowrap}
 .cl-new{display:flex;gap:8px;margin-top:10px}
 .cl-new input{flex:1}
+/* Stand je Leistung */
+.svc-steps{display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 2px}
+.svc-step{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;border-radius:7px;padding:2px 8px}
+.svc-step.ok{background:#E3F4EA;color:#1F7A45}.svc-step.now{background:#FDF2DC;color:#8a5a00}
+.svc-step.open{background:#F1F1F4;color:#55555a}.svc-step.err{background:#FBE5E5;color:#B42323}
 @media (max-width:1024px){
   body.nui .mainc{margin-left:0}
   body.nui .appside.nside{transform:translateX(-100%);transition:transform .2s ease}

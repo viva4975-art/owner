@@ -17,6 +17,22 @@ export const isLang = (l: unknown): l is Lang => typeof l === 'string' && l in L
 type Dict = Record<string, string>;
 
 const de: Dict = {
+  sick_report: 'Krank melden',
+  problem_report: 'Problem melden',
+  sick_from: 'Krank ab',
+  sick_until: 'Voraussichtlich bis',
+  sick_shifts: 'Betroffene Einsätze',
+  sick_no_shifts: 'In diesem Zeitraum hast du keine Einsätze.',
+  sick_note: 'Nachricht an die Objektleitung (optional)',
+  sick_info:
+    'Keine Diagnose angeben. Spätestens ab dem 4. Krankheitstag brauchst du eine Krankschreibung vom Arzt – der Arbeitgeber ruft sie elektronisch bei der Krankenkasse ab.',
+  sick_send: 'Krankmeldung senden',
+  msg_sick: 'Gute Besserung! Die Krankmeldung ist eingetragen, die Objektleitung ist informiert.',
+  problem_site: 'Objekt',
+  problem_what: 'Was ist los?',
+  problem_ph: 'z. B. Material fehlt, Gerät defekt, Tür verschlossen',
+  problem_send: 'Meldung senden',
+  msg_problem: 'Danke! Die Meldung ist bei der Objektleitung.',
   pf_profile: 'Profil',
   pf_general: 'Allgemein',
   pf_tour: 'App-Tour',
@@ -271,6 +287,22 @@ const de: Dict = {
 };
 
 const en: Dict = {
+  sick_report: 'Report sick',
+  problem_report: 'Report a problem',
+  sick_from: 'Sick from',
+  sick_until: 'Expected until',
+  sick_shifts: 'Affected shifts',
+  sick_no_shifts: 'You have no shifts in this period.',
+  sick_note: 'Message to your supervisor (optional)',
+  sick_info:
+    'Do not state a diagnosis. From the 4th day of illness at the latest you need a sick note from a doctor – the employer retrieves it electronically from the health insurance.',
+  sick_send: 'Send sick report',
+  msg_sick: 'Get well soon! Your sick report is recorded and your supervisor has been informed.',
+  problem_site: 'Site',
+  problem_what: 'What is the problem?',
+  problem_ph: 'e.g. material missing, device broken, door locked',
+  problem_send: 'Send report',
+  msg_problem: 'Thank you! Your supervisor has received the report.',
   pf_profile: 'Profile',
   pf_general: 'General',
   pf_tour: 'App tour',
@@ -524,6 +556,22 @@ const en: Dict = {
 };
 
 const ro: Dict = {
+  sick_report: 'Anunță boala',
+  problem_report: 'Raportează o problemă',
+  sick_from: 'Bolnav de la',
+  sick_until: 'Probabil până la',
+  sick_shifts: 'Ture afectate',
+  sick_no_shifts: 'Nu ai ture în această perioadă.',
+  sick_note: 'Mesaj pentru șeful de obiect (opțional)',
+  sick_info:
+    'Nu menționa diagnosticul. Cel târziu din a 4-a zi de boală ai nevoie de concediu medical de la medic – angajatorul îl preia electronic de la casa de asigurări.',
+  sick_send: 'Trimite anunțul de boală',
+  msg_sick: 'Însănătoșire grabnică! Boala este înregistrată, șeful de obiect este informat.',
+  problem_site: 'Obiect',
+  problem_what: 'Care este problema?',
+  problem_ph: 'de ex. lipsește material, aparat defect, ușa încuiată',
+  problem_send: 'Trimite',
+  msg_problem: 'Mulțumim! Șeful de obiect a primit mesajul.',
   pf_profile: 'Profil',
   pf_general: 'General',
   pf_tour: 'Turul aplicației',
@@ -776,6 +824,22 @@ const ro: Dict = {
 };
 
 const tr: Dict = {
+  sick_report: 'Hastalık bildir',
+  problem_report: 'Sorun bildir',
+  sick_from: 'Hasta başlangıcı',
+  sick_until: 'Tahmini bitiş',
+  sick_shifts: 'Etkilenen görevler',
+  sick_no_shifts: 'Bu dönemde görevin yok.',
+  sick_note: 'Sorumluya mesaj (isteğe bağlı)',
+  sick_info:
+    'Teşhis yazma. En geç hastalığın 4. gününden itibaren doktordan rapor gerekir – işveren raporu sağlık sigortasından elektronik olarak alır.',
+  sick_send: 'Hastalık bildirimini gönder',
+  msg_sick: 'Geçmiş olsun! Bildirim kaydedildi, sorumlu bilgilendirildi.',
+  problem_site: 'Obje',
+  problem_what: 'Sorun nedir?',
+  problem_ph: 'örn. malzeme eksik, cihaz arızalı, kapı kilitli',
+  problem_send: 'Gönder',
+  msg_problem: 'Teşekkürler! Bildirim sorumluya iletildi.',
   pf_profile: 'Profil',
   pf_general: 'Genel',
   pf_tour: 'Uygulama turu',
@@ -1029,6 +1093,22 @@ const tr: Dict = {
 };
 
 const pl: Dict = {
+  sick_report: 'Zgłoś chorobę',
+  problem_report: 'Zgłoś problem',
+  sick_from: 'Chory od',
+  sick_until: 'Prawdopodobnie do',
+  sick_shifts: 'Dotknięte zmiany',
+  sick_no_shifts: 'W tym okresie nie masz zmian.',
+  sick_note: 'Wiadomość do kierownika obiektu (opcjonalnie)',
+  sick_info:
+    'Nie podawaj diagnozy. Najpóźniej od 4. dnia choroby potrzebne jest zwolnienie lekarskie – pracodawca pobiera je elektronicznie z kasy chorych.',
+  sick_send: 'Wyślij zgłoszenie choroby',
+  msg_sick: 'Szybkiego powrotu do zdrowia! Zgłoszenie zapisane, kierownik obiektu poinformowany.',
+  problem_site: 'Obiekt',
+  problem_what: 'Na czym polega problem?',
+  problem_ph: 'np. brak materiału, uszkodzone urządzenie, zamknięte drzwi',
+  problem_send: 'Wyślij',
+  msg_problem: 'Dziękujemy! Kierownik obiektu otrzymał zgłoszenie.',
   pf_profile: 'Profil',
   pf_general: 'Ogólne',
   pf_tour: 'Przewodnik po aplikacji',
@@ -1281,6 +1361,22 @@ const pl: Dict = {
 };
 
 const hr: Dict = {
+  sick_report: 'Prijavi bolovanje',
+  problem_report: 'Prijavi problem',
+  sick_from: 'Bolestan od',
+  sick_until: 'Predviđeno do',
+  sick_shifts: 'Pogođene smjene',
+  sick_no_shifts: 'U tom razdoblju nemaš smjena.',
+  sick_note: 'Poruka voditelju objekta (neobavezno)',
+  sick_info:
+    'Ne navodi dijagnozu. Najkasnije od 4. dana bolesti trebaš potvrdu liječnika – poslodavac je elektronički preuzima od zdravstvenog osiguranja.',
+  sick_send: 'Pošalji prijavu bolovanja',
+  msg_sick: 'Brz oporavak! Prijava je upisana, voditelj objekta je obaviješten.',
+  problem_site: 'Objekt',
+  problem_what: 'U čemu je problem?',
+  problem_ph: 'npr. nedostaje materijal, uređaj pokvaren, vrata zaključana',
+  problem_send: 'Pošalji',
+  msg_problem: 'Hvala! Voditelj objekta je primio prijavu.',
   pf_profile: 'Profil',
   pf_general: 'Općenito',
   pf_tour: 'Obilazak aplikacije',
@@ -1533,6 +1629,22 @@ const hr: Dict = {
 };
 
 const bg: Dict = {
+  sick_report: 'Съобщи за болест',
+  problem_report: 'Съобщи за проблем',
+  sick_from: 'Болен от',
+  sick_until: 'Вероятно до',
+  sick_shifts: 'Засегнати смени',
+  sick_no_shifts: 'Нямаш смени в този период.',
+  sick_note: 'Съобщение до ръководителя (по избор)',
+  sick_info:
+    'Не посочвай диагноза. Най-късно от 4-ия ден на болестта ти трябва болничен от лекар – работодателят го получава електронно от здравната каса.',
+  sick_send: 'Изпрати съобщението',
+  msg_sick: 'Оздравявай бързо! Болничният е записан, ръководителят е уведомен.',
+  problem_site: 'Обект',
+  problem_what: 'Какъв е проблемът?',
+  problem_ph: 'напр. липсва материал, повреден уред, заключена врата',
+  problem_send: 'Изпрати',
+  msg_problem: 'Благодарим! Ръководителят получи съобщението.',
   pf_profile: 'Профил',
   pf_general: 'Общи',
   pf_tour: 'Обиколка на приложението',

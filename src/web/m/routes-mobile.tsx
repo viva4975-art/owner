@@ -1,6 +1,7 @@
 import { parseBody } from '../../services/instructions.js';
 import { GLASS_CSS, GLASS_HEAD_JS } from '../glass-css.js';
 import { Icon } from '../icons.js';
+import { createTicket } from '../../services/qm.js';
 import { PDF_JS, PUSH_JS, PushCard, SCOPE_JS, SW_PUSH } from '../push-ui.js';
 import { savePushSubscription, vapidKeys } from '../../services/push.js';
 import { listPayslips } from '../../services/payslips.js';
@@ -1364,6 +1365,14 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         <div class="hello">
           {t(lang, greetKey)} <b>{me.first_name}!</b>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px">
+          <a class="big sec" href="/m/krank" style="margin:0;font-size:14px;padding:10px 8px;color:#B42323">
+            {t(lang, 'sick_report')}
+          </a>
+          <a class="big sec" href="/m/problem" style="margin:0;font-size:14px;padding:10px 8px">
+            {t(lang, 'problem_report')}
+          </a>
+        </div>
         {/* Arbeitsscheine zum Unterschreiben-Lassen direkt oben (Ahmed 18.10.): einer → großer Knopf, mehrere → wählen */}
         {wsOpen.length === 1 && (
           <a class="big go" href={`/m/arbeitsscheine/${wsOpen[0]!.id}`} style="font-size:17px">
@@ -2198,6 +2207,181 @@ export function registerMobileRoutes({ app, deps, back }: Ctx) {
         appliedOn: todayBerlin(), // Antrag in der App = heute gestellt
       });
       return back(c, '/m/abwesenheit', { ok: t(lang, 'msg_absence') });
+    });
+  });
+
+  // ---- Krank melden (Ahmed 13.11., Vorbild Blink): sofort eingetragen, Objektleitung bekommt „Vertretung einplanen“
+  app.get('/m/krank', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const today = todayBerlin();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('von') ?? '') ? c.req.query('von')! : today;
+    const to0 = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('bis') ?? '') ? c.req.query('bis')! : from;
+    const to = to0 < from ? from : to0;
+    const shifts = (await plannedShifts(sql, { from, to, employeeId: me.id })).filter((x) => !x.holiday);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>{t(lang, 'sick_report')}</h1>
+        <form method="get" action="/m/krank" class="card">
+          <div class="two">
+            <div>
+              <label for="von">{t(lang, 'sick_from')}</label>
+              <input id="von" type="date" name="von" value={from} onchange="this.form.submit()" />
+            </div>
+            <div>
+              <label for="bis">{t(lang, 'sick_until')}</label>
+              <input id="bis" type="date" name="bis" value={to} min={from} onchange="this.form.submit()" />
+            </div>
+          </div>
+        </form>
+        <div class="card">
+          <h2>{t(lang, 'sick_shifts')}</h2>
+          {shifts.length === 0 && <div class="mut">{t(lang, 'sick_no_shifts')}</div>}
+          {shifts.map((x) => (
+            <div class="row">
+              <div>
+                {dayLabel(lang, x.date)} · {x.plan.start_time.slice(0, 5)}–{x.plan.end_time.slice(0, 5)}
+                <div class="small mut">{x.plan.site_name}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <form method="post" action="/m/krank" class="card" data-net>
+          <input type="hidden" name="id" value={randomUUID()} />
+          <input type="hidden" name="start" value={from} />
+          <input type="hidden" name="end" value={to} />
+          <label for="note">{t(lang, 'sick_note')}</label>
+          <textarea id="note" name="note" rows={2} maxlength={300} />
+          <p class="hint">{t(lang, 'sick_info')}</p>
+          <button class="big go">{t(lang, 'sick_send')}</button>
+        </form>
+        <a class="big sec" href="/m">
+          {t(lang, 'back')}
+        </a>
+      </>,
+    );
+  });
+
+  app.post('/m/krank', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const b = await c.req.parseBody();
+    return guard(c, lang, '/m/krank', async () => {
+      const id = typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
+      const start = String(b.start ?? '');
+      const end = String(b.end ?? '');
+      const note = typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 300) : null;
+      const [had] = await sql`select 1 from app.absences where id = ${id}`;
+      if (!had)
+        await requestAbsence(sql, {
+          id,
+          employeeId: me.id,
+          kind: 'krank',
+          start,
+          end,
+          halfDay: false,
+          note,
+          actor: `m:${me.personnel_no}`,
+          approved: true, // Krankmeldung braucht keine Genehmigung
+          replaceVacation: true, // § 9 BUrlG: Krankheit zählt nicht als Urlaub
+          appliedOn: todayBerlin(),
+        });
+      // je betroffenem Objekt eine Aufgabe „Vertretung einplanen“ für die Objektleitung (feste ID, nichts doppelt)
+      const shifts = (await plannedShifts(sql, { from: start, to: end, employeeId: me.id })).filter(
+        (x) => !x.holiday,
+      );
+      const bySite = new Map<string, { name: string; days: string[] }>();
+      for (const x of shifts) {
+        const cur = bySite.get(x.plan.site_id) ?? { name: x.plan.site_name, days: [] };
+        cur.days.push(x.date);
+        bySite.set(x.plan.site_id, cur);
+      }
+      const de = (d: string) => d.split('-').reverse().slice(0, 2).join('.') + '.';
+      for (const [siteId, v] of bySite) {
+        await sql`
+          insert into app.tasks (id, title, description, due_date, assignee, entity_type, entity_id, created_by)
+          select md5(${`krank:${id}:${siteId}`})::uuid,
+                 ${`Vertretung einplanen: ${me.first_name} ${me.last_name} krank (${v.name})`},
+                 ${`Einsätze: ${v.days.map(de).join(', ')}${note ? `\nNachricht: ${note}` : ''}`},
+                 ${v.days[0]!}::date, a.login, 'site', ${siteId}, ${`m:${me.personnel_no}`}
+            from app.sites s left join app.user_accounts a on a.id = s.manager_user_id where s.id = ${siteId}
+          on conflict (id) do nothing`;
+      }
+      return back(c, '/m', { ok: t(lang, 'msg_sick') });
+    });
+  });
+
+  // ---- Problem melden: Ticket am Objekt für die Objektleitung (Material fehlt, Gerät defekt …)
+  app.get('/m/problem', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    return render(
+      c,
+      lang,
+      me,
+      <>
+        <h1>{t(lang, 'problem_report')}</h1>
+        <form method="post" action="/m/problem" class="card" data-net>
+          <input type="hidden" name="id" value={randomUUID()} />
+          <label for="site">{t(lang, 'problem_site')}</label>
+          <select id="site" name="site_id" required>
+            {me.sites.map((x) => (
+              <option value={x.id}>
+                {x.name} ({x.site_no})
+              </option>
+            ))}
+          </select>
+          <label for="what" style="margin-top:10px">
+            {t(lang, 'problem_what')}
+          </label>
+          <textarea
+            id="what"
+            name="text"
+            rows={3}
+            maxlength={500}
+            required
+            placeholder={t(lang, 'problem_ph')}
+          />
+          <div style="height:12px" />
+          <button class="big go">{t(lang, 'problem_send')}</button>
+        </form>
+        <a class="big sec" href="/m">
+          {t(lang, 'back')}
+        </a>
+      </>,
+    );
+  });
+
+  app.post('/m/problem', async (c) => {
+    const { me, res } = await requireMe(c);
+    if (!me) return res!;
+    const lang = langOf(c, me);
+    const b = await c.req.parseBody();
+    return guard(c, lang, '/m/problem', async () => {
+      const siteId = String(b.site_id ?? '');
+      if (!me.sites.some((x) => x.id === siteId))
+        throw new BusinessError('Objekt nicht gefunden', 'bad_range');
+      const text = String(b.text ?? '').trim();
+      const title = text.split('\n')[0]!.slice(0, 120) || 'Meldung aus der App';
+      await createTicket(
+        sql,
+        typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID(),
+        {
+          siteId,
+          roomId: null,
+          title,
+          description: `${text}\n— gemeldet von ${me.first_name} ${me.last_name} (App)`,
+          priority: 'normal',
+        },
+        `m:${me.personnel_no}`,
+      );
+      return back(c, '/m', { ok: t(lang, 'msg_problem') });
     });
   });
 

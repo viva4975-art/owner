@@ -5553,3 +5553,10 @@ Testadresse.
   Feldregel überschrieb `hidden` – aufklappbare Felder (z. B. Rechnungseingang „Schon bezahlt“ → Zahlart/bezahlt am)
   waren sofort sichtbar; behoben und mit einem Vergleich alt/neu über 179 Formularseiten geprüft (keine Abweichung mehr).
   e2e einkauf, nachunternehmer, personal, rechte grün.
+- 2026-11-13: **Fund „Schritt für Schritt“ zeigte trotzdem alles** (Ahmed: „bei Personal kann ich immer noch nach unten
+  scrollen“): Die Schritte wurden nur per CSS-Klasse ausgeblendet, die neue Feld-Regel (`.grid` mit `display:grid!important`)
+  war stärker – nur der Kopf mit „Schritt 1 von 4“ erschien, alle Felder blieben sichtbar. Jetzt blendet der Assistent
+  direkt am Element aus (`style display:none !important`, gemerkter Ausgangswert). Neuer Mitarbeiter auf dem iPad
+  durchgeklickt: Schritt 1 = 11 Felder, 2 = 5, 3 = Vergütung (Pflichtauswahl wird geprüft), 4 = Vertrauliche Daten, dann
+  Speichern. Lehnt der Server ab (z. B. „Bitte den Tariflohn wählen“), öffnet die Maske den Schritt, zu dem die Meldung
+  passt (Wörter der Beschriftungen). e2e personal, rechte, einkauf grün.

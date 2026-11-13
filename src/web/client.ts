@@ -975,7 +975,7 @@ export const CLIENT_JS = String.raw`
           });
         }
         if (steps.length < 2 || !foot) return;
-        steps.forEach(function (s, n) { if (!s.title) s.title = 'Schritt ' + (n + 1); if (/^H[23]$/.test(s.els[0].tagName)) s.els[0].classList.add('wz-hh'); });
+        steps.forEach(function (s, n) { if (!s.title) s.title = 'Schritt ' + (n + 1); if (/^H[23]$/.test(s.els[0].tagName)) { s.els[0].classList.add('wz-hh'); s.els[0].style.setProperty('display', 'none', 'important'); } });
         var bar = document.createElement('div'); bar.className = 'wz-bar';
         bar.innerHTML = '<div class="wz-top"><div><div class="wz-n"></div><b></b></div><button type="button" class="wz-all">Alle Felder auf einmal anzeigen</button></div><div class="wz-prog"><span></span></div><ol class="wz-dots"></ol>';
         var dots = bar.querySelector('.wz-dots');
@@ -1014,12 +1014,17 @@ export const CLIENT_JS = String.raw`
           return true;
         }
         function okUpTo(n) { for (var i = at; i < n; i++) if (!valid(i, true)) return false; return true; }
+        function off(e, hide) {
+          e.classList.toggle('wz-off', hide);
+          if (hide) { if (!e.hasAttribute('data-wz-d')) e.setAttribute('data-wz-d', e.style.getPropertyValue('display')); e.style.setProperty('display', 'none', 'important'); }
+          else if (e.hasAttribute('data-wz-d')) { var d = e.getAttribute('data-wz-d'); e.removeAttribute('data-wz-d'); if (d) e.style.display = d; else e.style.removeProperty('display'); }
+        }
         function show(n) {
           at = n;
-          steps.forEach(function (s, i) { s.els.forEach(function (e) { e.classList.toggle('wz-off', i !== n); }); });
+          steps.forEach(function (s, i) { s.els.forEach(function (e) { off(e, i !== n); }); });
           var last = n === steps.length - 1;
-          Array.prototype.forEach.call(foot.children, function (c) { if (c !== nav) c.classList.toggle('wz-off', !last); });
-          back.classList.toggle('wz-off', n === 0); next.classList.toggle('wz-off', last);
+          Array.prototype.forEach.call(foot.children, function (c) { if (c !== nav) off(c, !last); });
+          off(back, n === 0); off(next, last);
           nav.classList.toggle('wz-last', last);
           bar.querySelector('.wz-n').textContent = 'Schritt ' + (n + 1) + ' von ' + steps.length;
           bar.querySelector('b').textContent = steps[n].title;
@@ -1036,8 +1041,8 @@ export const CLIENT_JS = String.raw`
         back.onclick = function () { show(Math.max(0, at - 1)); bar.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
         bar.querySelector('.wz-all').onclick = function () {
           try { localStorage.setItem('vd_wz', 'off'); } catch (e) {}
-          steps.forEach(function (s) { s.els.forEach(function (e) { e.classList.remove('wz-off', 'wz-hh'); }); });
-          Array.prototype.forEach.call(foot.children, function (c) { c.classList.remove('wz-off'); });
+          steps.forEach(function (s) { s.els.forEach(function (e) { off(e, false); e.classList.remove('wz-hh'); if (/^H[23]$/.test(e.tagName)) e.style.removeProperty('display'); }); });
+          Array.prototype.forEach.call(foot.children, function (c) { off(c, false); });
           nav.remove(); bar.remove();
         };
         f.addEventListener('keydown', function (e) {
@@ -1050,7 +1055,23 @@ export const CLIENT_JS = String.raw`
           if (!bar.isConnected) return;
           for (var i = 0; i < steps.length; i++) if (fieldsOf(steps[i]).indexOf(e.target) >= 0) { if (i !== at) show(i); break; }
         }, true);
-        show(0);
+        // Fehlermeldung vom Server (z. B. „Bitte den Tariflohn wählen“) → gleich zum Schritt, um den es geht
+        var start = 0, ferr = document.querySelector('.flash.err');
+        if (ferr) {
+          var et = ferr.textContent.toLowerCase(), best = 0;
+          steps.forEach(function (s, n) {
+            var words = {};
+            s.els.forEach(function (e) {
+              Array.prototype.forEach.call(e.querySelectorAll ? e.querySelectorAll('label,b,strong,h2,h3') : [], function (l) {
+                l.textContent.toLowerCase().split(/[^a-zäöüß]+/).forEach(function (w) { if (w.length >= 5) words[w] = 1; });
+              });
+              if (/^(H2|H3|LABEL)$/.test(e.tagName)) e.textContent.toLowerCase().split(/[^a-zäöüß]+/).forEach(function (w) { if (w.length >= 5) words[w] = 1; });
+            });
+            var sc = Object.keys(words).filter(function (w) { return et.indexOf(w) >= 0; }).length;
+            if (sc > best) { best = sc; start = n; }
+          });
+        }
+        show(start);
       });
     })();
   }

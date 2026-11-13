@@ -15,6 +15,8 @@ const optText = z.preprocess(emptyToNull, z.string().trim().nullable().default(n
 const optDate = z.preprocess(emptyToNull, z.iso.date().nullable().default(null));
 
 export interface Employee {
+  /** Status wie Blink (neue Oberfläche), leer = aktiv */
+  hr_stage?: string | null;
   id: string;
   personnel_no: string;
   first_name: string;

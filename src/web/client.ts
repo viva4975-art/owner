@@ -904,6 +904,28 @@ export const CLIENT_JS = String.raw`
     });
     document.addEventListener('click', function (e) { if (!form.contains(e.target)) drop.hidden = true; });
   })();
+  // ---- Neue Oberfläche: Zeilen mit vielen Knöpfen → „⋮“-Menü (Ahmed 13.11., Vorbild Blink) ----
+  if (document.body.classList.contains('nui')) {
+    Array.prototype.forEach.call(document.querySelectorAll('main tr, main .row, main li'), function (tr) {
+      if (tr.closest('.kb') || tr.closest('.ib-list') || tr.closest('form.edit')) return;
+      if (tr.querySelector('input:not([type=hidden]):not([type=checkbox]), select, textarea')) return;
+      var cell = null, best = 0;
+      Array.prototype.forEach.call(tr.querySelectorAll(':scope > td, :scope > div, :scope > span'), function (td) {
+        var n = td.querySelectorAll('a.btn, button.btn').length;
+        if (n > best) { best = n; cell = td; }
+      });
+      if (!cell || best < 3) return;
+      var d = document.createElement('details'); d.className = 'kb';
+      d.innerHTML = '<summary aria-label="Aktionen" title="Aktionen">⋮</summary><div class="kb-pop"></div>';
+      var pop = d.querySelector('.kb-pop');
+      Array.prototype.slice.call(cell.childNodes).forEach(function (n) { pop.appendChild(n); });
+      cell.appendChild(d);
+    });
+    document.addEventListener('click', function (e) {
+      Array.prototype.forEach.call(document.querySelectorAll('details.kb[open]'), function (k) { if (!k.contains(e.target)) k.open = false; });
+    });
+  }
+
   // ---- Tabellenköpfe bleiben beim Scrollen oben stehen (Ahmed 29.10.: „Überschriften sollen mitscrollen“) ----
   // Eigene Kopie des Tabellenkopfs (position:fixed) statt CSS sticky – viele Tabellen liegen in seitlich scrollenden
   // Hüllen, dort greift sticky nicht. Spaltenbreiten und seitliches Scrollen werden übernommen, Klick sortiert weiter.

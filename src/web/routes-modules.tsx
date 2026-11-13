@@ -63,6 +63,17 @@ import { type AppEnv, type Ctx, UUID, taskViewerOf } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { homeFor } from './permissions.js';
 import { CockpitRow } from './cockpit.js';
+import { ChecklistCard, EmployeeActions, StagePill } from './hr-checklist.js';
+import {
+  addOwnCheck,
+  autoActivate,
+  checklist,
+  deleteOwnCheck,
+  setCheck,
+  setStage,
+  showEntryList,
+  stageOf,
+} from '../services/hr-stage.js';
 import { uncoveredShifts } from '../services/planning.js';
 import { inboxItems } from './routes-inbox.js';
 import {
@@ -1591,11 +1602,28 @@ export function registerModuleRoutes(ctx: Ctx) {
     const [cnt] = await sql<{ notes: number; tasks: number }[]>`
       select (select count(*)::int from app.notes where entity_type = 'employee' and entity_id = ${id}) as notes,
              (select count(*)::int from app.tasks where entity_type = 'employee' and entity_id = ${id} and status = 'open') as tasks`;
+    const stage = stageOf(data.employee);
+    const canHr = ['admin', 'personal'].includes(c.get('user').role);
     return page(
       c,
       `${data.employee.first_name} ${data.employee.last_name}`,
       'personal',
-      <EmployeeShell e={data.employee} active={active} notes={cnt!.notes} tasks={cnt!.tasks}>
+      <EmployeeShell
+        e={data.employee}
+        active={active}
+        notes={cnt!.notes}
+        tasks={cnt!.tasks}
+        head={
+          <>
+            <StagePill stage={stage} />
+            {c.get('uiNew') && (
+              <div class="emp-head-r">
+                <EmployeeActions id={id} stage={stage} canHr={canHr} />
+              </div>
+            )}
+          </>
+        }
+      >
         {await body(data.employee)}
       </EmployeeShell>,
     );
@@ -1697,6 +1725,23 @@ export function registerModuleRoutes(ctx: Ctx) {
           </div>
         </>
       );
+      // Checklisten Ein-/Austritt (Ahmed 13.11., Vorbild Blink)
+      const stage = stageOf(e);
+      const canHr = ['admin', 'personal'].includes(c.get('user').role);
+      let checklists: Child = null;
+      if (canHr) {
+        const parts: Child[] = [];
+        if (showEntryList(stage, e.entry_date)) {
+          const items = await checklist(sql, e.id, 'ein');
+          await autoActivate(sql, e.id, stage, items);
+          parts.push(<ChecklistCard id={e.id} phase="ein" items={items} canEdit />);
+        }
+        if (e.exit_date && (stage !== 'ausgeschieden' || e.exit_date >= addDays(todayBerlin(), -90)))
+          parts.push(
+            <ChecklistCard id={e.id} phase="aus" items={await checklist(sql, e.id, 'aus')} canEdit />,
+          );
+        checklists = <>{parts}</>;
+      }
       const beschaeftigung = (
         <>
           <div>
@@ -1739,7 +1784,7 @@ export function registerModuleRoutes(ctx: Ctx) {
                 </form>
               </>
             ) : (
-              <details>
+              <details id="austritt">
                 <summary class="btn sm sec" style="margin-top:10px">
                   Austritt erfassen
                 </summary>
@@ -1796,7 +1841,12 @@ export function registerModuleRoutes(ctx: Ctx) {
             showPrivate
             wage={{ level: lvl?.name ?? null, cents: wage }}
             month={await monthBox(e.id)}
-            afterHead={einsaetze}
+            afterHead={
+              <>
+                {checklists}
+                {einsaetze}
+              </>
+            }
             employment={beschaeftigung}
             hours={await hoursHistory(sql, e.id)}
             plannedDays={await plannedDaysPerWeek(
@@ -1960,6 +2010,39 @@ export function registerModuleRoutes(ctx: Ctx) {
     }
     // Objekt-Zuordnung nicht mehr im Stammdatenformular (Ahmed 06.10.) – entsteht über Planung/Einsätze
     return back(c, `/personal/${id}`, { ok: 'Mitarbeiter gespeichert.' });
+  });
+
+  // Status und Checklisten (neue Oberfläche)
+  app.post(`/personal/:id{${UUID}}/status`, async (c) => {
+    const b = await c.req.parseBody();
+    await setStage(sql, c.req.param('id'), String(b.stage ?? ''), c.get('actor'));
+    return back(c, `/personal/${c.req.param('id')}`, { ok: 'Status geändert.' });
+  });
+  app.post(`/personal/:id{${UUID}}/checkliste`, async (c) => {
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    await setCheck(
+      sql,
+      id,
+      b.phase === 'aus' ? 'aus' : 'ein',
+      String(b.key ?? ''),
+      b.done === '1',
+      c.get('actor'),
+    );
+    return back(c, `/personal/${id}#${b.phase === 'aus' ? 'austritt-checkliste' : 'checkliste'}`, {});
+  });
+  app.post(`/personal/:id{${UUID}}/checkliste/neu`, async (c) => {
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    const nid = /^[0-9a-f-]{36}$/.test(String(b.new_id)) ? String(b.new_id) : randomUUID();
+    await addOwnCheck(sql, id, b.phase === 'aus' ? 'aus' : 'ein', String(b.label ?? ''), nid, c.get('actor'));
+    return back(c, `/personal/${id}#${b.phase === 'aus' ? 'austritt-checkliste' : 'checkliste'}`, {});
+  });
+  app.post(`/personal/:id{${UUID}}/checkliste/loeschen`, async (c) => {
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    await deleteOwnCheck(sql, id, String(b.key ?? ''));
+    return back(c, `/personal/${id}`, { ok: 'Punkt gelöscht.' });
   });
 
   app.post(`/personal/:id{${UUID}}/austritt`, async (c) => {

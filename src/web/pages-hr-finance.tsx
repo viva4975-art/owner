@@ -1,3 +1,5 @@
+import { StagePill } from './hr-checklist.js';
+import { stageOf } from '../services/hr-stage.js';
 import { permitNeeded } from '../services/hr-required-docs.js';
 import { validSvNumber, validTaxId } from '../domain/hr/ids.js';
 import type { Child, FC } from 'hono/jsx';
@@ -94,6 +96,7 @@ const EmployeeCard: FC<{ e: EmployeeRow }> = ({ e }) => {
           {e.status === 'ausgetreten' && (
             <span class="badge">ausgetreten{e.exit_date ? ` ${dateDe(e.exit_date)}` : ''}</span>
           )}
+          {e.status !== 'ausgetreten' && stageOf(e) !== 'aktiv' && <StagePill stage={stageOf(e)} />}
           {e.status === 'aktiv' && e.has_shift === false && (
             <a class="badge warn" href={`/personal/${e.id}/einsaetze`}>
               kein Einsatz
@@ -372,8 +375,10 @@ export const EmployeeShell: FC<{
   active: string;
   notes: number;
   tasks: number;
+  /** Status-Schild und „Aktionen ▾“ (neue Oberfläche) */
+  head?: Child;
   children?: Child;
-}> = ({ e, active, notes, tasks, children }) => {
+}> = ({ e, active, notes, tasks, head, children }) => {
   const base = `/personal/${e.id}`;
   const tabs: Tab[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base },
@@ -396,7 +401,9 @@ export const EmployeeShell: FC<{
         title={`${e.first_name} ${e.last_name}`}
         no={e.personnel_no}
         crumbs={[['Mitarbeiter', '/personal']]}
-      />
+      >
+        {head}
+      </PageHead>
       <Tabs tabs={tabs} more={more} active={active === 'zeiten' ? 'kalender' : active} />
       <div class="tabbody">{children}</div>
     </>
@@ -501,9 +508,7 @@ export const EmployeeOverview: FC<{
               {e.weekly_hours ? ` · ${num(e.weekly_hours)} Std./Woche` : ''}
             </div>
             <div class="eh-chips">
-              <span class={`badge ${e.status === 'aktiv' ? 'ok' : 'bad'}`}>
-                {e.status === 'aktiv' ? 'aktiv' : 'ausgetreten'}
-              </span>
+              <StagePill stage={stageOf(e)} />
               {e.tags
                 .filter((t) => t !== EMPLOYMENT_TYPES[e.employment_type])
                 .map((t) => (

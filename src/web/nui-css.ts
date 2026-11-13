@@ -86,6 +86,45 @@ body.nui .ck-list .n{margin-left:auto;font-weight:650}
 .ib-act{display:flex;gap:6px;align-items:center;flex:none}
 .ib-act form{margin:0}
 @media (max-width:760px){.ib-row{flex-wrap:wrap}.ib-main{flex-basis:calc(100% - 50px)}.ib-act{width:100%;justify-content:flex-end}.ib-who{display:none}}
+/* „⋮“-Menü in Zeilen */
+body.nui details.kb{position:relative;display:inline-block}
+body.nui details.kb>summary{list-style:none;cursor:pointer;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:20px;line-height:1;color:var(--n-t2);border:1px solid transparent}
+body.nui details.kb>summary::-webkit-details-marker{display:none}
+body.nui details.kb>summary:hover,body.nui details.kb[open]>summary{background:#f2f2f5;border-color:var(--n-l)}
+body.nui details.kb .kb-pop{position:absolute;right:0;top:36px;z-index:30;min-width:200px;background:#fff;border:1px solid var(--n-l);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.14);padding:6px;display:flex;flex-direction:column;gap:2px}
+body.nui details.kb .kb-pop form{margin:0}
+body.nui details.kb .kb-pop .btn{width:100%;justify-content:flex-start;border:0;background:none;color:var(--n-t);box-shadow:none;font-weight:500}
+body.nui details.kb .kb-pop .btn:hover{background:#f2f2f5}
+body.nui details.kb .kb-pop .btn.danger{color:#D23B3B}
+/* Mitarbeiter: Status-Schild, Aktionen, Checkliste (auch bisherige Oberfläche) */
+.stage-pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;vertical-align:middle;margin-left:10px}
+.stage-pill.st-ok{background:#E3F4EA;color:#1F7A45}.stage-pill.st-warn{background:#FDF2DC;color:#8a5a00}
+.stage-pill.st-info{background:#E6EEFB;color:#2F6FDB}.stage-pill.st-err{background:#FBE5E5;color:#B42323}
+.stage-pill.st-grey{background:#EFEFF2;color:#55555a}
+.emp-head-r{display:flex;gap:8px;align-items:center;margin-left:auto}
+.emp-actions .drop{min-width:250px}
+.emp-actions .drop a{display:flex!important;align-items:center;gap:9px;justify-content:flex-start!important;text-align:left!important}
+.eh-chips .stage-pill,.emp-tags .stage-pill{margin-left:0}
+.emp-actions .drop a.danger{color:#B42323}
+.emp-actions .stage-form{padding:6px 10px;margin:0}
+.emp-actions .stage-form label{font-size:12px;color:#6E6E73;margin:0 0 3px}
+.emp-actions .stage-form select{width:100%}
+.cl-card .cl-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cl-card h2{display:flex;align-items:center;gap:8px;font-size:17px}
+.cl-bar{height:7px;border-radius:9px;background:#EEEEF1;overflow:hidden;margin-bottom:6px}
+.cl-bar i{display:block;height:100%;background:#811D40;border-radius:9px}
+.cl-list{list-style:none;margin:0;padding:0}
+.cl-list li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #EEEEF1;font-size:14px}
+.cl-list li:first-child{border-top:0}
+.cl-list li.ok .cl-l{color:#8a8a90;text-decoration:line-through}
+.cl-f{margin:0;display:inline}
+.cl-box{width:20px;height:20px;border-radius:6px;border:1.5px solid #C8C8CE;background:#fff;display:inline-grid;place-items:center;flex:none;padding:0;cursor:pointer;color:#fff}
+span.cl-box{cursor:default}
+.cl-list li.ok .cl-box{background:#1F9D55;border-color:#1F9D55}
+.cl-l{flex:1;min-width:0}
+.cl-i{font-size:12px;color:#8a8a90;white-space:nowrap}
+.cl-new{display:flex;gap:8px;margin-top:10px}
+.cl-new input{flex:1}
 @media (max-width:1024px){
   body.nui .mainc{margin-left:0}
   body.nui .appside.nside{transform:translateX(-100%);transition:transform .2s ease}

@@ -1,3 +1,4 @@
+import { NUI_CSS } from './nui-css.js';
 import type { Child, FC } from 'hono/jsx';
 import { GLASS_CSS, GLASS_HEAD_JS } from './glass-css.js';
 import { formatEuro, type Cents } from '../domain/money/money.js';
@@ -1779,6 +1780,224 @@ const MENU_ICON: Record<string, string> = {
   auswertungen: 'clock',
 };
 
+/**
+ * Neue Oberfläche (Ahmed 13.11., Vorbild Blink Manager): Menü links, oben die Tagesarbeit, darunter klappbare Gruppen.
+ * Objektleitung bekommt „Meine Objekte“/„Mein Team“. Adressen und Rechte bleiben; gefiltert über canOpen.
+ */
+type NuiItem = { label: string; href: string; icon?: string; badge?: 'eingang' };
+type NuiGroup = { label: string; icon: string; items: NuiItem[] };
+const NUI_TOP: NuiItem[] = [
+  { label: 'Übersicht', href: '/', icon: 'home' },
+  { label: 'Eingang', href: '/eingang', icon: 'inbox', badge: 'eingang' },
+  { label: 'Planung', href: '/einsatzplanung', icon: 'calendar' },
+  { label: 'Zeiten & Freigabe', href: '/zeiterfassung', icon: 'clock' },
+  { label: 'Arbeitsscheine', href: '/arbeitsscheine', icon: 'clipboard' },
+  { label: 'Formulare', href: '/formulare', icon: 'form' },
+];
+const NUI_GROUPS: NuiGroup[] = [
+  {
+    label: 'Kunden & Aufträge',
+    icon: 'building',
+    items: [
+      { label: 'Kunden', href: '/kunden' },
+      { label: 'Objekte', href: '/objekte' },
+      { label: 'Angebote & Ausschreibungen', href: '/angebote' },
+      { label: 'Akquise', href: '/akquise' },
+      { label: 'Aufgaben', href: '/aufgaben' },
+      { label: 'Preisanpassung', href: '/preisanpassung' },
+    ],
+  },
+  {
+    label: 'Personal',
+    icon: 'users',
+    items: [
+      { label: 'Mitarbeiter', href: '/personal' },
+      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
+      { label: 'Bewerber & Stellen', href: '/bewerber' },
+    ],
+  },
+  {
+    label: 'Rechnungen & Zahlungen',
+    icon: 'euro',
+    items: [
+      { label: 'Entwürfe / Vorfaktura', href: '/rechnungen/entwuerfe' },
+      { label: 'Alle Rechnungen', href: '/rechnungen' },
+      { label: 'Offene Posten', href: '/offene-posten' },
+      { label: 'Mahnwesen', href: '/mahnungen' },
+      { label: 'Bank', href: '/transfer/kontoumsaetze' },
+    ],
+  },
+  {
+    label: 'Einkauf & Nachunternehmer',
+    icon: 'cart',
+    items: [
+      { label: 'Bestellungen', href: '/bestellungen' },
+      { label: 'Rechnungseingang', href: '/rechnungseingang' },
+      { label: 'Nachunternehmer', href: '/nachunternehmer' },
+      { label: 'Lieferanten', href: '/lieferanten' },
+    ],
+  },
+  {
+    label: 'Betrieb',
+    icon: 'tool',
+    items: [
+      { label: 'Glasreinigung', href: '/glasreinigung' },
+      { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
+      { label: 'Grundreinigung', href: '/grundreinigung' },
+      { label: 'Artikel', href: '/artikel' },
+      { label: 'Materialausgabe', href: '/materialausgabe' },
+      { label: 'Geräte', href: '/geraete' },
+      { label: 'Schlüsselbuch', href: '/schluessel' },
+      { label: 'Fahrzeuge', href: '/fahrzeuge' },
+    ],
+  },
+  {
+    label: 'Auswertungen',
+    icon: 'chart',
+    items: [
+      { label: 'Umsatz & Ausgaben', href: '/auswertungen/statistik' },
+      { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
+      { label: 'Urlaub & Krankheit', href: '/auswertungen/urlaub' },
+      { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
+    ],
+  },
+  {
+    label: 'Verwaltung',
+    icon: 'shield',
+    items: [
+      { label: 'Kassenbuch', href: '/kassenbuch' },
+      { label: 'Lohn & DATEV', href: '/datev' },
+      { label: 'Dokumente', href: '/transfer/dokumenteneingang' },
+      { label: 'Briefe', href: '/verwaltung/briefe' },
+      { label: 'Eigen-Compliance', href: '/eigen-compliance' },
+      { label: 'Importe', href: '/transfer/import' },
+      { label: 'Einstellungen', href: '/einstellungen' },
+    ],
+  },
+];
+const NUI_OL_TOP: NuiItem[] = [
+  { label: 'Übersicht', href: '/', icon: 'home' },
+  { label: 'Eingang', href: '/eingang', icon: 'inbox', badge: 'eingang' },
+  { label: 'Meine Objekte', href: '/objekte', icon: 'building' },
+  { label: 'Mein Team', href: '/team', icon: 'users' },
+  { label: 'Planung', href: '/einsatzplanung', icon: 'calendar' },
+  { label: 'Zeiten', href: '/zeiterfassung', icon: 'clock' },
+  { label: 'Arbeitsscheine', href: '/arbeitsscheine', icon: 'clipboard' },
+  { label: 'Qualität', href: '/qualitaet', icon: 'check2' },
+  { label: 'Formulare', href: '/formulare', icon: 'form' },
+];
+const NUI_OL_GROUPS: NuiGroup[] = [
+  {
+    label: 'Weiteres',
+    icon: 'menu',
+    items: [
+      { label: 'Urlaub & Abwesenheiten', href: '/urlaub' },
+      { label: 'Fehlende Unterlagen', href: '/personal/unterlagen' },
+      { label: 'Verbandbuch', href: '/verbandbuch' },
+      { label: 'Offene Stellen', href: '/stellen' },
+      { label: 'Personalbogen ausfüllen', href: '/qm/personalbogen' },
+      { label: 'Glasreinigung', href: '/glasreinigung' },
+      { label: 'Tiefgaragenreinigung', href: '/tiefgarage' },
+      { label: 'Grundreinigung', href: '/grundreinigung/objektleitung' },
+      { label: 'Geräte', href: '/geraete' },
+      { label: 'Schlüsselbuch', href: '/schluessel' },
+      { label: 'Aufgaben', href: '/aufgaben' },
+    ],
+  },
+];
+
+/** Noch nicht gebaute Seiten der neuen Oberfläche (werden ausgeblendet, bis es sie gibt). */
+const NUI_SOON = new Set<string>(['/eingang', '/formulare']);
+
+/** Welcher Menüpunkt passt am besten zur Adresse (längster Treffer, Bereichs-Reiter zählen mit). */
+function nuiActive(path: string, hrefs: string[]): string | null {
+  let best: string | null = null;
+  let len = -1;
+  for (const h of hrefs) {
+    const also = SECTION_TABS.find((g) => g.some((t) => t.href === h))?.flatMap((t) => [
+      t.href,
+      ...(t.also ?? []),
+    ]);
+    const hit = h === '/' ? path === '/' : path === h || path.startsWith(h + '/') || !!also?.includes(path);
+    if (hit && h.length > len) {
+      best = h;
+      len = h.length;
+    }
+  }
+  return best;
+}
+
+const NuiSide: FC<{
+  role: Role;
+  path: string;
+  user?: string | undefined;
+  env: string;
+  inbox?: number | undefined;
+}> = ({ role, path, user, env, inbox }) => {
+  const ol = role === 'objektleitung';
+  const ok = (i: NuiItem) => !NUI_SOON.has(i.href) && canOpen(role, i.href);
+  const top = (ol ? NUI_OL_TOP : NUI_TOP).filter(ok);
+  const groups = (ol ? NUI_OL_GROUPS : NUI_GROUPS)
+    .map((g) => ({ ...g, items: g.items.filter(ok) }))
+    .filter((g) => g.items.length > 0);
+  const act = nuiActive(
+    path,
+    [...top, ...groups.flatMap((g) => g.items)].map((i) => i.href),
+  );
+  const ROLE: Record<string, string> = {
+    admin: 'Geschäftsführung · Admin',
+    buchhaltung: 'Buchhaltung',
+    personal: 'Personal',
+    objektleitung: 'Objektleitung',
+  };
+  return (
+    <aside class="appside nside" aria-label="Navigation">
+      <a class="nlogo" href="/" aria-label="Viva-Deluxe – Übersicht">
+        <img src="/static/logo.png" alt="Viva-Deluxe Gebäudereinigung GmbH" width="179" height="36" />
+      </a>
+      {user && (
+        <a class="nrole" href="/konto">
+          <span>
+            {user}
+            <small>{ROLE[role] ?? role}</small>
+          </span>
+          <Icon name="chevron" size={14} />
+        </a>
+      )}
+      <nav class="nmenu" aria-label="Hauptmenü">
+        {top.map((i) => (
+          <a href={i.href} class={act === i.href ? 'on' : ''}>
+            <Icon name={i.icon ?? 'file'} size={18} />
+            <span>{i.label}</span>
+            {i.badge === 'eingang' && inbox ? <b class="nbadge">{inbox}</b> : null}
+          </a>
+        ))}
+        {groups.map((g) => {
+          const open = g.items.some((i) => i.href === act);
+          return (
+            <details class="ngrp" open={open}>
+              <summary>
+                <span>{g.label}</span>
+                <Icon name="chevron" size={14} />
+              </summary>
+              {g.items.map((i) => (
+                <a href={i.href} class={act === i.href ? 'on' : ''}>
+                  <span>{i.label}</span>
+                </a>
+              ))}
+            </details>
+          );
+        })}
+      </nav>
+      {env !== 'live' && (
+        <div class="side-foot">
+          <span class="env">{env === 'test' ? 'Testbetrieb' : 'Lokal'}</span>
+        </div>
+      )}
+    </aside>
+  );
+};
+
 export function initials(name: string): string {
   return name
     .split(/[\s,]+/)
@@ -1804,10 +2023,31 @@ export const Layout: FC<{
   menuTop?: boolean;
   /** aktuelle Adresse (für die Bereichs-Reiter) */
   path?: string;
+  /** neue Oberfläche (Menü links mit Gruppen, Ahmed 13.11.) */
+  uiNew?: boolean;
+  /** Anzahl offener Einträge im Eingang (Zahl am Menüpunkt) */
+  inbox?: number;
   flash?: { ok?: string | undefined; err?: string | undefined };
   children?: Child;
-}> = ({ title, nav: navIn, env, user, role, bare, app, noTabs, menuTop, path, flash, children }) => {
+}> = ({
+  title,
+  nav: navIn,
+  env,
+  user,
+  role,
+  bare,
+  app,
+  noTabs,
+  menuTop: menuTopIn,
+  path,
+  uiNew,
+  inbox,
+  flash,
+  children,
+}) => {
   const nav = NAV_ALIAS[navIn] ?? navIn;
+  const nui = !!uiNew && !bare && !!role;
+  const menuTop = !nui && menuTopIn;
   const menu = role
     ? MENU.map((m) => ({
         ...m,
@@ -1843,7 +2083,7 @@ export const Layout: FC<{
           crossorigin="anonymous"
         />
         <script dangerouslySetInnerHTML={{ __html: GLASS_HEAD_JS }} />
-        <style dangerouslySetInnerHTML={{ __html: CSS + GLASS_CSS }} />
+        <style dangerouslySetInnerHTML={{ __html: CSS + GLASS_CSS + NUI_CSS }} />
       </head>
       {app ? (
         <body class="appmode shellbar">
@@ -1883,9 +2123,10 @@ export const Layout: FC<{
           <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
         </body>
       ) : (
-        <body class={bare ? 'bare' : menuTop ? 'shell menu-top' : 'shell'}>
+        <body class={bare ? 'bare' : nui ? 'shell nui' : menuTop ? 'shell menu-top' : 'shell'}>
           <input type="checkbox" id="burger" class="burger-cb" aria-hidden="true" />
-          {!bare && (
+          {nui && role && <NuiSide role={role} path={path ?? '/'} user={user} env={env} inbox={inbox} />}
+          {!bare && !nui && (
             <aside class="appside" aria-label="Navigation">
               <a class="side-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
                 <img
@@ -2024,11 +2265,20 @@ export const Layout: FC<{
                       <div class="drop right">
                         <a href="/konto">Mein Konto / Passwort</a>
                         <a href="/konto/darstellung">Darstellung (Glas, Farbe)</a>
-                        <form method="post" action="/konto/menue" style="margin:0" class="menu-pos">
-                          <input type="hidden" name="pos" value={menuTop ? 'links' : 'oben'} />
+                        {!nui && (
+                          <form method="post" action="/konto/menue" style="margin:0" class="menu-pos">
+                            <input type="hidden" name="pos" value={menuTop ? 'links' : 'oben'} />
+                            <input type="hidden" name="zurueck" value="" data-here />
+                            <button class="btn ghost" style="width:100%;justify-content:flex-start">
+                              {menuTop ? 'Menü links anzeigen' : 'Menü oben anzeigen'}
+                            </button>
+                          </form>
+                        )}
+                        <form method="post" action="/konto/oberflaeche" style="margin:0">
+                          <input type="hidden" name="ui" value={nui ? 'alt' : 'neu'} />
                           <input type="hidden" name="zurueck" value="" data-here />
                           <button class="btn ghost" style="width:100%;justify-content:flex-start">
-                            {menuTop ? 'Menü links anzeigen' : 'Menü oben anzeigen'}
+                            {nui ? 'Bisherige Oberfläche' : 'Neue Oberfläche'}
                           </button>
                         </form>
                         {role === 'admin' && <a href="/benutzer">Benutzer & Rechte</a>}

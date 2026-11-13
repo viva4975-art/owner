@@ -133,6 +133,22 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </form>
           <div class="card">
+            <h3>Oberfläche</h3>
+            <p class="small mut" style="margin-top:0">
+              Neue Oberfläche: Menü links mit Tagesarbeit oben, Startseite mit Kennzahlen, Eingang für alles
+              Offene. Die bisherige Oberfläche bleibt wählbar – gilt für Ihr Benutzerkonto auf allen Geräten.
+            </p>
+            <form method="post" action="/konto/oberflaeche" class="actions" style="margin-top:0">
+              <input type="hidden" name="zurueck" value="/konto" />
+              <button class={`btn${c.get('uiNew') ? '' : ' sec'}`} name="ui" value="neu">
+                Neue Oberfläche
+              </button>
+              <button class={`btn${c.get('uiNew') ? ' sec' : ''}`} name="ui" value="alt">
+                Bisherige Oberfläche
+              </button>
+            </form>
+          </div>
+          <div class="card">
             <h3>Menü</h3>
             <p class="small mut" style="margin-top:0">
               Wo soll das Hauptmenü stehen? Gilt für Ihr Benutzerkonto auf allen Geräten (Handy: immer über
@@ -276,6 +292,16 @@ export function registerAuthRoutes({ app, deps, page, back }: Ctx) {
               on conflict (user_id) do update set menu_pos = excluded.menu_pos, updated_at = now()`;
     const to = String(b.zurueck ?? '');
     return c.redirect(/^\/(?!\/)/.test(to) ? to : '/konto', 303);
+  });
+
+  // Neue oder bisherige Oberfläche – je Benutzerkonto (Rücksprung ohne Code-Änderung, Ahmed 13.11.)
+  app.post('/konto/oberflaeche', async (c) => {
+    const b = await c.req.parseBody();
+    const ui = b.ui === 'alt' ? 'alt' : 'neu';
+    await sql`insert into app.user_prefs (user_id, ui) values (${c.get('user').id}, ${ui})
+              on conflict (user_id) do update set ui = excluded.ui, updated_at = now()`;
+    const to = String(b.zurueck ?? '');
+    return c.redirect(/^\/(?!\/)/.test(to) ? to : '/konto/darstellung', 303);
   });
 
   app.post('/konto', async (c) => {

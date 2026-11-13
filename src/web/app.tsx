@@ -98,7 +98,7 @@ import { expandAddressBlocks } from './address-block.js';
 export const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
 export type AppEnv = {
-  Variables: { actor: string; user: User; sites: string[] | null; menuTop?: boolean };
+  Variables: { actor: string; user: User; sites: string[] | null; menuTop?: boolean; uiNew?: boolean };
 };
 
 /** Objektleitung: nur eigene Objekte. Wirft 403, wenn das Objekt nicht dazugehört. */
@@ -381,11 +381,15 @@ export function createApp(deps: Deps) {
     c.set('user', user);
     c.set('actor', user.login);
     const [[pref], sites] = await Promise.all([
-      sql<{ menu_pos: string | null }[]>`select menu_pos from app.user_prefs where user_id = ${user.id}`,
+      sql<
+        { menu_pos: string | null; ui: string | null }[]
+      >`select menu_pos, ui from app.user_prefs where user_id = ${user.id}`,
       managedSites(sql, user),
     ]);
     // Menü oben ist Standard (Ahmed 12.10.), „links“ nur, wenn im Konto so gewählt
     c.set('menuTop', pref?.menu_pos !== 'links');
+    // Neue Oberfläche ist Standard (Ahmed 13.11.), „bisherige“ unter Mein Konto → Darstellung
+    c.set('uiNew', pref?.ui !== 'alt');
     c.set('sites', sites);
     if (!canAccess(user.role, path)) {
       return page(
@@ -492,6 +496,7 @@ export function createApp(deps: Deps) {
             noTabs={/^\/(qualitaet|qm\/audit|arbeitsscheine)(\/|$)/.test(c.req.path)}
             path={c.req.path}
             menuTop={c.get('menuTop') ?? false}
+            uiNew={c.get('uiNew') ?? false}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}

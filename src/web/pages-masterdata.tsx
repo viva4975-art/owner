@@ -999,16 +999,27 @@ export const SiteShell: FC<{
                 {s.name}
                 <span class="no">{s.site_no}</span>
               </h1>
-              <div class="ent-sub">
-                {addr && <span>{addr}</span>}
-                {addr && ' · '}
-                Kunde {canAccess(role, `/kunden/${c.id}`) ? (
-                  <a href={`/kunden/${c.id}`}>{c.name}</a>
-                ) : (
-                  c.name
-                )}{' '}
-                ({c.customer_no})
-              </div>
+              {addr && (
+                <div class="ent-sub">
+                  <Icon name="pin" /> {addr}
+                </div>
+              )}
+              {canAccess(role, `/kunden/${c.id}`) ? (
+                <a class="ent-cust" href={`/kunden/${c.id}`}>
+                  <small>Kunde</small>
+                  <span>
+                    {c.name} <em>{c.customer_no}</em>
+                  </span>
+                  <Icon name="chevron" />
+                </a>
+              ) : (
+                <div class="ent-cust">
+                  <small>Kunde</small>
+                  <span>
+                    {c.name} <em>{c.customer_no}</em>
+                  </span>
+                </div>
+              )}
               <div class="ent-chips">
                 {s.active ? <span class="tag ok">aktiv</span> : <span class="tag err">inaktiv</span>}
                 <span class="eh-tag">

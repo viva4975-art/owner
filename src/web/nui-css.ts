@@ -209,22 +209,22 @@ html body.nui .site-ov .calm-cols{grid-template-columns:1fr 1fr}
 @media (max-width:900px){html body.nui .site-ov{grid-template-columns:minmax(0,1fr)}}
 
 /* Eingabefelder im neuen Design (Ahmed 13.11.): Beschriftung über dem Feld, zwei Spalten, ruhige graue Felder */
-html body.nui main form[method="post" i] .grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px 18px!important;max-width:940px}
-html body.nui main form[method="post" i] .grid>div:not(.chk){display:flex!important;flex-direction:column;gap:6px;align-items:stretch;grid-column:auto!important}
-html body.nui main form[method="post" i] .grid>div:not(.chk)>:not(label){grid-column:auto}
+html body.nui main form[method="post" i] .grid:not([hidden]):not([style*="none"]){display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px 18px!important;max-width:940px}
+html body.nui main form[method="post" i] .grid>div:not(.chk):not([hidden]):not([style*="none"]){display:flex!important;flex-direction:column;gap:6px;align-items:stretch;grid-column:auto!important}
+html body.nui main form[method="post" i] .grid>div:not(.chk):not([hidden]):not([style*="none"])>:not(label){grid-column:auto}
 html body.nui main form[method="post" i] .grid>div:has(textarea),html body.nui main form[method="post" i] .grid>div:has(fieldset),html body.nui main form[method="post" i] .grid>div:has(.chips),html body.nui main form[method="post" i] .grid>div:has(table),html body.nui main form[method="post" i] .grid>.full,html body.nui main form[method="post" i] .grid>.formfoot{grid-column:1/-1!important}
-html body.nui main form[method="post" i] .grid>.chk{padding-left:0!important;align-self:end;min-height:42px;display:flex;align-items:center;gap:8px}
+html body.nui main form[method="post" i] .grid>.chk:not([hidden]){padding-left:0!important;align-self:end;min-height:42px;display:flex;align-items:center;gap:8px}
 html body.nui main form[method="post" i] label{font-size:13px;font-weight:600;color:var(--n-t2);margin:0;letter-spacing:.005em}
 html body.nui main form[method="post" i] .chk label,html body.nui main form[method="post" i] label:has(input[type=checkbox]),html body.nui main form[method="post" i] label:has(input[type=radio]){font-size:14.5px;font-weight:500;color:var(--n-t)}
-html body.nui main form input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=submit]):not([type=range]),html body.nui main form select,html body.nui main form textarea{min-height:42px;border-radius:10px!important;border:1px solid #e3e3e8!important;background:#f7f7f9!important;font-size:15px;padding:9px 12px;box-shadow:none!important;transition:background .15s,border-color .15s,box-shadow .15s;width:100%}
+html body.nui main form input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=submit]):not([type=range]),html body.nui main form select,html body.nui main form textarea{min-height:42px;border-radius:10px!important;border:1px solid #e3e3e8!important;background-color:#f7f7f9!important;font-size:15px;padding:9px 12px;box-shadow:none!important;transition:background .15s,border-color .15s,box-shadow .15s;width:100%}
 html body.nui main form textarea{min-height:92px;line-height:1.45}
 html body.nui main form input:hover:not(:focus):not([type=checkbox]):not([type=radio]),html body.nui main form select:hover:not(:focus),html body.nui main form textarea:hover:not(:focus){border-color:#d2d2d8!important}
-html body.nui main form input:focus:not([type=checkbox]):not([type=radio]),html body.nui main form select:focus,html body.nui main form textarea:focus{background:#fff!important;border-color:var(--n-b)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--n-b) 16%,transparent)!important;outline:0}
+html body.nui main form input:focus:not([type=checkbox]):not([type=radio]),html body.nui main form select:focus,html body.nui main form textarea:focus{background-color:#fff!important;border-color:var(--n-b)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--n-b) 16%,transparent)!important;outline:0}
 html body.nui main form input[type=checkbox],html body.nui main form input[type=radio]{accent-color:var(--n-b);width:18px;height:18px}
 html body.nui main form h2.form-section,html body.nui main form[method="post" i]>h3{font-size:16px;font-weight:650;color:var(--n-t);margin:26px 0 12px;padding:0;border:0}
 html body.nui main form h2.form-section:first-of-type,html body.nui main form[method="post" i]>h3:first-of-type{margin-top:2px}
 html body.nui main form .help,html body.nui main form .hint{font-size:13px;color:var(--n-t2)}
-html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start}
+html body.nui main form[method="post" i]>.actions:not([hidden]),html body.nui main form[method="post" i]>.formfoot:not([hidden]){position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
 @media (max-width:760px){html body.nui main form[method="post" i] .grid{grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
 
 /* Schritt für Schritt (Neu anlegen) */
@@ -267,6 +267,29 @@ html body.nui .ent-head .tabs>a::after{display:none!important}
 }
 
 html body.nui main form[method]>.wz-hh,html body.nui main form[method] h2.wz-hh{display:none!important}
-html body.nui main form[method="post" i]>label{display:block;margin:16px 0 6px}
+html body.nui main form[method="post" i]>label:not([hidden]){display:block;margin:16px 0 6px}
 html body.nui main form[method="post" i]>input:not([type=hidden]),html body.nui main form[method="post" i]>textarea,html body.nui main form[method="post" i]>select{max-width:940px}
+
+/* Objektkopf: Kunde als eigene kleine Karte statt Textzeile (Ahmed 13.11.) */
+body.nui .ent-sub .ic{width:14px;height:14px;vertical-align:-2px;color:var(--n-t2);margin-right:2px}
+body.nui .ent-cust{display:inline-flex;align-items:center;gap:10px;margin:10px 0 2px;padding:7px 12px;border:1px solid var(--n-l);border-radius:12px;background:#fafafb;color:var(--n-t)!important;text-decoration:none!important;max-width:100%}
+body.nui a.ent-cust:hover{border-color:var(--n-b);background:var(--n-bh)}
+body.nui .ent-cust small{font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--n-t2)}
+body.nui .ent-cust span{font-size:14px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.nui .ent-cust em{font-style:normal;font-weight:500;color:var(--n-t2);margin-left:4px}
+body.nui .ent-cust .ic{width:14px;height:14px;color:var(--n-t2);flex:none}body.nui .ent-cust .ic:last-child{transform:rotate(-90deg)}
+@media (max-width:760px){body.nui .ent-cust{display:flex;margin-top:8px}body.nui .ent-cust span{white-space:normal}}
+
+/* Auswahlfelder überall mit demselben Pfeil; Knöpfe im Formularfuß: Speichern zuerst, Abbrechen/Zurück rechts */
+html body.nui main form select:not([multiple]){-webkit-appearance:none;appearance:none;padding-right:36px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 12px center!important;background-size:16px!important}
+html body.nui main form[method="post" i]>.actions>*,html body.nui main form[method="post" i]>.formfoot>*{order:1}
+html body.nui main form[method="post" i]>.actions>button.btn:not(.sec):not(.ghost):not(.danger),html body.nui main form[method="post" i]>.formfoot>button.btn:not(.sec):not(.ghost):not(.danger){order:0}
+html body.nui main form[method="post" i]>.actions>a.btn,html body.nui main form[method="post" i]>.formfoot>a.btn{order:3}
+html body.nui main form[method="post" i]>.actions>a.btn:first-of-type,html body.nui main form[method="post" i]>.formfoot>a.btn:first-of-type{margin-left:auto}
+html body.nui main form[method="post" i]>.actions>.wz-nav,html body.nui main form[method="post" i]>.formfoot>.wz-nav{order:2}
+
+html body.nui main form .cbx-btn{min-height:42px;border-radius:10px!important;border:1px solid #e3e3e8!important;background-color:#f7f7f9!important;font-size:15px}
+html body.nui main form .cbx-btn:hover{border-color:#d2d2d8!important}
+html body.nui main form .cbx-btn:focus,html body.nui main form .cbx.open .cbx-btn{background-color:#fff!important;border-color:var(--n-b)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--n-b) 16%,transparent)!important}
+html body.nui main form .cbx-pop .cbx-q{min-height:38px;background-color:#fff!important}
 `;

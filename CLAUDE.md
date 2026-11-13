@@ -5545,3 +5545,11 @@ Testadresse.
   (`navigator.webdriver`) aus, außer `vd_wz=on`. Objektkopf am Handy: kleineres Symbol, Name 19 px mit Nummer darunter,
   Knöpfe in einer Zeile, Reiter als Pillen. e2e personal, rechte, login, leistungen, einkauf grün; uebergabe 1 Fehler
   wie vorher (Objekt-Reiter Übergaben für Objektleitung).
+- 2026-11-13: Nachtrag (Ahmed: „Kunde beim Objekt nicht schön“, „Eingabefelder überall gleich, auch Sub, Lieferant,
+  Bestellung“): Objektkopf zeigt die Adresse mit Ortssymbol und den Kunden als eigene kleine Karte („KUNDE Name Nr. ›“,
+  anklickbar) statt in der Textzeile. Formular-Stil gilt für alle Eingabeformulare (Lieferant, Nachunternehmer,
+  NU-/Material-Bestellung, Rechnungseingang …), dazu einheitlicher Pfeil in allen Auswahlfeldern, Such-Auswahlfelder im
+  gleichen Grau, Knöpfe im Fuß immer: Speichern → Speichern & zurück → (rechts) Abbrechen/Zurück. **Fund:** Die neue
+  Feldregel überschrieb `hidden` – aufklappbare Felder (z. B. Rechnungseingang „Schon bezahlt“ → Zahlart/bezahlt am)
+  waren sofort sichtbar; behoben und mit einem Vergleich alt/neu über 179 Formularseiten geprüft (keine Abweichung mehr).
+  e2e einkauf, nachunternehmer, personal, rechte grün.

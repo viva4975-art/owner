@@ -62,6 +62,9 @@ import { SEARCH_TYPES, type SearchType, search } from '../services/search.js';
 import { type AppEnv, type Ctx, UUID, taskViewerOf } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { homeFor } from './permissions.js';
+import { CockpitRow } from './cockpit.js';
+import { uncoveredShifts } from '../services/planning.js';
+import { inboxItems } from './routes-inbox.js';
 import {
   DASH_CARDS,
   type DashCardKey,
@@ -273,6 +276,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       geplant: ['', 'geplant'],
       erledigt: ['ok', 'erledigt'],
     };
+    const olInbox = c.get('uiNew') ? await inboxItems(deps, c) : null;
     return page(
       c,
       'Übersicht',
@@ -291,6 +295,7 @@ export function registerModuleRoutes(ctx: Ctx) {
           ).filter(([h]) => canOpen('objektleitung', h.split('?')[0]!))}
           tiles={tiles}
         />
+        {olInbox && <CockpitRow d={{ inbox: olInbox }} />}
         <LeaveRequestsBox rows={leave} />
         <div class="dash-grid">
           <div class="dash-col">
@@ -618,11 +623,40 @@ export function registerModuleRoutes(ctx: Ctx) {
         ] as HeroTile[]
       ).filter((t) => canOpen(role, t.href!));
     }
+    // Neue Oberfläche: Cockpit-Zeile (Eingang, Personal, Objekte)
+    let cockpit: Child | undefined;
+    if (c.get('uiNew')) {
+      const inbox = await inboxItems(deps, c);
+      const nowAbs = absent.filter((a) => a.start_date <= today);
+      const personal =
+        canAccess(role, '/personal') || canAccess(role, '/urlaub')
+          ? {
+              absent: nowAbs.length,
+              sick: nowAbs.filter((a) => a.kind === 'krank' || a.kind === 'kind_krank').length,
+              noShift: canAccess(role, '/einsatzplanung') ? await countWithoutShift(sql, c.get('sites')) : 0,
+              permits: inbox.filter((i) => i.key.startsWith('p:')).length,
+              missing: missingN,
+            }
+          : undefined;
+      const objects =
+        canAccess(role, '/objekte') || canAccess(role, '/einsatzplanung')
+          ? await Promise.all([
+              uncoveredShifts(sql, today, addDays(today, 7)),
+              sql<{ tickets: number; audit: number }[]>`
+                select (select count(*)::int from app.site_tickets where status <> 'erledigt') as tickets,
+                       (select count(*)::int from app.sites s where s.active and s.manager_user_id is not null
+                          and not exists (select 1 from app.quality_checks q where q.site_id = s.id
+                                            and q.status <> 'entwurf' and q.check_date >= current_date - 60)) as audit`,
+            ]).then(([u, [x]]) => ({ uncovered: u.length, tickets: x!.tickets, auditDue: x!.audit }))
+          : undefined;
+      cockpit = <CockpitRow d={{ inbox, personal, objects }} />;
+    }
     return page(
       c,
       'Übersicht',
       'home',
       <Dashboard
+        cockpit={cockpit}
         layout={normalizeDash(
           (
             await sql<

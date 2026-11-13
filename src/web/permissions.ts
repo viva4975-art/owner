@@ -82,6 +82,8 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/(schluessel|geraete|uebergaben)(\/|$)/, ALL],
   [/^\/arbeitskleidung(\/|$)/, ['admin', 'buchhaltung', 'personal']],
   [/^\/(aufgaben|geplant)(\/|$)/, ALL],
+  // Eingang (neue Oberfläche): Inhalte je Rolle gefiltert (routes-inbox)
+  [/^\/eingang$/, ALL],
   [/^\/(dateien|api\/uploads)(\/|$)/, ALL],
   [/^\/neu$/, ALL],
   [/^\/$/, ALL],

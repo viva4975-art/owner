@@ -63,6 +63,7 @@ import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
 import { registerFirstAidRoutes } from './routes-first-aid.js';
 import { registerTeamRoutes } from './routes-team.js';
+import { inboxCount, registerInboxRoutes } from './routes-inbox.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
@@ -482,8 +483,17 @@ export function createApp(deps: Deps) {
     await next();
   });
 
-  function page(c: Context<AppEnv>, title: string, nav: string, body: Child, status: 200 | 403 | 404 = 200) {
+  async function page(
+    c: Context<AppEnv>,
+    title: string,
+    nav: string,
+    body: Child,
+    status: 200 | 403 | 404 = 200,
+  ) {
     const u = c.get('user') as User | undefined;
+    // Zahl am Menüpunkt „Eingang“ (nur neue Oberfläche, am PC)
+    const inbox =
+      u && c.get('uiNew') && !inAppFrame(c) ? await inboxCount(deps, c).catch(() => 0) : undefined;
     return c.html(
       '<!doctype html>' +
         String(
@@ -497,6 +507,7 @@ export function createApp(deps: Deps) {
             path={c.req.path}
             menuTop={c.get('menuTop') ?? false}
             uiNew={c.get('uiNew') ?? false}
+            {...(inbox !== undefined ? { inbox } : {})}
             flash={{ ok: c.req.query('ok'), err: c.req.query('fehler') }}
           >
             {body}
@@ -660,6 +671,7 @@ export function createApp(deps: Deps) {
   registerHrRequiredRoutes(ctx);
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);
+  registerInboxRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);

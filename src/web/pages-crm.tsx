@@ -528,7 +528,7 @@ const TASK_HREF: Record<string, string> = {
   photo_group: '/fotos/',
   device: '/geraete/',
 };
-const taskHref = (t: Task) =>
+export const taskHref = (t: Task) =>
   t.entity_type && t.entity_id && TASK_HREF[t.entity_type]
     ? `${TASK_HREF[t.entity_type]}${t.entity_id}`
     : `/aufgaben/${t.id}/bearbeiten`;
@@ -734,7 +734,10 @@ export const Dashboard: FC<{
   quick?: [string, string][] | undefined;
   /** Karten, die diese Rolle sieht (sonst alle) */
   allowed?: DashCardKey[] | undefined;
+  /** neue Oberfläche: Cockpit-Zeile unter dem Kopf */
+  cockpit?: Child;
 }> = ({
+  cockpit,
   layout,
   hero = [],
   quick = [
@@ -925,6 +928,7 @@ export const Dashboard: FC<{
   return (
     <div class="dash">
       <DashHero name={user} today={kpi.today} quick={quick} tiles={hero} customize />
+      {cockpit}
 
       <LeaveRequestsBox rows={leaveRequests} />
 

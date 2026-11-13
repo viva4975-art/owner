@@ -225,7 +225,7 @@ html body.nui main form h2.form-section,html body.nui main form[method="post" i]
 html body.nui main form h2.form-section:first-of-type,html body.nui main form[method="post" i]>h3:first-of-type{margin-top:2px}
 html body.nui main form .help,html body.nui main form .hint{font-size:13px;color:var(--n-t2)}
 html body.nui main form[method="post" i]>.actions:not([hidden]),html body.nui main form[method="post" i]>.formfoot:not([hidden]){position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
-@media (max-width:760px){html body.nui main form[method="post" i] .grid{grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
+@media (max-width:760px){html body.nui main form[method="post" i] .grid:not([hidden]):not([style*="none"]){grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
 
 /* Schritt für Schritt (Neu anlegen) */
 html body.nui main form .wz-off,html body.nui main form[method] .grid>div.wz-off.wz-off,html body.nui main form[method]>.wz-off,html body.nui main form[method] .wz-off{display:none!important}
@@ -292,4 +292,13 @@ html body.nui main form .cbx-btn{min-height:42px;border-radius:10px!important;bo
 html body.nui main form .cbx-btn:hover{border-color:#d2d2d8!important}
 html body.nui main form .cbx-btn:focus,html body.nui main form .cbx.open .cbx-btn{background-color:#fff!important;border-color:var(--n-b)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--n-b) 16%,transparent)!important}
 html body.nui main form .cbx-pop .cbx-q{min-height:38px;background-color:#fff!important}
+
+/* Handy: Kopfzeile deckend (Inhalt schien durch), Datumsfelder nicht breiter/höher als die Spalte (iOS) */
+html.glas body.nui .top,html.glas.scrolled body.nui .top,html.glas.scrolled body.nui .shell .top{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.glas body.nui .top::before{background:#fff!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html body.nui main form input[type=date],html body.nui main form input[type=datetime-local],html body.nui main form input[type=time],html body.nui main form input[type=month]{-webkit-appearance:none;appearance:none;display:block;box-sizing:border-box;width:100%!important;max-width:100%!important;min-width:0!important;height:42px;line-height:normal;text-align:left}
+html body.nui main form input::-webkit-date-and-time-value{text-align:left;margin:0}
+html body.nui main form input::-webkit-datetime-edit{padding:0}
+html body.nui main form .grid>div{min-width:0}
+@media (max-width:760px){html body.nui main form input:not([type=checkbox]):not([type=radio]),html body.nui main form select,html body.nui main form textarea{font-size:16px}}
 `;

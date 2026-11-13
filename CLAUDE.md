@@ -5560,3 +5560,9 @@ Testadresse.
   durchgeklickt: Schritt 1 = 11 Felder, 2 = 5, 3 = Vergütung (Pflichtauswahl wird geprüft), 4 = Vertrauliche Daten, dann
   Speichern. Lehnt der Server ab (z. B. „Bitte den Tariflohn wählen“), öffnet die Maske den Schritt, zu dem die Meldung
   passt (Wörter der Beschriftungen). e2e personal, rechte, einkauf grün.
+- 2026-11-13: **Fund Formular am iPhone „überschneidet sich“** (Ahmed, Screenshot Mitarbeiter bearbeiten): 1) Die Regel
+  „eine Spalte am Handy“ war schwächer als die Zwei-Spalten-Regel (`:not([hidden])` zählt mehr) → am Handy zwei enge
+  Spalten; jetzt eine Spalte. 2) Datumsfelder sind in iOS breiter/höher als die Spalte und ragten ins Nachbarfeld → volle
+  Spaltenbreite, 42 px hoch, linksbündig. 3) Kopfzeile wurde beim Scrollen durchsichtig (Glas), der Inhalt schien durch →
+  in der neuen Oberfläche immer deckend weiß. 4) Eingabefelder am Handy 16 px (iOS zoomt sonst beim Antippen).
+  Nur in Chromium (Handy-Ansicht) geprüft, kein Safari hier.

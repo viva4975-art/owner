@@ -145,7 +145,7 @@ span.cl-box{cursor:default}
 .ql-chip{display:inline-flex;align-items:center;gap:4px;background:#F1F1F4;border-radius:8px;padding:3px 4px 3px 9px;font-size:13px}
 .ql-chip small{color:#6E6E73}.ql-chip.warn{background:#FDF2DC}.ql-chip.err{background:#FBE5E5;color:#B42323}
 .ql-x{border:0;background:none;color:#8a8a90;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
-.ql-new{display:flex;gap:8px;flex-wrap:wrap}.ql-new input[name=name]{flex:1;min-width:180px}
+html body form.ql-new{display:flex!important;gap:8px;flex-wrap:wrap;align-items:center}html body form.ql-new>*{margin:0!important}html body form.ql-new input{width:auto!important}html body form.ql-new input[name=name]{flex:1 1 220px!important;min-width:180px}html body form.ql-new input[type=date]{flex:0 0 170px}
 /* Formular-Baukasten */
 .fb-list{padding:4px 18px!important}
 .fb-item{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid #E5E5EA}
@@ -170,4 +170,28 @@ span.cl-box{cursor:default}
   body.nui .burger-cb:checked~.appside.nside{transform:none;box-shadow:0 20px 50px rgba(0,0,0,.25)!important}
 }
 @media print{body.nui .appside.nside{display:none!important}body.nui .mainc{margin-left:0}}
+
+/* Detailseiten: Kopf als Profilkarte (Mitarbeiter), Inhalt der Reiter ohne weißen Rahmen – Karten liegen auf dem Grund */
+html body.nui .ent-head{display:block!important;background:#fff;border:1px solid var(--n-l);border-radius:16px;padding:20px 22px 0;margin:0 0 16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+body.nui .ent-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center;padding-bottom:16px}
+@media (max-width:760px){body.nui .ent-top{grid-template-columns:auto minmax(0,1fr)}body.nui .ent-acts{grid-column:1/-1;margin-left:0}}
+body.nui .ent-av{width:58px;height:58px;border-radius:50%;background:var(--n-bh);color:var(--n-b);display:grid;place-items:center;font-weight:650;font-size:20px;flex:none}
+body.nui .ent-name{min-width:0}
+html body.nui .ent-name h1{margin:0;font-size:24px;line-height:1.2;font-weight:650;color:var(--n-t)}
+body.nui .ent-name h1 .no{color:var(--n-t2);font-weight:500;font-size:15px;margin-left:10px}
+body.nui .ent-sub{color:var(--n-t2);font-size:13.5px;margin-top:3px}
+body.nui .ent-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+body.nui .ent-chips .eh-tag{background:#F2F2F5;color:var(--n-t);border-radius:999px;padding:2px 10px;font-size:12.5px}
+body.nui .ent-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+body.nui .ent-acts>.stage-pill{display:none}
+body.nui .ent-acts .emp-head-r{margin:0}
+html body.nui .ent-head .tabs{border-bottom:0!important;background:none!important;border-top:1px solid var(--n-l)!important;margin:0 -22px!important;padding:0 10px!important;width:auto!important;max-width:none!important}
+body.nui .ent-chips .stage-pill{margin:0}
+html body.nui .entity-layout .tabs a,html body.nui .entity-layout .tabs summary{padding-left:10px;padding-right:10px}
+body.nui .emp-hero .eh-top{display:none}
+body.nui .emp-hero{padding-top:0}
+html body.nui main .tabbody,html.glas body.nui main .tabbody{background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;padding:0!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html body.nui main .tabbody>.tbl,html body.nui main .tabbody>div>.tbl{background:#fff!important;border:1px solid var(--n-l)!important;border-radius:14px!important;overflow:auto}
+html body.nui main .tabbody>.card,html body.nui main .tabbody .cols>.card,html body.nui main .tabbody .cols>div>.card{box-shadow:0 1px 2px rgba(0,0,0,.03)!important}
+body.nui .tabs a,body.nui .tabs summary{font-size:14px}
 `;

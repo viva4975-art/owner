@@ -5519,3 +5519,11 @@ Testadresse.
     „immer unfertig“ – KoSIT lokal nicht gestartet bzw. datumsabhängig). Browser-Tests menu (17), login 47, planung 27,
     rechte 48 grün. Fund: Prüfsumme von `20270123000002_brief_gruss.sql` war mit einem Zwischenstand eingetragen
     (Datei seit dem Commit unverändert) → korrigiert.
+- 2026-11-13: **Detailseiten im neuen Design** (Ahmed: „Mitarbeiterübersicht usw. muss auch an das Design angepasst
+  werden“), nur neue Oberfläche: **Mitarbeiter** hat auf allen Reitern einen Kopf als Profilkarte (`ent-head` in
+  `EmployeeShell`, Prop `nui`): Initialen, Name + Personalnr., Beschäftigung · Std./Woche · seit, Status + Tags, rechts
+  Anrufen/WhatsApp/E-Mail und „Aktionen ▾“, Reiter unten in der Karte; die doppelte Namenskarte auf der Übersicht entfällt
+  (Kennzahlen bleiben), „Nicht angetreten“ steht jetzt unter Aktionen. **Reiter-Inhalt ohne weißen Rahmen** (Mitarbeiter,
+  Kunde, Objekt …): Karten und Tabellen liegen als eigene weiße Karten auf dem grauen Grund statt Karte-in-Karte; Reiter bei
+  Kunde/Objekt enger. Qualifikationen als eine Zeile (Name, Datum, Hinzufügen). Bisherige Oberfläche unverändert.
+  Browser-Tests rechte 48, login 47, personal 11 grün.

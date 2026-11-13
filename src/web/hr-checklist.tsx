@@ -9,7 +9,13 @@ export const StagePill: FC<{ stage: HrStage }> = ({ stage }) => (
 );
 
 /** „Aktionen ▾“ im Kopf des Mitarbeiters (neue Oberfläche) */
-export const EmployeeActions: FC<{ id: string; stage: HrStage; canHr: boolean }> = ({ id, stage, canHr }) => {
+export const EmployeeActions: FC<{
+  id: string;
+  stage: HrStage;
+  canHr: boolean;
+  /** „Nicht angetreten“ anbieten (frisch eingestellt, noch kein Austritt) */
+  notStarted?: string | undefined;
+}> = ({ id, stage, canHr, notStarted }) => {
   const base = `/personal/${id}`;
   return (
     <details class="dd emp-actions">
@@ -51,6 +57,16 @@ export const EmployeeActions: FC<{ id: string; stage: HrStage; canHr: boolean }>
             <a href={`${base}#austritt`} class="danger">
               <Icon name="alert" size={15} /> Austritt erfassen
             </a>
+            {notStarted && (
+              <form method="post" action={`${base}/nicht-angetreten`}>
+                <button
+                  class="danger"
+                  data-confirm={`${notStarted} ist nicht zur Arbeit erschienen?\n\nAustritt wird zum Eintrittstag erfasst, die Einsätze werden wieder offen. Nur möglich, solange keine Arbeitszeit erfasst ist.`}
+                >
+                  <Icon name="x" size={15} /> Nicht angetreten
+                </button>
+              </form>
+            )}
           </>
         )}
       </div>

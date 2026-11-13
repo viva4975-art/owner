@@ -1619,12 +1619,24 @@ export function registerModuleRoutes(ctx: Ctx) {
         active={active}
         notes={cnt!.notes}
         tasks={cnt!.tasks}
+        nui={!!c.get('uiNew')}
         head={
           <>
             <StagePill stage={stage} />
             {c.get('uiNew') && (
               <div class="emp-head-r">
-                <EmployeeActions id={id} stage={stage} canHr={canHr} />
+                <EmployeeActions
+                  id={id}
+                  stage={stage}
+                  canHr={canHr}
+                  notStarted={
+                    canHr &&
+                    !data.employee.exit_date &&
+                    data.employee.entry_date >= addDays(todayBerlin(), -60)
+                      ? `${data.employee.first_name} ${data.employee.last_name}`
+                      : undefined
+                  }
+                />
               </div>
             )}
           </>

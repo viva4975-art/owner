@@ -377,8 +377,10 @@ export const EmployeeShell: FC<{
   tasks: number;
   /** Status-Schild und „Aktionen ▾“ (neue Oberfläche) */
   head?: Child;
+  /** neue Oberfläche: Kopf als Profilkarte (Avatar, Name, Status, Kontakt, Aktionen) auf allen Reitern */
+  nui?: boolean;
   children?: Child;
-}> = ({ e, active, notes, tasks, head, children }) => {
+}> = ({ e, active, notes, tasks, head, nui, children }) => {
   const base = `/personal/${e.id}`;
   const tabs: Tab[] = [
     { key: 'uebersicht', label: 'Übersicht', href: base },
@@ -395,6 +397,65 @@ export const EmployeeShell: FC<{
     { key: 'aufgaben', label: 'Aufgaben', href: `${base}/aufgaben`, count: tasks },
     { key: 'verbandbuch', label: 'Verbandbuch', href: `${base}/verbandbuch` },
   ];
+  const tabsEl = <Tabs tabs={tabs} more={more} active={active === 'zeiten' ? 'kalender' : active} />;
+  if (nui) {
+    const phone = e.mobile || e.phone;
+    const num = (v: string | number) => String(Number(v)).replace('.', ',');
+    const tel = (v: string) => `tel:${v.replace(/[^+\d]/g, '')}`;
+    const wa = e.mobile ? `https://wa.me/${e.mobile.replace(/\D/g, '').replace(/^0/, '49')}` : null;
+    const extraTags = e.tags.filter((t) => t !== EMPLOYMENT_TYPES[e.employment_type]);
+    return (
+      <>
+        <div class="crumbs">
+          <a class="crumb-back" href="/personal">
+            ‹ Zurück zu Mitarbeiter
+          </a>
+        </div>
+        <section class="ent-head">
+          <div class="ent-top">
+            <span class="ent-av">{initials(`${e.first_name} ${e.last_name}`)}</span>
+            <div class="ent-name">
+              <h1>
+                {e.first_name} {e.last_name}
+                <span class="no">{e.personnel_no}</span>
+              </h1>
+              <div class="ent-sub">
+                {EMPLOYMENT_TYPES[e.employment_type]}
+                {e.weekly_hours ? ` · ${num(e.weekly_hours)} Std./Woche` : ''}
+                {e.entry_date ? ` · seit ${dateDe(e.entry_date)}` : ''}
+              </div>
+              <div class="ent-chips">
+                <StagePill stage={stageOf(e)} />
+                {extraTags.map((t) => (
+                  <span class="eh-tag">{t}</span>
+                ))}
+              </div>
+            </div>
+            <div class="ent-acts">
+              {phone && (
+                <a class="btn sec sm" href={tel(phone)} title={phone}>
+                  <Icon name="phone" /> Anrufen
+                </a>
+              )}
+              {wa && (
+                <a class="btn sec sm" href={wa} target="_blank" rel="noopener">
+                  WhatsApp
+                </a>
+              )}
+              {e.email && (
+                <a class="btn sec sm" href={`mailto:${e.email}`} title={e.email}>
+                  <Icon name="mail" /> E-Mail
+                </a>
+              )}
+              {head}
+            </div>
+          </div>
+          {tabsEl}
+        </section>
+        <div class="tabbody">{children}</div>
+      </>
+    );
+  }
   return (
     <>
       <PageHead
@@ -404,7 +465,7 @@ export const EmployeeShell: FC<{
       >
         {head}
       </PageHead>
-      <Tabs tabs={tabs} more={more} active={active === 'zeiten' ? 'kalender' : active} />
+      {tabsEl}
       <div class="tabbody">{children}</div>
     </>
   );

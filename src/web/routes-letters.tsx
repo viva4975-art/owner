@@ -6,6 +6,7 @@ import {
   type LetterTarget,
   archivedLetterDocx,
   getLetter,
+  defaultClosing,
   letterRecipient,
   listLetters,
   writeLetter,
@@ -58,7 +59,27 @@ function RefFields({
     </div>
   );
 }
+/** Grußformel frei mit Zeilenumbrüchen (vorbelegt: „Mit freundlichen Grüßen“, Name, Firma). */
+function ClosingField({ value }: { value: string }) {
+  return (
+    <div style="margin-top:10px">
+      <label for="closing">Grußformel (Umbruch mit Enter)</label>
+      <textarea
+        id="closing"
+        name="closing"
+        rows={4}
+        maxlength={600}
+        style="font-family:inherit;line-height:1.45;max-width:460px"
+      >
+        {value}
+      </textarea>
+      <div class="small mut">Steht so unter dem Text. Leer = Standard-Gruß mit Ansprechpartner.</div>
+    </div>
+  );
+}
+
 const refsFromBody = (b: Record<string, unknown>) => ({
+  closing: typeof b.closing === 'string' ? b.closing : null,
   ourRef: str(b as Parameters<typeof str>[0], 'our_ref'),
   yourRef: str(b as Parameters<typeof str>[0], 'your_ref'),
   sender: str(b as Parameters<typeof str>[0], 'sender'),
@@ -167,8 +188,8 @@ export function registerLetterRoutes(ctx: Ctx) {
           </p>
           <div class="grid">
             <div>
-              <label for="subject">Betreff *</label>
-              <input id="subject" name="subject" required />
+              <label for="subject">Betreff * (Umbruch mit Enter)</label>
+              <textarea id="subject" name="subject" rows={2} required maxlength={300}></textarea>
             </div>
             <div>
               <label for="date">Datum</label>
@@ -190,6 +211,7 @@ export function registerLetterRoutes(ctx: Ctx) {
               § 623 BGB, § 14 Abs. 4 TzBfG) – E-Mail/Scan reicht nicht.
             </p>
           )}
+          <ClosingField value={defaultClosing(fullName(c.get('user')))} />
           <LetterButtons pdfLabel="PDF erstellen und in der Akte ablegen" back={BACK[t](id)} />
         </form>
       </>,
@@ -431,8 +453,10 @@ export function registerLetterRoutes(ctx: Ctx) {
             <AddressField value={von ? von.recipient : formatAddressBlock(r?.buyer ?? null)} />
             <div class="grid" style="margin-top:10px">
               <div>
-                <label for="subject">Betreff *</label>
-                <input id="subject" name="subject" required value={von?.subject ?? ''} />
+                <label for="subject">Betreff * (Umbruch mit Enter)</label>
+                <textarea id="subject" name="subject" rows={2} required maxlength={300}>
+                  {von?.subject ?? ''}
+                </textarea>
               </div>
               <div>
                 <label for="date">Datum</label>
@@ -459,6 +483,11 @@ export function registerLetterRoutes(ctx: Ctx) {
             <textarea id="body" name="body" rows={14} required>
               {von?.body ?? ''}
             </textarea>
+            <ClosingField
+              value={
+                von ? (von.closing ?? defaultClosing(von.sender)) : defaultClosing(fullName(c.get('user')))
+              }
+            />
             <LetterButtons pdfLabel="PDF erstellen und archivieren" back="/verwaltung/briefe" />
             <p class="small mut">
               Das PDF öffnet sich in einem neuen Fenster und steht danach unter Briefe

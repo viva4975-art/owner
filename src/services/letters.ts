@@ -167,6 +167,32 @@ export function addressFromText(text: string | null | undefined): LetterAddress 
   }
 }
 
+/** Betreff: Zeilenumbrüche bleiben (höchstens 4 Zeilen), sonst wie eingegeben. */
+const cleanSubject = (t: string) =>
+  t
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('\n')
+    .slice(0, 300);
+const cleanClosing = (t: string | null | undefined) => {
+  const v = (t ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trimEnd())
+    .join('\n')
+    .replace(/^\n+|\n+$/g, '')
+    .slice(0, 600);
+  return v.trim() ? v : null;
+};
+/** Vorschlag für die Grußformel (Formular vorbelegt). */
+export const defaultClosing = (sender: string | null | undefined) =>
+  [
+    'Mit freundlichen Grüßen',
+    ...(sender?.trim() ? [sender.trim()] : []),
+    'Viva-Deluxe Gebäudereinigung GmbH',
+  ].join('\n');
+
 interface LetterContent {
   buyer: BuyerSnapshot;
   date: string;
@@ -175,6 +201,8 @@ interface LetterContent {
   info: [string, string][];
   paras: string[];
   sender: string | null;
+  /** Grußformel mit Zeilenumbrüchen (leer = „Mit freundlichen Grüßen“ + Ansprechpartner + Firma) */
+  closing: string;
 }
 
 /** Inhalt eines Briefs wie gedruckt (für PDF und Word gleich). */
@@ -192,6 +220,7 @@ async function letterContent(
     ourRef?: string | null;
     yourRef?: string | null;
     sender?: string | null;
+    closing?: string | null;
   },
 ): Promise<LetterContent & { refsBase: [string, string][] }> {
   const empty: BuyerSnapshot = {
@@ -223,7 +252,7 @@ async function letterContent(
   return {
     buyer,
     date,
-    subject: p.subject.trim().slice(0, 90),
+    subject: cleanSubject(p.subject),
     greeting: p.greeting.trim() || null,
     info: [
       ['Datum', formatDateDe(date)],
@@ -237,6 +266,7 @@ async function letterContent(
       .map((x) => x.trim())
       .filter(Boolean),
     sender,
+    closing: cleanClosing(p.closing) ?? defaultClosing(sender),
     refsBase: base.refs,
   };
 }
@@ -254,12 +284,7 @@ async function contentPdf(sql: Sql, k: LetterContent): Promise<Uint8Array> {
     rows: [],
     sums: [],
     total: null,
-    paragraphs: [
-      ...k.paras.slice(1),
-      'Mit freundlichen Grüßen',
-      ...(k.sender ? [k.sender] : []),
-      'Viva-Deluxe Gebäudereinigung GmbH',
-    ],
+    paragraphs: [...k.paras.slice(1), k.closing],
   });
 }
 
@@ -281,33 +306,65 @@ async function contentDocx(sql: Sql, k: LetterContent): Promise<Uint8Array> {
     .filter(Boolean)
     .join(' · ');
   const addr = formatAddressBlock(k.buyer);
+  const cell = (inner: string, w: number) =>
+    `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>${inner || '<w:p/>'}</w:tc>`;
+  const none = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+    .map((x) => `<w:${x} w:val="nil"/>`)
+    .join('');
+  // Anschrift links, Datum/Zeichen rechts – wie im PDF
+  const head =
+    `<w:tbl><w:tblPr><w:tblW w:w="9638" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>${none}</w:tblBorders><w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="5660"/><w:gridCol w:w="3978"/></w:tblGrid><w:tr>` +
+    cell(par(run(sellerLine, { sz: 13, color: '6B6266' }), 100) + (addr ? par(run(addr), 0) : ''), 5660) +
+    cell(k.info.map(([x, v]) => par(run(`${x}: ${v}`, { sz: 17, color: '6B6266' }), 20)).join(''), 3978) +
+    '</w:tr></w:tbl>';
   const body =
-    par(run(sellerLine, { sz: 14, color: '6B6266' }), 120) +
-    par(addr ? run(addr) : '', 360) +
-    k.info.map(([a, b]) => par(run(`${a}: ${b}`, { sz: 18, color: '6B6266' }), 0, 'right')).join('') +
-    par('', 240) +
-    par(run(k.subject, { b: true, sz: 24 }), 240) +
+    head +
+    par('', 480) +
+    par(run(k.subject, { b: true, sz: 23 }), 240) +
     (k.greeting ? par(run(k.greeting)) : '') +
     k.paras.map((x) => par(run(x))).join('') +
-    par(run('Mit freundlichen Grüßen'), 600) +
-    (k.sender ? par(run(k.sender), 0) : '') +
-    par(run(seller.legalName), 0) +
-    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1134" w:bottom="1134" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr>';
-  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
+    par(run(k.closing), 0) +
+    // Briefpapier (Logo, Kopf, Fußzeile mit Bank/Siegeln) liegt als Seitenbild in der Kopfzeile hinter dem Text
+    '<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2780" w:right="1134" w:bottom="2900" w:left="1134" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>';
+  const NS =
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NS}><w:body>${body}</w:body></w:document>`;
+  const cx = 7560310; // A4 in EMU
+  const cy = 10692130;
+  const header =
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NS}><w:p><w:r><w:drawing>` +
+    `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1">` +
+    `<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="1" name="Briefpapier"/><wp:cNvGraphicFramePr/>` +
+    `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="Briefpapier"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="rIdImg"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
+    `</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:hdr>`;
+  const { readFile } = await import('node:fs/promises');
+  const img = await readFile(new URL('../../assets/briefpapier/viva-deluxe-a4.jpg', import.meta.url));
   const { strToU8, zipSync } = await import('fflate');
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   return zipSync({
     '[Content_Types].xml': strToU8(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>',
     ),
     '_rels/.rels': strToU8(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/></Relationships>`,
+    ),
+    'word/_rels/document.xml.rels': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/></Relationships>`,
+    ),
+    'word/_rels/header1.xml.rels': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImg" Type="${REL}/image" Target="media/briefpapier.jpg"/></Relationships>`,
     ),
     'word/document.xml': strToU8(xml),
+    'word/header1.xml': strToU8(header),
+    'word/media/briefpapier.jpg': new Uint8Array(img),
   });
 }
 
 const fileBase = (date: string, subject: string) =>
   `Brief_${date}_${subject
+    .replace(/\s+/g, ' ')
     .trim()
     .replace(/[^\wäöüÄÖÜß -]+/g, '')
     .slice(0, 40)}`;
@@ -337,6 +394,7 @@ export async function writeLetter(
     ourRef?: string | null;
     yourRef?: string | null;
     sender?: string | null;
+    closing?: string | null;
     basedOn?: string | null;
     docx?: boolean;
   },
@@ -353,7 +411,7 @@ export async function writeLetter(
   if (p.target !== 'frei' && !(p.target in LINK)) throw new BusinessError('Empfänger ungültig');
   const k = await letterContent(sql, p);
   const sig = createHash('sha256')
-    .update(JSON.stringify([formatAddressBlock(k.buyer), k.subject, k.greeting, p.body, k.info]))
+    .update(JSON.stringify([formatAddressBlock(k.buyer), k.subject, k.greeting, p.body, k.info, k.closing]))
     .digest('hex')
     .slice(0, 16);
   const letterId = uuidFrom(`brieflog:${p.formId}:${sig}`);
@@ -391,11 +449,11 @@ export async function writeLetter(
     const basedOn = p.basedOn && /^[0-9a-f-]{36}$/.test(p.basedOn) ? p.basedOn : null;
     const info = Object.fromEntries(k.info);
     await sql`insert into app.letters (id, letter_no, letter_date, target, customer_id, site_id, supplier_id,
-                recipient, subject, greeting, body, file_id, created_by, our_ref, your_ref, sender, based_on)
+                recipient, subject, greeting, body, file_id, created_by, our_ref, your_ref, sender, based_on, closing)
               values (${letterId}, ${letterNo}, ${k.date}, ${p.target}, ${customerId}, ${siteId},
-                ${p.target === 'lieferant' ? p.id : null}, ${formatAddressBlock(k.buyer)}, ${p.subject.trim()},
+                ${p.target === 'lieferant' ? p.id : null}, ${formatAddressBlock(k.buyer)}, ${k.subject},
                 ${k.greeting}, ${p.body}, ${file.id}, ${p.actor}, ${info['Unser Zeichen'] ?? null},
-                ${info['Ihr Zeichen'] ?? null}, ${k.sender}, ${basedOn})
+                ${info['Ihr Zeichen'] ?? null}, ${k.sender}, ${basedOn}, ${k.closing})
               on conflict (id) do nothing`;
   }
   if (!done)
@@ -427,13 +485,14 @@ export interface LetterDetail {
   our_ref: string | null;
   your_ref: string | null;
   sender: string | null;
+  closing: string | null;
 }
 
 export async function getLetter(sql: Sql, id: string): Promise<LetterDetail | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const [l] = await sql<LetterDetail[]>`
     select id, letter_no, letter_date::text, target, customer_id, site_id, supplier_id, recipient, subject, greeting,
-           body, our_ref, your_ref, sender
+           body, our_ref, your_ref, sender, closing
       from app.letters where id = ${id}`;
   return l ?? null;
 }
@@ -453,6 +512,7 @@ export async function archivedLetterDocx(sql: Sql, l: LetterDetail) {
     ourRef: l.our_ref,
     yourRef: l.your_ref,
     sender: l.sender,
+    closing: l.closing,
   });
   return { data: await contentDocx(sql, k), name: `${fileBase(l.letter_date, l.subject)}.docx` };
 }

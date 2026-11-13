@@ -809,13 +809,13 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     b: await pdf.embedFont(b, { subset: false, features: NOFEAT }),
   };
   const lh = await pdf.embedJpg(lhB);
-  pdf.setTitle(lp.title);
+  pdf.setTitle(lp.title.replace(/\s*\n\s*/g, ' – '));
   pdf.setAuthor(lp.seller.legalName);
   pdf.setLanguage('de-DE');
   pdf.setCreator('Viva-Deluxe Betriebs-App');
   pdf.setCreationDate(new Date(`${lp.date}T12:00:00Z`));
   pdf.setModificationDate(new Date(`${lp.date}T12:00:00Z`));
-  const p = new P(pdf, f, lh, lp.title, lp.watermark);
+  const p = new P(pdf, f, lh, lp.title.replace(/\s*\n\s*/g, ' – '), lp.watermark);
   const S = lp.seller;
 
   p.add();
@@ -830,7 +830,7 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
 
   // Kopfblock rechts: „Art + Nummer“ groß, sonst nur Angaben (Titel dann als Betreff links)
   const IX = 340;
-  const num = /^(.{2,40}?)\s+(\S*\d\S*)$/.exec(lp.title.trim());
+  const num = lp.title.includes('\n') ? null : /^(.{2,40}?)\s+(\S*\d\S*)$/.exec(lp.title.trim());
   let y = 145;
   if (num) {
     p.cap(num[1]!, IX, 140, BRD, 7);

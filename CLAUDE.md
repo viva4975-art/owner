@@ -5467,3 +5467,10 @@ Testadresse.
   `20270123000001`, „neue Fassung von BR-…“), der alte Brief bleibt write-once. Brief-ID jetzt aus Formular + Inhalt →
   doppelt absenden legt nichts doppelt an, geänderter Text im selben Formular = neuer Brief. Formulare mit
   `data-resubmit` sperren nach dem Absenden nur 1,5 s (PDF/Word, Seite bleibt stehen).
+- 2026-11-13: **Brief: Betreff und Grußformel mit Zeilenumbruch, Word mit Briefpapier** (Ahmed): Betreff ist ein Textfeld
+  (Enter = neue Zeile, bis 4 Zeilen, im PDF fett untereinander). Neues Feld **„Grußformel“** (frei, mit Umbrüchen/Leerzeilen;
+  vorbelegt „Mit freundlichen Grüßen / Name / Viva-Deluxe Gebäudereinigung GmbH“, leer = dieser Standard) steht statt des
+  festen Grußes unter dem Text, gespeichert in `letters.closing` (Migration `20270123000002`), beim Bearbeiten vorbelegt.
+  **Word-Datei mit Logo und Briefkopf:** das Briefpapier (`assets/briefpapier/viva-deluxe-a4.jpg`, Kopf + Fußzeile mit Bank/
+  Siegeln) liegt als ganzseitiges Bild hinter dem Text in der Kopfzeile (jede Seite), Ränder wie im PDF, Anschrift links und
+  Datum/Zeichen rechts in einer randlosen Tabelle. Mit LibreOffice geprüft; in Word lässt sich der Text normal bearbeiten.

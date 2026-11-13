@@ -64,6 +64,7 @@ import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
 import { registerFirstAidRoutes } from './routes-first-aid.js';
 import { registerTeamRoutes } from './routes-team.js';
 import { inboxCount, registerInboxRoutes } from './routes-inbox.js';
+import { registerFormRoutes } from './routes-forms.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
 import { registerSettingsRoutes } from './routes-settings.js';
@@ -672,6 +673,7 @@ export function createApp(deps: Deps) {
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);
   registerInboxRoutes(ctx);
+  registerFormRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);

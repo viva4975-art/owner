@@ -84,6 +84,8 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/(aufgaben|geplant)(\/|$)/, ALL],
   // Eingang (neue Oberfläche): Inhalte je Rolle gefiltert (routes-inbox)
   [/^\/eingang$/, ALL],
+  // Formular-Baukasten: ausfüllen alle (Objektleitung nur eigene Objekte/Leute), Vorlagen nur Büro (Prüfung in der Route)
+  [/^\/formulare(\/|$)/, ALL],
   [/^\/(dateien|api\/uploads)(\/|$)/, ALL],
   [/^\/neu$/, ALL],
   [/^\/$/, ALL],

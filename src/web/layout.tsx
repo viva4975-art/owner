@@ -1907,7 +1907,7 @@ const NUI_OL_GROUPS: NuiGroup[] = [
 ];
 
 /** Noch nicht gebaute Seiten der neuen Oberfläche (werden ausgeblendet, bis es sie gibt). */
-const NUI_SOON = new Set<string>(['/formulare']);
+const NUI_SOON = new Set<string>([]);
 
 /** Welcher Menüpunkt passt am besten zur Adresse (längster Treffer, Bereichs-Reiter zählen mit). */
 function nuiActive(path: string, hrefs: string[]): string | null {

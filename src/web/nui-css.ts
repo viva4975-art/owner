@@ -133,6 +133,19 @@ span.cl-box{cursor:default}
 /* Leistungsarten / Preis-Orientierung */
 .price-hint{margin-top:6px;background:#F7EDF1;color:#64152F;border-radius:8px;padding:6px 10px}
 .lt-text{margin-top:4px}.lt-text summary{cursor:pointer;color:#6E6E73}.lt-text textarea{margin-top:4px;width:100%}
+/* Planung: Soll/Ist je Person, Warnungen */
+.pb-soll{display:block;font-size:12px;color:#55555a;margin-top:2px}
+.pb-soll.lo b{color:#B42323}.pb-soll.hi b{color:#8a5a00}.pb-soll.ok b{color:#1F7A45}
+.pb-sbar{display:block;height:4px;border-radius:4px;background:#EEEEF1;margin-top:3px;overflow:hidden}
+.pb-sbar i{display:block;height:100%;background:#1F9D55}
+.pb-sbar.lo i{background:#D23B3B}.pb-sbar.hi i{background:#E8A317}
+.pb-warn{display:block;margin-top:4px;font-size:11px;line-height:1.25;background:#FBE5E5;color:#B42323;border-radius:6px;padding:2px 6px}
+/* Qualifikationen */
+.ql-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.ql-chip{display:inline-flex;align-items:center;gap:4px;background:#F1F1F4;border-radius:8px;padding:3px 4px 3px 9px;font-size:13px}
+.ql-chip small{color:#6E6E73}.ql-chip.warn{background:#FDF2DC}.ql-chip.err{background:#FBE5E5;color:#B42323}
+.ql-x{border:0;background:none;color:#8a8a90;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.ql-new{display:flex;gap:8px;flex-wrap:wrap}.ql-new input[name=name]{flex:1;min-width:180px}
 @media (max-width:1024px){
   body.nui .mainc{margin-left:0}
   body.nui .appside.nside{transform:translateX(-100%);transition:transform .2s ease}

@@ -133,3 +133,72 @@ export const ChecklistCard: FC<{
     </div>
   );
 };
+
+/** Qualifikationen je Mitarbeiter mit Ablaufdatum (neue Oberfläche) */
+export const QualificationCard: FC<{
+  id: string;
+  rows: { id: string; name: string; valid_until: string | null; note: string | null }[];
+  today: string;
+  suggestions: string[];
+}> = ({ id, rows, today, suggestions }) => {
+  const de = (d: string) => d.split('-').reverse().join('.');
+  return (
+    <div class="card ql-card" id="qualifikationen">
+      <h2 style="margin:0 0 8px;font-size:17px">Qualifikationen</h2>
+      {rows.length === 0 ? (
+        <div class="small mut">Noch keine Qualifikationen eingetragen.</div>
+      ) : (
+        <div class="ql-chips">
+          {rows.map((q) => {
+            const tone = !q.valid_until
+              ? ''
+              : q.valid_until < today
+                ? 'err'
+                : q.valid_until <= addDaysIso(today, 30)
+                  ? 'warn'
+                  : '';
+            return (
+              <span class={`ql-chip ${tone}`} title={q.note ?? ''}>
+                {q.name}
+                {q.valid_until && <small> · bis {de(q.valid_until)}</small>}
+                <form method="post" action={`/personal/${id}/qualifikation/${q.id}/loeschen`} class="cl-f">
+                  <button class="ql-x" title="entfernen" data-confirm={`„${q.name}“ entfernen?`}>
+                    ×
+                  </button>
+                </form>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <form method="post" action={`/personal/${id}/qualifikation`} class="ql-new">
+        <input type="hidden" name="new_id" value={randomUUID()} />
+        <input
+          name="name"
+          list="ql-list"
+          placeholder="Qualifikation, z. B. Hebebühne"
+          aria-label="Qualifikation"
+          required
+        />
+        <datalist id="ql-list">
+          {suggestions.map((s) => (
+            <option value={s} />
+          ))}
+        </datalist>
+        <input
+          type="date"
+          name="valid_until"
+          aria-label="gültig bis (optional)"
+          title="gültig bis (optional)"
+        />
+        <button class="btn sm sec">Hinzufügen</button>
+      </form>
+    </div>
+  );
+};
+
+function addDaysIso(d: string, n: number) {
+  const x = new Date(`${d}T12:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+}

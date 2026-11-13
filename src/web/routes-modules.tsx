@@ -63,7 +63,13 @@ import { type AppEnv, type Ctx, UUID, taskViewerOf } from './app.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
 import { homeFor } from './permissions.js';
 import { CockpitRow } from './cockpit.js';
-import { ChecklistCard, EmployeeActions, StagePill } from './hr-checklist.js';
+import { ChecklistCard, EmployeeActions, QualificationCard, StagePill } from './hr-checklist.js';
+import {
+  QUALIFICATION_SUGGESTIONS,
+  addQualification,
+  deleteQualification,
+  listQualifications,
+} from '../services/qualifications.js';
 import {
   addOwnCheck,
   autoActivate,
@@ -1740,6 +1746,15 @@ export function registerModuleRoutes(ctx: Ctx) {
           parts.push(
             <ChecklistCard id={e.id} phase="aus" items={await checklist(sql, e.id, 'aus')} canEdit />,
           );
+        if (c.get('uiNew'))
+          parts.push(
+            <QualificationCard
+              id={e.id}
+              rows={await listQualifications(sql, e.id)}
+              today={todayBerlin()}
+              suggestions={QUALIFICATION_SUGGESTIONS}
+            />,
+          );
         checklists = <>{parts}</>;
       }
       const beschaeftigung = (
@@ -2037,6 +2052,28 @@ export function registerModuleRoutes(ctx: Ctx) {
     const nid = /^[0-9a-f-]{36}$/.test(String(b.new_id)) ? String(b.new_id) : randomUUID();
     await addOwnCheck(sql, id, b.phase === 'aus' ? 'aus' : 'ein', String(b.label ?? ''), nid, c.get('actor'));
     return back(c, `/personal/${id}#${b.phase === 'aus' ? 'austritt-checkliste' : 'checkliste'}`, {});
+  });
+  app.post(`/personal/:id{${UUID}}/qualifikation`, async (c) => {
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    const qid = /^[0-9a-f-]{36}$/.test(String(b.new_id)) ? String(b.new_id) : randomUUID();
+    await addQualification(
+      sql,
+      qid,
+      id,
+      {
+        name: String(b.name ?? ''),
+        validUntil: typeof b.valid_until === 'string' && b.valid_until ? b.valid_until : null,
+        note: null,
+      },
+      c.get('actor'),
+    );
+    return back(c, `/personal/${id}#qualifikationen`, {});
+  });
+  app.post(`/personal/:id{${UUID}}/qualifikation/:qid{${UUID}}/loeschen`, async (c) => {
+    const id = c.req.param('id');
+    await deleteQualification(sql, id, c.req.param('qid'), c.get('actor'));
+    return back(c, `/personal/${id}#qualifikationen`, {});
   });
   app.post(`/personal/:id{${UUID}}/checkliste/loeschen`, async (c) => {
     const b = await c.req.parseBody();

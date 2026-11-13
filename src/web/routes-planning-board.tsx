@@ -23,6 +23,7 @@ import { canAccess } from './permissions.js';
 import { arr } from './forms.js';
 import { calRange, type CalView } from './pages-site-calendar.js';
 import { dateDe } from './layout.js';
+import { freeMovement } from '../services/hr-required-docs.js';
 
 /*
  * Planung wie Fortytools (Ahmed 06.10., Screenshots „Planung (KW 41)“ und „Termin oder Terminserie planen“):
@@ -203,6 +204,26 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         (selected.size ? selected.has(e.id) : busy.has(e.id) || q.alle === '1'),
     );
     const compact = view === 'monat';
+    // Neue Oberfläche: Soll/Ist je Person und Warnungen im Plan (Ahmed 13.11., Vorbild Blink)
+    const nui = !!c.get('uiNew');
+    const permitWarn = new Map<string, string>();
+    if (nui && visible.length) {
+      const rows = await sql<{ id: string; nationality: string | null; until: string | null }[]>`
+        select e.id, p.nationality, least(p.residence_permit_until, p.work_permit_until)::text as until
+          from app.employees e left join app.employee_private p on p.employee_id = e.id
+         where e.id = any(${visible.map((e) => e.id)}::uuid[])`;
+      const soon = addDays(today, 60);
+      for (const x of rows) {
+        if (!x.nationality?.trim() || freeMovement(x.nationality)) continue;
+        if (!x.until) permitWarn.set(x.id, 'Aufenthaltstitel: Datum fehlt');
+        else if (x.until < today) permitWarn.set(x.id, `Aufenthaltstitel abgelaufen ${dateDe(x.until)}`);
+        else if (x.until <= soon) permitWarn.set(x.id, `Aufenthaltstitel bis ${dateDe(x.until)}`);
+      }
+    }
+    const sollMin = (e: (typeof visible)[number]) => {
+      const w = Number((e as { weekly_hours?: string | number | null }).weekly_hours ?? 0);
+      return w > 0 ? Math.round((w * 60 * days.length) / 7) : 0;
+    };
     const self = (over: Record<string, string | null>) => {
       const p = new URLSearchParams();
       const cur: Record<string, string | null> = {
@@ -403,7 +424,38 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                           <a href={`/personal/${e.id}/kalender`}>
                             {e.last_name}, {e.first_name}
                           </a>
-                          <span class="small mut">{total ? `${hm(total)} Std.` : e.personnel_no}</span>
+                          {nui ? (
+                            (() => {
+                              const soll = sollMin(e);
+                              const tone = !soll
+                                ? ''
+                                : total < soll * 0.9
+                                  ? 'lo'
+                                  : total > soll * 1.1
+                                    ? 'hi'
+                                    : 'ok';
+                              return (
+                                <>
+                                  <span class={`pb-soll ${tone}`}>
+                                    <b>{hm(total)}</b>
+                                    {soll ? ` / ${hm(soll)} Std.` : ' Std.'}
+                                  </span>
+                                  {soll > 0 && (
+                                    <span class={`pb-sbar ${tone}`}>
+                                      <i
+                                        style={`width:${Math.min(100, Math.round((total / soll) * 100))}%`}
+                                      />
+                                    </span>
+                                  )}
+                                  {permitWarn.get(e.id) && (
+                                    <span class="pb-warn">⚠ {permitWarn.get(e.id)}</span>
+                                  )}
+                                </>
+                              );
+                            })()
+                          ) : (
+                            <span class="small mut">{total ? `${hm(total)} Std.` : e.personnel_no}</span>
+                          )}
                         </div>
                         {days.map((d) => {
                           const abs = absences.find(

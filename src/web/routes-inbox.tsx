@@ -5,6 +5,7 @@ import { ABSENCE_LABEL, listAbsences, plannedAtSites } from '../services/absence
 import { listTasks, type Task } from '../services/crm.js';
 import { hrReminders, permitWarningsForSites } from '../services/employees.js';
 import { listTickets } from '../services/qm.js';
+import { expiringQualifications } from '../services/qualifications.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
 import type { AppEnv, Ctx } from './app.js';
 import { taskViewerOf } from './app.js';
@@ -54,6 +55,7 @@ export async function inboxItems(deps: Ctx['deps'], c: Context<AppEnv>): Promise
   const ol = role === 'objektleitung';
   const today = todayBerlin();
   const may = (p: string) => canAccess(role, p);
+  const quals = may('/personal') ? await expiringQualifications(sql) : [];
   const [leave, requests, tickets, tasks, forms, permits, odd] = await Promise.all([
     may('/urlaub') ? listAbsences(sql, { status: ['beantragt'] }) : Promise.resolve([]),
     may('/zeiterfassung') && (!sites || sites.length)
@@ -226,6 +228,20 @@ export async function inboxItems(deps: Ctx['deps'], c: Context<AppEnv>): Promise
       href: ol ? `/team/${p.id}` : `/personal/${p.id}`,
       status: 'neu',
       due: p.until,
+    });
+  }
+  for (const q of quals) {
+    const over = q.valid_until < today;
+    items.push({
+      key: `q:${q.id}`,
+      kind: 'personal',
+      date: today,
+      title: `Qualifikation ${over ? 'abgelaufen' : 'läuft ab'}: ${q.name} – ${q.employee_name}`,
+      sub: `gültig bis ${dateDe(q.valid_until)}`,
+      tags: [{ t: over ? 'abgelaufen' : 'bald', tone: over ? 'err' : 'warn' }],
+      href: `/personal/${q.employee_id}#qualifikationen`,
+      status: 'neu',
+      due: q.valid_until,
     });
   }
   if (odd.length) {

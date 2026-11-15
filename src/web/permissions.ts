@@ -232,7 +232,6 @@ export const PERM_GROUPS: { label: string; areas: PermArea[] }[] = [
         label: 'Urlaub & Krankheit (Auswertung)',
         prefixes: ['/auswertungen/urlaub', '/auswertungen/krankheit', '/auswertungen/ausfallzeiten'],
       },
-      { key: 'dienste', label: 'Dienste-Liste', prefixes: ['/auswertungen/dienste'] },
       { key: 'einstellungen', label: 'Einstellungen (ohne Admin-Bereiche)', prefixes: ['/einstellungen'] },
     ],
   },

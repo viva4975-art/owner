@@ -248,12 +248,10 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                 <thead>
                   <tr>
                     <th>Nr.</th>
-                    <th>Art</th>
                     <th>Kunde / Objekt</th>
                     <th>Leistungszeitraum</th>
                     <th class="r">Netto</th>
                     <th class="r">Brutto</th>
-                    <th>Fällig</th>
                     <th>Status</th>
                     <th>Belege</th>
                   </tr>
@@ -264,13 +262,14 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                       <td>
                         <a href={`/rechnungen/${r.id}`}>{r.number}</a>
                         <div class="small faint">{dateDe(r.issue_date)}</div>
-                      </td>
-                      <td class="small">
-                        {r.legacy
-                          ? r.gross_cents < 0n
-                            ? 'Storno/Korrektur'
-                            : 'Rechnung'
-                          : (KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind)}
+                        {(() => {
+                          const art = r.legacy
+                            ? r.gross_cents < 0n
+                              ? 'Storno/Korrektur'
+                              : 'Rechnung'
+                            : (KIND_TITLES[r.kind as keyof typeof KIND_TITLES] ?? r.kind);
+                          return art !== 'Rechnung' ? <div class="small mut">{art}</div> : null;
+                        })()}
                       </td>
                       <td>
                         {r.customer_name}
@@ -283,7 +282,6 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                       <td class="r num">
                         <b>{euro(r.gross_cents)}</b>
                       </td>
-                      <td class="small">{r.due_date ? dateDe(r.due_date) : '–'}</td>
                       <td class="small">
                         {r.cancelled ? (
                           <span class="badge err">storniert</span>
@@ -300,6 +298,7 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
                         )}
                         {
                           <div class="faint" style="margin-top:2px">
+                            {r.due_date && !r.cancelled ? `fällig ${dateDe(r.due_date)} · ` : ''}
                             {r.legacy || r.delivery === 'sent'
                               ? 'versendet'
                               : r.delivery === 'failed'

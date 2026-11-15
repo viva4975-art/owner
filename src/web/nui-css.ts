@@ -224,8 +224,8 @@ html body.nui main form input[type=checkbox],html body.nui main form input[type=
 html body.nui main form h2.form-section,html body.nui main form[method="post" i]>h3{font-size:16px;font-weight:650;color:var(--n-t);margin:26px 0 12px;padding:0;border:0}
 html body.nui main form h2.form-section:first-of-type,html body.nui main form[method="post" i]>h3:first-of-type{margin-top:2px}
 html body.nui main form .help,html body.nui main form .hint{font-size:13px;color:var(--n-t2)}
-html body.nui main form[method="post" i]>.actions:not([hidden]),html body.nui main form[method="post" i]>.formfoot:not([hidden]){position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
-@media (max-width:760px){html body.nui main form[method="post" i] .grid:not([hidden]):not([style*="none"]){grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions,html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template))):not([hidden]),html body.nui main form[method="post" i]>.formfoot:not([hidden]){position:sticky;bottom:0;z-index:5;background:#fff!important;border-top:1px solid var(--n-l)!important;margin:22px -22px -22px!important;padding:14px 22px!important;border-radius:0 0 16px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
+@media (max-width:760px){html body.nui main form[method="post" i] .grid:not([hidden]):not([style*="none"]){grid-template-columns:minmax(0,1fr)!important}html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template))),html body.nui main form[method="post" i]>.formfoot{margin:18px -16px -16px!important;padding:12px 16px!important}}
 
 /* Schritt für Schritt (Neu anlegen) */
 html body.nui main form .wz-off,html body.nui main form[method] .grid>div.wz-off.wz-off,html body.nui main form[method]>.wz-off,html body.nui main form[method] .wz-off{display:none!important}
@@ -282,11 +282,11 @@ body.nui .ent-cust .ic{width:14px;height:14px;color:var(--n-t2);flex:none}body.n
 
 /* Auswahlfelder überall mit demselben Pfeil; Knöpfe im Formularfuß: Speichern zuerst, Abbrechen/Zurück rechts */
 html body.nui main form select:not([multiple]){-webkit-appearance:none;appearance:none;padding-right:36px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 12px center!important;background-size:16px!important}
-html body.nui main form[method="post" i]>.actions>*,html body.nui main form[method="post" i]>.formfoot>*{order:1}
-html body.nui main form[method="post" i]>.actions>button.btn:not(.sec):not(.ghost):not(.danger),html body.nui main form[method="post" i]>.formfoot>button.btn:not(.sec):not(.ghost):not(.danger){order:0}
-html body.nui main form[method="post" i]>.actions>a.btn,html body.nui main form[method="post" i]>.formfoot>a.btn{order:3}
-html body.nui main form[method="post" i]>.actions>a.btn:first-of-type,html body.nui main form[method="post" i]>.formfoot>a.btn:first-of-type{margin-left:auto}
-html body.nui main form[method="post" i]>.actions>.wz-nav,html body.nui main form[method="post" i]>.formfoot>.wz-nav{order:2}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template)))>*,html body.nui main form[method="post" i]>.formfoot>*{order:1}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template)))>button.btn:not(.sec):not(.ghost):not(.danger),html body.nui main form[method="post" i]>.formfoot>button.btn:not(.sec):not(.ghost):not(.danger){order:0}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template)))>a.btn,html body.nui main form[method="post" i]>.formfoot>a.btn{order:3}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template)))>a.btn:first-of-type,html body.nui main form[method="post" i]>.formfoot>a.btn:first-of-type{margin-left:auto}
+html body.nui main form[method="post" i]>.actions:not(:has(~ :not(input,script,template)))>.wz-nav,html body.nui main form[method="post" i]>.formfoot>.wz-nav{order:2}
 
 html body.nui main form .cbx-btn{min-height:42px;border-radius:10px!important;border:1px solid #e3e3e8!important;background-color:#f7f7f9!important;font-size:15px}
 html body.nui main form .cbx-btn:hover{border-color:#d2d2d8!important}
@@ -334,4 +334,21 @@ html.nside-off body.nui .mainc{margin-left:0}
 html.nside-off body.nui .nshow{display:inline-flex;align-items:center;gap:6px;position:fixed;left:12px;bottom:14px;z-index:45;border:0;border-radius:999px;padding:9px 14px;background:linear-gradient(180deg,#5c0e27,#3d0a1c);color:#fff;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 22px -8px rgba(0,0,0,.4)}
 @media (max-width:1024px){body.nui .nresize,body.nui .nhide{display:none}html.nside-off body.nui .nshow{display:none}html.nside-off body.nui .appside.nside{display:flex!important}body.nui .mainc{margin-left:0}}
 @media print{body.nui .nshow{display:none!important}}
+
+/* Kunde → Übersicht: Kästen mit Innenabstand (Überschrift saß auf dem Rahmen) */
+html body.nui .info-col>section.panel{padding:16px 18px!important}
+html body.nui .info-col>section.panel>.panel-title{margin-top:0}
+
+/* „+ Neu“-Menü: Einträge linksbündig, lange Texte umbrechen */
+html body.nui .newmenu .drop a,html body.nui .newmenu .drop button{text-align:left!important;justify-content:flex-start!important;white-space:normal}
+html body.nui .newmenu .drop{min-width:240px;max-width:300px}
+
+/* Listen (Kunden, Objekte, Mitarbeiter) nutzen .ent-head für Name + Nummer – dort kein Kartenrahmen */
+html body.nui .list .ent-head,html body.nui .row .ent-head{display:flex!important;align-items:baseline;gap:8px;flex-wrap:wrap;background:none!important;border:0!important;border-radius:0!important;padding:0!important;margin:0!important;box-shadow:none!important}
+html body.nui .list .ent-name:hover{text-decoration:underline}
+
+/* Häkchen mit langem Text (z. B. Leistung): je Häkchen ein Kasten, Kästchen gleich groß und oben bündig */
+html body.nui main form[method="post" i]>.chk:not([hidden]),html body.nui main form[method="post" i]>div>.chk:not([hidden]){display:flex!important;align-items:flex-start;gap:10px;padding:10px 12px!important;margin:8px 0 0!important;border:1px solid var(--n-l);border-radius:10px;background:#fafafb}
+html body.nui main form .chk>input[type=checkbox]{flex:none;width:18px!important;height:18px!important;margin:1px 0 0!important;position:static!important}
+html body.nui main form .chk>label{margin:0!important;padding:0!important;font-weight:450;color:var(--n-t);font-size:14px;line-height:1.45}
 `;

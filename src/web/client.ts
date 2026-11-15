@@ -905,6 +905,19 @@ export const CLIENT_JS = String.raw`
     document.addEventListener('click', function (e) { if (!form.contains(e.target)) drop.hidden = true; });
   })();
   // ---- Neue Oberfläche: Zeilen mit vielen Knöpfen → „⋮“-Menü (Ahmed 13.11., Vorbild Blink) ----
+  // Klappmenüs (details.dd): ragt das Menü rechts aus dem Fenster, öffnet es nach links (Ahmed 15.11.)
+  document.addEventListener(
+    'toggle',
+    function (ev) {
+      var d = ev.target;
+      if (!d || !d.matches || !d.matches('details.dd') || !d.open) return;
+      var drop = d.querySelector(':scope > .drop');
+      if (!drop || drop.classList.contains('right')) return;
+      var r = drop.getBoundingClientRect();
+      if (r.right > document.documentElement.clientWidth - 8) drop.classList.add('right', 'auto-right');
+    },
+    true,
+  );
   if (document.body.classList.contains('nui')) {
     Array.prototype.forEach.call(document.querySelectorAll('main tr, main .row, main li'), function (tr) {
       if (tr.closest('.kb') || tr.closest('.ib-list') || tr.closest('form.edit')) return;

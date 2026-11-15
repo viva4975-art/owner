@@ -1679,7 +1679,6 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
       { label: 'Umsatz & Ausgaben', href: '/auswertungen/statistik' },
       { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
       { label: 'Urlaub & Krankheit', href: '/auswertungen/urlaub' },
-      { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
     ],
   },
 ];
@@ -1857,7 +1856,6 @@ const NUI_GROUPS: NuiGroup[] = [
       { label: 'Umsatz & Ausgaben', href: '/auswertungen/statistik' },
       { label: 'Nachkalkulation', href: '/auswertungen/nachkalkulation' },
       { label: 'Urlaub & Krankheit', href: '/auswertungen/urlaub' },
-      { label: 'Dienste-Liste', href: '/auswertungen/dienste' },
     ],
   },
   {

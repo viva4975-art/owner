@@ -31,7 +31,6 @@ import {
   type TxFilter,
   ignoreTransaction,
   importStatement,
-  listImports,
   listTransactions,
   openCorrectionCredits,
   reopenTransaction,
@@ -163,7 +162,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     const sortCol = (['datum', 'betrag', 'name'] as const).find((x) => x === c.req.query('sort')) ?? null;
     const sortDir = c.req.query('dir') === 'asc' ? 'asc' : 'desc';
     const role = c.get('user').role;
-    const [rows, accounts, feed, cfg, imports] = await Promise.all([
+    const [rows, accounts, feed, cfg] = await Promise.all([
       listTransactions(sql, {
         status,
         account: konto || null,
@@ -174,7 +173,6 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       accountOverview(sql),
       feedStatus(sql),
       feedConfigInfo(sql),
-      listImports(sql),
     ]);
     const cache: SuggestionCache = {};
     const sugg = await Promise.all(
@@ -397,45 +395,6 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             </form>
           </details>
         )}
-        <details class="card">
-          <summary>Kontoauszug-Datei einlesen (CAMT.053 oder CSV – falls ohne Bankabruf)</summary>
-          <form method="post" action="/transfer/kontoumsaetze/import" enctype="multipart/form-data">
-            <input type="hidden" name="id" value={randomUUID()} />
-            <div class="grid">
-              <div>
-                <label for="datei">Datei (CAMT.053 als XML oder CSV aus dem Online-Banking)</label>
-                <input id="datei" type="file" name="datei" accept=".xml,.csv,.txt" required />
-              </div>
-              <div>
-                <label for="konto">Konto (nur nötig, wenn die CSV-Datei kein Konto enthält)</label>
-                <select id="konto" name="konto">
-                  {accounts.map((b) => (
-                    <option value={b.iban}>
-                      {b.name} – {ibanShort(b.iban)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div class="actions" style="margin-bottom:0">
-              <button class="btn">Einlesen</button>
-              <span class="small mut">
-                Mehrfach oder überlappend einlesen ist unschädlich – jeder Umsatz wird nur einmal übernommen.
-              </span>
-            </div>
-          </form>
-          {imports.length > 0 && (
-            <ul class="small" style="margin-top:10px">
-              {imports.slice(0, 15).map((i) => (
-                <li>
-                  {at(i.created_at)} · {i.filename} (
-                  {i.format === 'camt053' ? 'CAMT.053' : i.format === 'api' ? 'Bankabruf' : 'CSV'}) ·{' '}
-                  {i.line_count} Umsätze, davon neu {i.new_count} · {i.created_by}
-                </li>
-              ))}
-            </ul>
-          )}
-        </details>
       </>,
     );
   });

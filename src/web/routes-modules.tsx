@@ -1125,7 +1125,7 @@ export function registerModuleRoutes(ctx: Ctx) {
       invoiceId: id,
       legacy: lg === '1',
       amount: BigInt(cents!),
-      date: String(b.datum ?? '') || todayBerlin(),
+      date: todayBerlin(), // Knopf „Heute bezahlt“: immer mit heutigem Datum (Ahmed 15.11.)
       rest: 'offen',
       reference:
         typeof b.referenz === 'string' && b.referenz.trim() ? b.referenz.trim() : 'als bezahlt abgehakt',
@@ -1441,13 +1441,18 @@ export function registerModuleRoutes(ctx: Ctx) {
                                   formaction="/offene-posten/bezahlt"
                                   name="voll"
                                   value={`${i.invoice_id}|${i.open_cents}|${i.legacy ? 1 : 0}`}
-                                  title="Offenen Betrag als bezahlt buchen (Datum oben)"
-                                  onclick={`return confirm('${i.number}: ${euro(i.open_cents)} als bezahlt buchen?')`}
+                                  title="Offenen Betrag mit heutigem Datum als bezahlt buchen"
+                                  onclick={`return confirm('${i.number}: ${euro(i.open_cents)} mit heutigem Datum als bezahlt buchen?')`}
                                 >
-                                  ✓ bezahlt
+                                  Heute bezahlt
                                 </button>{' '}
                                 <details class="op2-p">
-                                  <summary class="btn sm sec">Zahlung</summary>
+                                  <summary
+                                    class="small"
+                                    style="cursor:pointer;color:var(--n-t2,#6e6e73);list-style:none;margin-top:4px"
+                                  >
+                                    anderer Betrag …
+                                  </summary>
                                   <div class="op2-pf">
                                     <input
                                       name={`pay_${i.invoice_id}`}

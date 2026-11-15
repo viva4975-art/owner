@@ -1,12 +1,9 @@
 import type { Context } from 'hono';
-import { SiteOptions } from './site-options.js';
 import type { Child } from 'hono/jsx';
 import { monthLabelDe, todayBerlin } from '../domain/invoice/calc.js';
-import { addDays, isoWeekday } from '../domain/time/holidays.js';
-import { ABSENCE_LABEL, type AbsenceKind } from '../services/absences.js';
+import { ABSENCE_LABEL } from '../services/absences.js';
 import { planningGroups } from '../services/employees.js';
 import {
-  dutyList,
   hourlyRates,
   hoursControl,
   groupLeaveByManager,
@@ -17,7 +14,7 @@ import {
   sickDays,
   toCsv,
 } from '../services/reports.js';
-import { hm, WEEKDAYS_SHORT } from '../services/time.js';
+import { hm } from '../services/time.js';
 import { type StatBasis, type StatGroup, revenueStats, statKpis } from '../services/statistics.js';
 import {
   bankIncome,
@@ -103,12 +100,6 @@ export const REPORTS: (Tab & { text: string })[] = [
     label: 'Ausfallzeiten (Kalkulation)',
     href: '/auswertungen/ausfallzeiten',
     text: 'Ø Urlaubs- und Krankheitstage, Kranken-/Ausfallquote und Ausfallzuschlag für die Kalkulation',
-  },
-  {
-    key: 'dienste',
-    label: 'Dienste-Liste',
-    href: '/auswertungen/dienste',
-    text: 'Alle Einsätze eines Zeitraums, zum Drucken/Export',
   },
 ];
 
@@ -1412,153 +1403,9 @@ export function registerReportRoutes({ app, deps, page, back }: Ctx) {
     );
   });
 
-  // ------------------------------------------------------------------ Dienste-Liste
-  const dutyRange = (c: Context<AppEnv>) => {
-    const today = todayBerlin();
-    const from = isDate(c.req.query('von')) ? c.req.query('von')! : today;
-    const toQ = c.req.query('bis');
-    const to = isDate(toQ) && toQ >= from ? toQ : addDays(from, 6);
-    return { from, to, siteId: c.req.query('objekt') || undefined };
-  };
-
-  app.get('/auswertungen/dienste', async (c) => {
-    const r = dutyRange(c);
-    const scope = c.get('sites');
-    const [rows, sites] = await Promise.all([
-      dutyList(sql, { from: r.from, to: r.to, ...(r.siteId ? { siteId: r.siteId } : {}), scope }),
-      sql<
-        { id: string; site_no: string; name: string; customer_name: string }[]
-      >`select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
-    ]);
-    const visibleSites = scope ? sites.filter((s) => scope.includes(s.id)) : sites;
-    const days = [...new Set(rows.map((s) => s.date))];
-    const total = rows.filter((s) => !s.absence && !s.holiday).reduce((a, s) => a + s.minutes, 0);
-    const qs = `von=${r.from}&bis=${r.to}${r.siteId ? `&objekt=${r.siteId}` : ''}`;
-    return shell(
-      c,
-      'dienste',
-      'Dienste-Liste',
-      <>
-        <form method="get" class="actions" style="margin-top:0">
-          <input type="date" name="von" value={r.from} style="max-width:170px" aria-label="von" />
-          <input type="date" name="bis" value={r.to} style="max-width:170px" aria-label="bis" />
-          <select name="objekt" style="max-width:240px" aria-label="Objekt">
-            <option value="">Alle Objekte</option>
-            <SiteOptions sites={visibleSites} selected={r.siteId} />
-          </select>
-          <button class="btn sm sec">Anzeigen</button>
-          <a class="btn sm sec" href={`/auswertungen/dienste.csv?${qs}`}>
-            CSV
-          </a>
-          <button type="button" class="btn sm sec" onclick="window.print()">
-            Drucken
-          </button>
-          <span class="small mut">
-            {rows.length} Dienste · {hm(total)} Std. ·{' '}
-            <a href={`/einsatzplanung?ansicht=monat&datum=${r.from}`}>als Kalender</a>
-          </span>
-        </form>
-        <div class="card">
-          <div class="tbl">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tag</th>
-                  <th>Zeit</th>
-                  <th>Objekt</th>
-                  <th>Mitarbeiter</th>
-                  <th>Hinweis</th>
-                </tr>
-              </thead>
-              <tbody>
-                {days.flatMap((d) =>
-                  rows
-                    .filter((s) => s.date === d)
-                    .map((s, i) => (
-                      <tr style={i === 0 ? 'border-top:2px solid var(--line)' : ''}>
-                        <td>{i === 0 ? `${WEEKDAYS_SHORT[isoWeekday(d)]} ${dateDe(d)}` : ''}</td>
-                        <td>
-                          {s.plan.start_time}–{s.plan.end_time}
-                        </td>
-                        <td>{s.plan.site_name}</td>
-                        <td>
-                          {s.plan.employee_name}
-                          {s.exception?.kind === 'vertretung' && (
-                            <span class="small mut"> (Vertretung für {s.exception.original})</span>
-                          )}
-                        </td>
-                        <td class="small">
-                          {s.holiday && <span class="badge warn">{s.holiday}</span>}{' '}
-                          {s.absence && (
-                            <span class="badge err">
-                              {ABSENCE_LABEL[s.absence as AbsenceKind] ?? s.absence}
-                            </span>
-                          )}{' '}
-                          {s.exception?.kind === 'umgeplant' && <span class="badge info">umgeplant</span>}{' '}
-                          {s.entry && <span class="badge ok">erfasst</span>}
-                        </td>
-                      </tr>
-                    )),
-                )}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colspan={5} class="mut">
-                      Keine Dienste im Zeitraum.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </>,
-    );
-  });
-
-  app.get('/auswertungen/dienste.csv', async (c) => {
-    const r = dutyRange(c);
-    const rows = await dutyList(sql, {
-      from: r.from,
-      to: r.to,
-      ...(r.siteId ? { siteId: r.siteId } : {}),
-      scope: c.get('sites'),
-    });
-    return csvResponse(
-      c,
-      `dienste-${r.from}-${r.to}.csv`,
-      toCsv(
-        [
-          'Datum',
-          'Wochentag',
-          'Beginn',
-          'Ende',
-          'Objekt-Nr.',
-          'Objekt',
-          'Personalnummer',
-          'Mitarbeiter',
-          'Hinweis',
-        ],
-        rows.map((s) => [
-          dateDe(s.date),
-          WEEKDAYS_SHORT[isoWeekday(s.date)]!,
-          s.plan.start_time,
-          s.plan.end_time,
-          s.plan.site_no,
-          s.plan.site_name,
-          s.plan.personnel_no,
-          s.plan.employee_name,
-          [
-            s.holiday,
-            s.absence ? (ABSENCE_LABEL[s.absence as AbsenceKind] ?? s.absence) : null,
-            s.exception?.kind === 'vertretung' ? `Vertretung für ${s.exception.original}` : null,
-            s.exception?.kind === 'umgeplant' ? 'umgeplant' : null,
-          ]
-            .filter(Boolean)
-            .join(', '),
-        ]),
-      ),
-    );
-  });
+  // Dienste-Liste entfernt (Ahmed 15.11.) – Einsätze stehen in der Planung
+  app.get('/auswertungen/dienste', (c) => c.redirect('/einsatzplanung'));
+  app.get('/auswertungen/dienste.csv', (c) => c.redirect('/einsatzplanung'));
 }
 
 const YearNav = ({ base, year }: { base: string; year: number }) => (

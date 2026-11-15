@@ -1616,11 +1616,11 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
   {
     key: 'lieferanten',
     label: 'Einkauf',
+    // Zwei Punkte (Ahmed 15.11.): Nachunternehmer & Lieferanten (mit Bestellungen und NU-Abrechnung als Reiter)
+    // und Rechnungseingang (mit Zahlungsliste, Wiederkehrend, Vorschüsse als Reiter)
     items: [
-      { label: 'Bestellungen', href: '/bestellungen' },
+      { label: 'Nachunternehmer & Lieferanten', href: '/nachunternehmer' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
-      { label: 'Nachunternehmer', href: '/nachunternehmer', sep: true },
-      { label: 'Lieferanten', href: '/lieferanten' },
     ],
   },
   {
@@ -1729,6 +1729,12 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
     { label: 'Mitarbeiter-Export Lexware (CSV)', href: '/personal/export.csv' },
   ],
   [
+    { label: 'Nachunternehmer', href: '/nachunternehmer' },
+    { label: 'Lieferanten', href: '/lieferanten' },
+    { label: 'Bestellungen', href: '/bestellungen' },
+    { label: 'NU-Abrechnung', href: '/nachunternehmer/abrechnung' },
+  ],
+  [
     { label: 'Import Fortytools', href: '/transfer/import' },
     { label: 'Import alte App', href: '/transfer/altdaten' },
   ],
@@ -1829,10 +1835,8 @@ const NUI_GROUPS: NuiGroup[] = [
     label: 'Einkauf & Nachunternehmer',
     icon: 'cart',
     items: [
-      { label: 'Bestellungen', href: '/bestellungen' },
+      { label: 'Nachunternehmer & Lieferanten', href: '/nachunternehmer' },
       { label: 'Rechnungseingang', href: '/rechnungseingang' },
-      { label: 'Nachunternehmer', href: '/nachunternehmer' },
-      { label: 'Lieferanten', href: '/lieferanten' },
     ],
   },
   {
@@ -1914,7 +1918,10 @@ function nuiActive(path: string, hrefs: string[]): string | null {
       t.href,
       ...(t.also ?? []),
     ]);
-    const hit = h === '/' ? path === '/' : path === h || path.startsWith(h + '/') || !!also?.includes(path);
+    const hit =
+      h === '/'
+        ? path === '/'
+        : path === h || path.startsWith(h + '/') || !!also?.some((a) => path === a || path.startsWith(a + '/'));
     if (hit && h.length > len) {
       best = h;
       len = h.length;

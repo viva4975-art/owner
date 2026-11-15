@@ -5606,3 +5606,32 @@ Testadresse.
   Objektkarte (Nr., Status, Adresse, Objektleitung, Reinigungskräfte, Bearbeiten/Inaktiv) und Kundenkarte, rechts Reiter.
   Der Profilkopf (`ent-head`) bleibt nur noch beim Mitarbeiter. Eingang: Pfeil der Gruppen im Kasten; Startseite:
   Verlaufslinie der Umsatz-Kachel schrumpft statt über den Rand zu laufen; Menü-Pfeil in der Kopfzeile reagiert wieder.
+- 2026-11-15: **NU-Abrechnung je Monat, Gutschriftverfahren, Kündigung einzelner Bestellungen, Scan als Hauptweg, Menü
+  Einkauf mit zwei Punkten** (Ahmed: „Bestellungen/Nachunternehmer/Zahlungsliste zu kompliziert“; Abrechnungsarten,
+  Flächen-/Betragsverteilung und Kostenstellen bleiben wie sie sind; wiederkehrende Zahlungen bleiben):
+  - **Menü Einkauf:** nur noch „Nachunternehmer & Lieferanten“ (Reiter Nachunternehmer · Lieferanten · Bestellungen ·
+    NU-Abrechnung, `SECTION_TABS`) und „Rechnungseingang“ (Reiter Rechnungen · Vorschüsse · Zahlungsliste ·
+    Wiederkehrende Zahlungen wie bisher). Adressen unverändert; Menüpunkt bleibt auch auf Unterseiten markiert.
+  - **NU-Abrechnung** (`/nachunternehmer/abrechnung?monat=`, Standard Vormonat; je NU `/lieferanten/:id/abrechnung`,
+    `src/services/nu-statement.ts`, `routes-nu-billing.tsx`): je Nachunternehmer und Monat alle Positionen laut erteilten
+    Bestellungen – Pauschale je Monat, je m² (Sammelbestellung mit Fläche/Betrag je Objekt), je Tag (Arbeitstage ohne
+    Feiertage/Schließzeiten), Stunden und Regie aus dem Stundennachweis, Anteil am Umsatz; Turnus-Bestellungen
+    (quartalsweise …) im letzten Monat jedes Zeitraums, einmalige im Monat des Endes. Stand je Position offen /
+    abgerechnet / keine Rechnung (gleiche Erkennung wie „Rechnung erwartet“). Beträge änderbar, dann: **Rechnung des NU
+    erfassen** (Nr., Datum, Netto laut Rechnung, USt § 13b/19 %/ohne, PDF → Eingangsrechnung mit Beträgen je Bestellung
+    im Verhältnis der Abrechnung, Abweichung vermerkt, Kostenstellen automatisch), **Gutschrift** oder **keine Rechnung**
+    (Grund). Feste ID je Formular.
+  - **Gutschriftverfahren** (Option je NU, im Blatt unten: vereinbart ab, USt auf der Gutschrift § 13b / 19 % /
+    Kleinunternehmer, Steuernummer oder USt-IdNr. Pflicht – neues Feld `suppliers.tax_no`; Vereinbarung als PDF zum
+    Unterschreiben): Gutschrift **GS-JJJJ-NNNN** = Eingangsrechnung (freigegeben, steht in der Zahlungsliste),
+    Zusatzzeilen (z. B. Abzug), PDF auf Briefpapier mit Pflichtangaben (Datum, Nummer, Leistungszeitraum, Steuernummer
+    des NU, § 13b-Hinweis) write-once an der Rechnung und beim NU unter Dokumente „Rechnungen“, per E-Mail senden
+    (`app.nu_credit_notes`, Migration `20270126000001`). **Rechtlich (§ 14 Abs. 2 S. 2 UStG):** nur mit vorheriger
+    Vereinbarung; Widerspruch des NU nimmt der Gutschrift die Wirkung als Rechnung; § 13b mit Steuerberater bestätigen;
+    E-Rechnungspflicht ab 2027/2028 gilt auch für Gutschriften (XRechnung/ZUGFeRD für Gutschriften noch nicht gebaut).
+  - **Einzelne Bestellung kündigen** (Bestellung → Auftrag → „Bestellung kündigen“: zum Datum, Grund intern, optional im
+    Schreiben): Ende gesetzt (vor heute → beendet), Kündigungsschreiben PDF write-once beim NU („Schriftverkehr“),
+    zurücknehmbar (Ende/Status wie vorher; `subcontract-cancel.ts`).
+  - **Unterschrift als Scan:** im Entwurf oben „Scan hochladen & erteilen“ (ein Schritt), daneben „Erteilen, Unterschrift
+    folgt“; rechts zuerst „Auf Papier unterschrieben“, Handy als zweite Möglichkeit.
+  - Tests: neu `nu-statement.db.test.ts` (4); e2e nachunternehmer 32, einkauf 21, menu grün.

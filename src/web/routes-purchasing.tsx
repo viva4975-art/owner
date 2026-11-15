@@ -158,7 +158,7 @@ const BILLING_DE: Record<string, string> = {
 };
 
 /** Monatsauswahl als eine Liste „Oktober 2026“ (24 Monate zurück, 3 voraus) statt Monat/Jahr-Feldern. */
-const MonthSelect: FC<{
+export const MonthSelect: FC<{
   id?: string;
   name: string;
   value: string;
@@ -241,6 +241,10 @@ const ExpectedList: FC<{ rows: ExpectedRow[] }> = ({ rows }) => {
         „Abrechnung“. Je laufendem Nachunternehmer-Auftrag wird je abgelaufenem Abrechnungszeitraum eine
         Rechnung erwartet. Sie verschwindet, sobald eine Eingangsrechnung den Auftrag und Zeitraum abdeckt –
         eine Rechnung darf mehrere Aufträge/Objekte abdecken (z. B. Glasreinigung). Rückblick 12 Monate.
+      </p>
+      <p class="small" style="margin-top:-4px">
+        Einfacher je Nachunternehmer und Monat abrechnen (Rechnung erfassen oder Gutschrift):{' '}
+        <a href="/nachunternehmer/abrechnung">NU-Abrechnung →</a>
       </p>
       {[...bySup.values()].map((list) => {
         const s0 = list[0]!;

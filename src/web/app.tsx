@@ -66,6 +66,7 @@ import { registerTeamRoutes } from './routes-team.js';
 import { inboxCount, registerInboxRoutes } from './routes-inbox.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
+import { registerNuBillingRoutes } from './routes-nu-billing.js';
 import { registerSettingsRoutes } from './routes-settings.js';
 import { registerPosterRoutes } from './routes-posters.js';
 import { appVersion } from '../services/app-version.js';
@@ -672,6 +673,7 @@ export function createApp(deps: Deps) {
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);
   registerInboxRoutes(ctx);
+  registerNuBillingRoutes(ctx);
   registerSubcontractorRoutes(ctx);
   registerSettingsRoutes(ctx);
   registerPosterRoutes(ctx);

@@ -21,6 +21,7 @@ import {
   countDays,
   workDaysLabel,
 } from '../services/subcontract-days.js';
+import { cancelSubcontract, revokeCancellation } from '../services/subcontract-cancel.js';
 import { SCHOOL_DATA_UNTIL } from '../domain/time/school-holidays.js';
 import {
   addPriceChange,
@@ -327,10 +328,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             <div class="eyebrow">Einkauf</div>
             <h1>{title}</h1>
             <div class="sub">
-              {nuMode ? 'Nachweise, Fristen und Bestellungen je Firma' : 'Material und Dienstleister'} ·{' '}
-              <a href={nuMode ? '/lieferanten' : '/nachunternehmer'}>
-                {nuMode ? 'zu den Lieferanten' : 'zu den Nachunternehmern'}
-              </a>
+              {nuMode ? 'Nachweise, Fristen und Bestellungen je Firma' : 'Material und Dienstleister'}
             </div>
           </div>
           <div class="acts">
@@ -591,6 +589,8 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               <dd>{s.phone ?? '–'}</dd>
               <dt>USt-ID</dt>
               <dd>{s.vat_id ?? '–'}</dd>
+              <dt>Steuernummer</dt>
+              <dd>{s.tax_no ?? '–'}</dd>
               <dt>Bank</dt>
               <dd>{s.iban ? `${s.iban.replace(/(.{4})/g, '$1 ').trim()} ${s.bic ?? ''}` : '–'}</dd>
               <dt>Zahlungsziel</dt>
@@ -2414,7 +2414,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
             {(draft || sc.status === 'erteilt') && (
               <div class="card sc-sign-act">
                 <h3 class="panel-title" style="margin-top:0">
-                  {sc.status === 'entwurf' ? 'Auftrag erteilen' : 'Preisnachtrag'}
+                  {sc.status === 'entwurf' ? 'Auftrag erteilen' : 'Auftrag'}
                 </h3>
                 {sc.status === 'entwurf' && comp && comp.missing.length > 0 && (
                   <div class={below ? 'flash err' : 'flash warn'} style="margin:0 0 10px;display:block">
@@ -2445,6 +2445,25 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     <span>Hinweis zur Kenntnis genommen – Auftrag trotzdem erteilen</span>
                   </label>
                 )}
+                {sc.status === 'entwurf' && (
+                  <form
+                    method="post"
+                    action={`/nachunternehmer/auftraege/${id}/erteilen-scan`}
+                    enctype="multipart/form-data"
+                    class="sc-scan-main"
+                    style="margin:0 0 12px;padding:12px;border:1px dashed var(--line);border-radius:10px"
+                  >
+                    <b>Unterschrieben zurück? Scan hochladen – Auftrag ist damit erteilt</b>
+                    <div class="small mut" style="margin:2px 0 8px">
+                      Bestellschein drucken bzw. schicken, unterschrieben als PDF/Foto hier hochladen.
+                    </div>
+                    {below && <input type="hidden" name="hinweis_ok" value="" data-copy-from="hinweis_ok" />}
+                    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required aria-label="Scan" />
+                    <button class="btn" style="margin-top:8px">
+                      Scan hochladen &amp; erteilen
+                    </button>
+                  </form>
+                )}
                 {draft && (
                   <div class="sc-btnrow">
                     {sc.status === 'entwurf' && (
@@ -2454,8 +2473,13 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         action={`/nachunternehmer/auftraege/${id}/status`}
                         style="margin:0"
                       >
-                        <button class="btn" name="status" value="erteilt">
-                          Auftrag erteilen
+                        <button
+                          class="btn sec"
+                          name="status"
+                          value="erteilt"
+                          title="Auftrag gilt als erteilt, Unterschrift wird später nachgereicht"
+                        >
+                          Erteilen, Unterschrift folgt
                         </button>
                       </form>
                     )}
@@ -2527,6 +2551,69 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                     </form>
                   </details>
                 )}
+                {sc.status === 'erteilt' && !sc.cancelled_on && (
+                  <details style="margin-top:8px">
+                    <summary>Bestellung kündigen</summary>
+                    <form
+                      method="post"
+                      action={`/nachunternehmer/auftraege/${id}/kuendigen`}
+                      class="grid"
+                      style="margin-top:8px"
+                    >
+                      <label>
+                        Kündigung zum
+                        <input type="date" name="date" required min={sc.valid_from} />
+                      </label>
+                      <label>
+                        Grund (intern)
+                        <input name="reason" placeholder="z. B. Objekt übernimmt eigenes Personal" />
+                      </label>
+                      <label class="chk" style="display:flex;gap:8px;align-items:center">
+                        <input type="checkbox" name="reason_letter" value="1" style="width:auto" />
+                        <span>Grund im Kündigungsschreiben nennen</span>
+                      </label>
+                      <label>
+                        Zusätzlicher Text im Schreiben (optional)
+                        <textarea name="note" rows={2}></textarea>
+                      </label>
+                      <div>
+                        <button
+                          class="btn danger sm"
+                          data-confirm="Bestellung kündigen? Das Ende wird gesetzt und ein Kündigungsschreiben (PDF) erstellt."
+                        >
+                          Kündigen &amp; Schreiben erstellen
+                        </button>
+                      </div>
+                    </form>
+                    <p class="small mut" style="margin:6px 0 0">
+                      Nur diese Bestellung endet – die Zusammenarbeit mit dem Nachunternehmer bleibt. Ganze
+                      Zusammenarbeit beenden: beim Nachunternehmer unter „Zusammenarbeit beenden“.
+                    </p>
+                  </details>
+                )}
+              </div>
+            )}
+            {sc.cancelled_on && (
+              <div class="card" style="border-left:3px solid var(--bad)">
+                <h3 class="panel-title" style="margin-top:0">
+                  Gekündigt zum {dateDe(sc.cancelled_on)}
+                </h3>
+                {sc.cancel_reason && <p class="small mut">Grund: {sc.cancel_reason}</p>}
+                <div class="actions">
+                  {sc.cancel_file_id && (
+                    <a class="btn sec" href={`/dateien/${sc.cancel_file_id}`} target="_blank">
+                      Kündigungsschreiben (PDF)
+                    </a>
+                  )}
+                  <form method="post" action={`/nachunternehmer/auftraege/${id}/kuendigung/zuruecknehmen`}>
+                    <button
+                      class="btn ghost sm"
+                      data-confirm="Kündigung zurücknehmen? Ende und Status werden wie vorher."
+                    >
+                      Kündigung zurücknehmen
+                    </button>
+                  </form>
+                </div>
               </div>
             )}
             <div class={`card sc-sign-box${sc.signed_file_path || sc.signed_external ? ' done' : ''}`}>
@@ -2552,12 +2639,41 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   )}
                   <div class="sc-sign-ways">
                     <div class="sc-sign-way">
-                      <b>Am Handy / Tablet</b>
+                      <b>Auf Papier unterschrieben</b>
+                      <div class="small mut">
+                        Bestellschein drucken, unterschreiben lassen, Scan hochladen.
+                      </div>
+                      {sc.status === 'entwurf' ? (
+                        <div class="small" style="margin-top:6px">
+                          links „Scan hochladen &amp; erteilen“ – erteilt den Auftrag in einem Schritt
+                        </div>
+                      ) : (
+                        <form
+                          method="post"
+                          action={`/nachunternehmer/auftraege/${id}/scan`}
+                          enctype="multipart/form-data"
+                          style="margin:6px 0 0"
+                        >
+                          <input
+                            type="file"
+                            name="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            required
+                            aria-label="Scan"
+                          />
+                          <button class="btn" style="margin-top:6px">
+                            Scan hochladen
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                    <div class="sc-sign-way">
+                      <b>Oder am Handy / Tablet</b>
                       <div class="small mut">
                         Nachunternehmer unterschreibt mit dem Finger, PDF wird abgelegt.
                       </div>
                       {sc.status === 'erteilt' ? (
-                        <a class="btn" href={`/nachunternehmer/auftraege/${id}/unterschreiben`}>
+                        <a class="btn sec sm" href={`/nachunternehmer/auftraege/${id}/unterschreiben`}>
                           Jetzt unterschreiben lassen
                         </a>
                       ) : (
@@ -2565,29 +2681,6 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                           möglich, sobald der Auftrag erteilt ist
                         </div>
                       )}
-                    </div>
-                    <div class="sc-sign-way">
-                      <b>Auf Papier unterschrieben</b>
-                      <div class="small mut">
-                        Bestellschein drucken, unterschreiben lassen, Scan hochladen.
-                      </div>
-                      <form
-                        method="post"
-                        action={`/nachunternehmer/auftraege/${id}/scan`}
-                        enctype="multipart/form-data"
-                        style="margin:6px 0 0"
-                      >
-                        <input
-                          type="file"
-                          name="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          required
-                          aria-label="Scan"
-                        />
-                        <button class="btn sec sm" style="margin-top:6px">
-                          Scan hochladen
-                        </button>
-                      </form>
                     </div>
                   </div>
                 </>
@@ -3423,6 +3516,63 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       throw e;
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Nachtrag gespeichert.' });
+  });
+
+  // Scan hochladen und damit erteilen (Ahmed 15.11.: Unterschrift kommt zu 90 % als eingescanntes PDF)
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/erteilen-scan`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    try {
+      const f = b.file;
+      if (!(f instanceof File) || !f.size) throw new BusinessError('Bitte den unterschriebenen Scan wählen');
+      const data = new Uint8Array(await f.arrayBuffer());
+      await setSubcontractStatus(sql, id, 'erteilt', c.get('actor'), { acceptMissing: b.hinweis_ok === '1' });
+      await uploadSignedSubcontract(deps, id, data, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Auftrag erteilt, unterschriebener Auftrag hinterlegt.',
+    });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/kuendigen`, async (c) => {
+    const id = c.req.param('id');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    try {
+      await cancelSubcontract(
+        { sql, filesDir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+        id,
+        {
+          date: b.date ?? '',
+          reason: b.reason ?? null,
+          reasonInLetter: b.reason_letter === '1',
+          note: b.note ?? null,
+        },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Bestellung gekündigt – Kündigungsschreiben liegt beim Nachunternehmer unter Dokumente.',
+    });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/kuendigung/zuruecknehmen`, async (c) => {
+    const id = c.req.param('id');
+    try {
+      await revokeCancellation(sql, id, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Kündigung zurückgenommen.' });
   });
 
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/scan`, async (c) => {

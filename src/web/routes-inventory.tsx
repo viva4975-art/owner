@@ -224,6 +224,7 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
             <Field name="email" label="E-Mail" value={s.email} type="email" />
             <Field name="phone" label="Telefon" value={s.phone} />
             <Field name="vat_id" label="USt-ID" value={s.vat_id} />
+            <Field name="tax_no" label="Steuernummer" value={s.tax_no ?? null} />
             <Field name="iban" label="IBAN" value={s.iban} />
             <Field name="bic" label="BIC" value={s.bic} />
             <Field

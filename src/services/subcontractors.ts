@@ -503,6 +503,10 @@ export interface Subcontract {
   signed_external: string | null;
   signed_file_sha256: string | null;
   version: number;
+  /** Kündigung dieser Bestellung zum Datum (Ahmed 15.11.) */
+  cancelled_on?: string | null;
+  cancel_reason?: string | null;
+  cancel_file_id?: string | null;
 }
 export type SubcontractRow = Subcontract & {
   supplier_name: string;

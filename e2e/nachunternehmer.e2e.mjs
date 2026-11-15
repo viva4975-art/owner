@@ -177,7 +177,7 @@ await p.fill('#price', '1.250,00');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
 check('Auftrag gespeichert', (await flash(p)).includes('Gespeichert'), await flash(p));
-await p.click('button:has-text("Auftrag erteilen")');
+await p.click('button:has-text("Erteilen, Unterschrift folgt")');
 await p.waitForLoadState();
 check('Erteilen ohne Nachweise gesperrt', (await flash(p)).includes('Pflicht-Nachweise'), await flash(p));
 const apdf = await p.request.get(p.url().split('?')[0] + '/auftrag.pdf');

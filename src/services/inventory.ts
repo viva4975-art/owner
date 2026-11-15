@@ -77,6 +77,11 @@ export interface Supplier {
   active: boolean;
   version: number;
   legal_form?: string | null;
+  /** Steuernummer (Pflichtangabe auf Gutschriften) */
+  tax_no?: string | null;
+  /** Gutschriftverfahren vereinbart ab (leer = Nachunternehmer stellt Rechnungen) */
+  self_billing_since?: string | null;
+  self_billing_vat?: '13b' | '19' | 'klein' | null;
 }
 
 export const supplierInput = z.object({
@@ -112,6 +117,7 @@ export const supplierInput = z.object({
   phone: optText,
   contact_name: optText,
   vat_id: optText,
+  tax_no: optText,
   iban: z.preprocess(
     (v) => (typeof v === 'string' ? v.replace(/\s/g, '').toUpperCase() || null : v),
     z
@@ -151,7 +157,7 @@ export async function saveSupplier(
   // Felder, die nicht mehr im Formular stehen (Nachweis-Fristen, Ansprechpartner → eigene Reiter), nicht überschreiben
   const b = (body ?? {}) as Record<string, unknown>;
   const keep = new Set(
-    ['exemption_valid_until', 'clearance_valid_until', 'contact_name'].filter((k) => !(k in b)),
+    ['exemption_valid_until', 'clearance_valid_until', 'contact_name', 'tax_no'].filter((k) => !(k in b)),
   );
   const data = Object.fromEntries(Object.entries(parsed).filter(([k]) => !keep.has(k)));
   await upsert(sql, 'suppliers', id, data as never, expectedVersion, 'Der Lieferant', actor);

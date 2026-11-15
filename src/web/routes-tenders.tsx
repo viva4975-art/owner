@@ -12,6 +12,7 @@ import {
   saveTender,
   setTenderStatus,
   TENDER_STATUS,
+  type Tender,
   type TenderStatus,
   upcomingEvents,
 } from '../services/tenders.js';
@@ -58,6 +59,29 @@ const local = (d: Date | null) =>
     : '';
 const countdown = (days: number | null) =>
   days === null ? '' : days < 0 ? 'vorbei' : days === 0 ? 'heute' : days === 1 ? 'morgen' : `noch ${days} T.`;
+
+/** Ortsbesichtigung in der Liste: rot = muss noch vereinbart werden, grün = vereinbart, grau = nicht nötig. */
+const VisitPill = ({ t }: { t: Tender }) => {
+  const mode = t.site_visit_mode ?? (t.site_visit_at ? 'fixed' : null);
+  if (mode === 'arrange')
+    return (
+      <span class="badge err" title="Ortsbesichtigung muss noch vereinbart werden">
+        Besichtigung vereinbaren{t.site_visit_assignee ? ` · ${t.site_visit_assignee}` : ''}
+      </span>
+    );
+  if (mode === 'fixed')
+    return (
+      <span class="badge ok" title="Ortsbesichtigung vereinbart">
+        Besichtigung {t.site_visit_at ? fmt(t.site_visit_at) : 'vereinbart'}
+      </span>
+    );
+  if (mode === 'none') return <span class="badge">keine Besichtigung</span>;
+  return (
+    <span class="badge warn" title="Ortsbesichtigung noch nicht geklärt">
+      Besichtigung offen
+    </span>
+  );
+};
 
 export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
@@ -180,6 +204,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                   </div>
                 </div>
                 <div class="side">
+                  {ACTIVE.includes(t.status) && t.status !== 'abgegeben' && <VisitPill t={t} />}
                   <span class="when">Abgabe {t.deadline_at ? fmt(t.deadline_at) : 'offen'}</span>
                   <span class={`badge ${STATUS_CLASS[t.status]}`}>{TENDER_STATUS[t.status]}</span>
                 </div>
@@ -229,19 +254,19 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
         )),
       ];
     };
-    const statusButtons: [TenderStatus, string][] = t
-      ? (
-          [
-            ['pruefen', 'Prüfen'],
-            ['bearbeitung', 'Wir nehmen teil'],
-            ['abgegeben', 'Angebot abgegeben'],
-            ['gewonnen', 'Zuschlag erhalten'],
-            ['verloren', 'Nicht erhalten'],
-            ['verzichtet', 'Nicht teilnehmen'],
-            ['aufgehoben', 'Aufgehoben'],
-          ] as [TenderStatus, string][]
-        ).filter(([s]) => s !== t.status)
-      : [];
+    // Nur Teilnahme entscheiden – alles Weitere folgt dem Angebot (Ahmed 15.11.)
+    const statusButtons: [TenderStatus, string][] = !t
+      ? []
+      : t.status === 'verzichtet'
+        ? [['bearbeitung', 'Doch teilnehmen']]
+        : ['neu', 'pruefen'].includes(t.status)
+          ? [
+              ['bearbeitung', 'Wir nehmen teil'],
+              ['verzichtet', 'Nicht teilnehmen'],
+            ]
+          : t.status === 'bearbeitung'
+            ? [['verzichtet', 'Nicht teilnehmen']]
+            : [];
     return page(
       c,
       t?.title ?? 'Neue Ausschreibung',
@@ -448,20 +473,34 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
           <div>
             {t && (
               <div class="card">
-                <h3>Status ändern</h3>
-                <form method="post" action={`/ausschreibungen/${id}/status`}>
-                  <input
-                    name="note"
-                    placeholder="Notiz / Grund (bei „nicht erhalten“, „nicht teilnehmen“ Pflicht)"
-                  />
-                  <div class="actions" style="margin-bottom:0">
-                    {statusButtons.map(([s, label]) => (
-                      <button class="btn sec sm" name="status" value={s}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </form>
+                <h3>Teilnahme</h3>
+                {statusButtons.length > 0 ? (
+                  <form method="post" action={`/ausschreibungen/${id}/status`}>
+                    <input name="note" placeholder="Grund (bei „Nicht teilnehmen“ Pflicht)" />
+                    <div class="actions" style="margin-bottom:0">
+                      {statusButtons.map(([s, label]) => (
+                        <button
+                          class={`btn sm ${s === 'verzichtet' ? 'danger' : ''}`}
+                          name="status"
+                          value={s}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </form>
+                ) : (
+                  <p class="small mut" style="margin:0">
+                    Status: <b>{TENDER_STATUS[t.status]}</b> – ab jetzt folgt er dem Angebot (abgegeben,
+                    Zuschlag, Absage, aufgehoben).
+                  </p>
+                )}
+                {t.status === 'bearbeitung' && (
+                  <p class="small mut" style="margin:8px 0 0">
+                    Abgabe, Zuschlag und Absage stellen Sie am Angebot ein – die Ausschreibung übernimmt den
+                    Stand.
+                  </p>
+                )}
                 {t.decision_note && <p class="small mut">Notiz: {t.decision_note}</p>}
                 {t.estimated_cents != null && (
                   <p class="small mut">geschätzt {euro(t.estimated_cents)} p. a.</p>

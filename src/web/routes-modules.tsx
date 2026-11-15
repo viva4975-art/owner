@@ -1758,6 +1758,21 @@ export function registerModuleRoutes(ctx: Ctx) {
           const items = await checklist(sql, e.id, 'ein');
           await autoActivate(sql, e.id, stage, items);
           parts.push(<ChecklistCard id={e.id} phase="ein" items={items} canEdit />);
+        } else if (stage !== 'ausgeschieden') {
+          // Länger beschäftigt: Checkliste eingeklappt, damit sie bei allen erreichbar ist (Ahmed 15.11.)
+          const items = await checklist(sql, e.id, 'ein');
+          const done = items.filter((x) => x.done).length;
+          parts.push(
+            <details class="card cl-fold">
+              <summary>
+                Einstellung – Checkliste{' '}
+                <span class={`badge ${done === items.length ? 'ok' : 'warn'}`}>
+                  {done} von {items.length} erledigt
+                </span>
+              </summary>
+              <ChecklistCard id={e.id} phase="ein" items={items} canEdit />
+            </details>,
+          );
         }
         if (e.exit_date && (stage !== 'ausgeschieden' || e.exit_date >= addDays(todayBerlin(), -90)))
           parts.push(

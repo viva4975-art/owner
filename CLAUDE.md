@@ -5589,3 +5589,15 @@ Testadresse.
     vorausgewählt.
   - **Urlaubskalender:** im aktuellen Monat bis Ende des Folgemonats, startet beim heutigen Tag (frühere Tage nach links
     scrollen), heute dunkel Bordeaux markiert; Summen/PDF/CSV weiter je Monat.
+- 2026-11-15: Runde 47 (Ahmed, 5 Punkte):
+  - **Checkliste Einstellung** erscheint offen nur in der Einstellungsphase (Bewerber, In Einstellung, Vertrag) bzw. bis
+    60 Tage nach Eintritt, die Austritts-Checkliste ab eingetragenem Austritt. Bei länger Beschäftigten steht sie jetzt
+    eingeklappt mit „n von m erledigt“ in der Übersicht (vorher gar nicht – daher „bei manchen ja, bei manchen nicht“).
+  - **Menü links schließen:** Pfeil oben links im Menü; geschlossen wandern Pfeil (zum Öffnen) und Logo oben links in die
+    Kopfzeile. Der schwebende Knopf „Menü“ unten links (überdeckte „Speichern“) entfällt.
+  - **Ausschreibung:** Kasten „Teilnahme“ nur noch „Wir nehmen teil“ / „Nicht teilnehmen“ (bzw. „Doch teilnehmen“);
+    danach folgt der Status dem Angebot. In der Übersicht Schild zur Ortsbesichtigung: rot „vereinbaren · Person“,
+    grün mit Termin, gelb „offen“, grau „keine“.
+  - **Objektleitungen nicht in der Einsatzplanung** (Tag „Objektleitung“ oder Benutzerkonto der Rolle Objektleitung,
+    `isObjectLead` in `employees.ts`): nicht in Planungstafel und Terminserie wählbar, kein Hinweis „kein Einsatz“.
+    Vorhandene Einsätze bleiben gespeichert (Soll/Zeiten), erscheinen aber nicht mehr in der Tafel.

@@ -307,15 +307,15 @@ export async function listEmployees(
            (select array_agg(distinct s.name order by s.name) from app.shift_plans sp join app.sites s on s.id = sp.site_id
              where sp.employee_id = e.id and s.active
                and (sp.valid_until is null or sp.valid_until >= (now() at time zone 'Europe/Berlin')::date)) as site_names,
-           ${hasShift(sql)} as has_shift
+           (${hasShift(sql)} or ${isObjectLead(sql)}) as has_shift
       from app.employees e left join app.employee_private p on p.employee_id = e.id
      where ${opts.status ? sql`e.status = ${opts.status}` : sql`true`}
        and ${
          opts.plannable
-           ? sql`(e.status = 'aktiv' or e.exit_date >= ${addDaysIso(todayBerlin(), -366)})`
+           ? sql`(e.status = 'aktiv' or e.exit_date >= ${addDaysIso(todayBerlin(), -366)}) and not ${isObjectLead(sql)}`
            : sql`true`
        }
-       and ${opts.withoutShift ? sql`not ${hasShift(sql)}` : sql`true`}
+       and ${opts.withoutShift ? sql`not ${hasShift(sql)} and not ${isObjectLead(sql)}` : sql`true`}
        and ${opts.tag ? sql`${opts.tag} = any(e.tags)` : sql`true`}
        and ${
          opts.siteIds
@@ -330,6 +330,15 @@ export async function listEmployees(
      order by e.last_name, e.first_name`;
 }
 
+/**
+ * Objektleitung (Alias e): Tag „Objektleitung“ bzw. mit einem Benutzerkonto der Rolle Objektleitung verknüpft.
+ * Sie planen ihre Einsätze selbst – nicht in der Einsatzplanung, kein Hinweis „kein Einsatz“ (Ahmed 15.11.).
+ */
+const isObjectLead = (
+  sql: Sql,
+) => sql`(exists (select 1 from unnest(e.tags) t where lower(t) like 'objektleit%')
+  or exists (select 1 from app.profiles pr where pr.employee_id = e.id and pr.role = 'objektleitung'))`;
+
 /** Mitarbeiter (Alias e) hat einen laufenden oder künftigen Einsatz (wiederkehrend oder einmalig). */
 const hasShift = (sql: Sql) => sql`exists (
   select 1 from app.shift_plans sp
@@ -342,7 +351,7 @@ export async function countWithoutShift(sql: Sql, siteIds: string[] | null = nul
   if (siteIds && siteIds.length === 0) return 0;
   const [r] = await sql<{ n: number }[]>`
     select count(*)::int as n from app.employees e
-     where e.status = 'aktiv' and not ${hasShift(sql)}
+     where e.status = 'aktiv' and not ${hasShift(sql)} and not ${isObjectLead(sql)}
        and ${
          siteIds
            ? sql`exists (select 1 from app.employee_sites es where es.employee_id = e.id and es.site_id in ${sql(siteIds)})`

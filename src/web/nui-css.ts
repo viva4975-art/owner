@@ -338,8 +338,13 @@ html.nside-drag,html.nside-drag *{cursor:col-resize!important;user-select:none}
 body.nui .nshow{display:none}
 html.nside-off body.nui .appside.nside{display:none!important}
 html.nside-off body.nui .mainc{margin-left:0}
-html.nside-off body.nui .nshow{display:inline-flex;align-items:center;gap:6px;position:fixed;left:12px;bottom:14px;z-index:45;border:0;border-radius:999px;padding:9px 14px;background:linear-gradient(180deg,#5c0e27,#3d0a1c);color:#fff;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 22px -8px rgba(0,0,0,.4)}
-@media (max-width:1024px){body.nui .nresize,body.nui .nhide{display:none}html.nside-off body.nui .nshow{display:none}html.nside-off body.nui .appside.nside{display:flex!important}body.nui .mainc{margin-left:0}}
+body.nui .nhdr{display:none;align-items:center;gap:10px;flex:none;margin-right:6px}
+html.nside-off body.nui .nhdr{display:inline-flex}
+html.nside-off body.nui .nshow{display:grid;place-items:center;width:34px;height:34px;border:1px solid #E5E5EA;border-radius:9px;background:#fff;color:#811D40;cursor:pointer;padding:0}
+html.nside-off body.nui .nshow:hover{background:#F7EDF1}
+body.nui .nshow .ic{transform:rotate(-90deg)}
+body.nui .nhdr-logo img{display:block;height:30px;width:auto}
+@media (max-width:1024px){body.nui .nresize,body.nui .nhide{display:none}html.nside-off body.nui .nhdr{display:none}html.nside-off body.nui .appside.nside{display:flex!important}body.nui .mainc{margin-left:0}}
 @media print{body.nui .nshow{display:none!important}}
 
 /* Kunde → Übersicht: Kästen mit Innenabstand (Überschrift saß auf dem Rahmen) */
@@ -358,4 +363,8 @@ html body.nui .list .ent-name:hover{text-decoration:underline}
 html body.nui main form[method="post" i]>.chk:not([hidden]),html body.nui main form[method="post" i]>div>.chk:not([hidden]){display:flex!important;align-items:flex-start;gap:10px;padding:10px 12px!important;margin:8px 0 0!important;border:1px solid var(--n-l);border-radius:10px;background:#fafafb}
 html body.nui main form .chk>input[type=checkbox]{flex:none;width:18px!important;height:18px!important;margin:1px 0 0!important;position:static!important}
 html body.nui main form .chk>label{margin:0!important;padding:0!important;font-weight:450;color:var(--n-t);font-size:14px;line-height:1.45}
+.cl-fold{padding:12px 18px!important}
+.cl-fold>summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:10px}
+.cl-fold>.cl-card{box-shadow:none!important;border:0!important;padding:10px 0 0!important;margin:0!important}
+.cl-fold>.cl-card .cl-head{display:none}
 `;

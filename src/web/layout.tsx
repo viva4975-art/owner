@@ -1994,16 +1994,6 @@ const NuiSide: FC<{
         )}
         <div class="nresize" data-nside-resize title="Breite ziehen (Doppelklick = Standard)" />
       </aside>
-      <button
-        type="button"
-        class="nshow"
-        data-nside-show
-        title="Menü einblenden"
-        aria-label="Menü einblenden"
-      >
-        <Icon name="menu" size={18} />
-        <span>Menü</span>
-      </button>
       <script dangerouslySetInnerHTML={{ __html: NSIDE_JS }} />
     </>
   );
@@ -2233,6 +2223,27 @@ export const Layout: FC<{
                     <label for="burger" class="burgerbtn" aria-label="Menü">
                       <Icon name="menu" />
                     </label>
+                    {nui && (
+                      <span class="nhdr">
+                        <button
+                          type="button"
+                          class="nshow"
+                          data-nside-show
+                          title="Menü einblenden"
+                          aria-label="Menü einblenden"
+                        >
+                          <Icon name="chevron" size={18} />
+                        </button>
+                        <a class="nhdr-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
+                          <img
+                            src="/static/logo.png"
+                            alt="Viva-Deluxe Gebäudereinigung GmbH"
+                            width="150"
+                            height="30"
+                          />
+                        </a>
+                      </span>
+                    )}
                     {menuTop && (
                       <a class="top-logo" href="/" aria-label="Viva-Deluxe – Übersicht">
                         <img

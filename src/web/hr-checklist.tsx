@@ -23,10 +23,10 @@ export const EmployeeActions: FC<{
         Aktionen <Icon name="chevron" size={14} />
       </summary>
       <div class="drop right">
-        <a href={`${base}/kalender`}>
+        <a href={`/zeiterfassung/${randomUUID()}?mitarbeiter=${id}`}>
           <Icon name="clock" size={15} /> Zeit erfassen
         </a>
-        <a href={`${base}/abwesenheiten`}>
+        <a href={`${base}/abwesenheiten#erfassen`}>
           <Icon name="sun" size={15} /> Abwesenheit erfassen
         </a>
         <a href={`/einsatzplanung/${randomUUID()}?mitarbeiter=${id}&zurueck=${encodeURIComponent(base)}`}>
@@ -35,8 +35,11 @@ export const EmployeeActions: FC<{
         <a href={`${base}/dokumente`}>
           <Icon name="file" size={15} /> Dokument erstellen …
         </a>
-        <a href={`${base}/uebergaben`}>
-          <Icon name="clipboard" size={15} /> Übergabe (Kleidung, Schlüssel)
+        <a href={`/uebergaben/${randomUUID()}?art=kleidung&an=ma&mitarbeiter=${id}`}>
+          <Icon name="clipboard" size={15} /> Übergabe (Kleidung, Gerät …)
+        </a>
+        <a href={`${base}/uebergaben/schluessel`}>
+          <Icon name="key" size={15} /> Schlüssel ausgeben
         </a>
         <a href={`${base}/bearbeiten`}>
           <Icon name="pencil" size={15} /> Stammdaten bearbeiten

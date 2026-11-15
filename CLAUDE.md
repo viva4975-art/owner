@@ -5566,3 +5566,26 @@ Testadresse.
   Spaltenbreite, 42 px hoch, linksbündig. 3) Kopfzeile wurde beim Scrollen durchsichtig (Glas), der Inhalt schien durch →
   in der neuen Oberfläche immer deckend weiß. 4) Eingabefelder am Handy 16 px (iOS zoomt sonst beim Antippen).
   Nur in Chromium (Handy-Ansicht) geprüft, kein Safari hier.
+- 2026-11-15: Runde 46 (Ahmed, 20 Punkte):
+  - **Ausschreibung vereinfacht:** Auftraggeber = Kunde **oder** Vergabestelle (nicht beides), Verfahren/Plattform/
+    Vertragsdaten aus dem Formular (alte Werte bleiben), Zuständig als Auswahl (Büro/Objektleitung), Ortsbesichtigung
+    „nicht notwendig / schon vereinbart (Datum) / jemandem zuordnen“ → Aufgabe „Ortsbesichtigung vereinbaren: …“ für
+    die Person (feste ID, fällig = Bieterfragen bzw. Frist − 7, erledigt bei Wechsel/Abschluss; Migration
+    `20270125000001`). Status folgt dem verknüpften Angebot (Entwurf → in Bearbeitung, versendet → abgegeben,
+    angenommen → gewonnen, abgelehnt → verloren, aufgehoben → aufgehoben; `syncTenderFromOffer`).
+  - **Menü links** dunkles Bordeaux wie die Anmeldemaske, Namenskasten oben entfällt, Menü ausblendbar (Knopf „Menü“)
+    und Breite ziehbar (200–420 px, Doppelklick = Standard), Scrollstelle und aktiver Punkt bleiben beim Seitenwechsel.
+    **Formulare** (Baukasten) aus Menü und App entfernt (Tabellen bleiben), **Dienste-Liste** gelöscht
+    (→ Planung), **Kontoauszug-Datei einlesen** entfernt (Bankabruf).
+  - Kunde/Objekt: kein Rahmen um den Namen, Überschriften nicht auf der Kartenlinie, „+ Neu“-Menü und Klappmenüs
+    öffnen nach links, wenn rechts kein Platz ist; Häkchen der Leistung klar beim Text; Reiter „Kosten & Ertrag“ entfernt.
+  - Rechnungsliste ohne Abschneiden (Art unter der Nummer, Fälligkeit in der Statuszeile), Mahnvorschläge ohne
+    überlappenden Kopf. **Offene Posten: ein Knopf „Heute bezahlt“** (immer heutiges Datum), Teilzahlung über
+    „anderer Betrag …“.
+  - Mitarbeiter → Aktionen öffnen direkt die Eingabe (Zeit erfassen, Abwesenheit, Übergabe, Schlüssel ausgeben).
+  - **Eingang** in aufklappbaren Gruppen je Art mit Anzahl (bis 8 Einträge offen).
+  - **Vertretung mit Nachunternehmer:** Auswahl zeigt Firma · Leistung · Rhythmus · Objekt · Bestellnummer; Bestellungen
+    am selben Objekt (auch Sammelbestellungen) oben als „Vorschlag“, genau eine und keine freie Kraft am Objekt →
+    vorausgewählt.
+  - **Urlaubskalender:** im aktuellen Monat bis Ende des Folgemonats, startet beim heutigen Tag (frühere Tage nach links
+    scrollen), heute dunkel Bordeaux markiert; Summen/PDF/CSV weiter je Monat.

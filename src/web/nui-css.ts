@@ -70,6 +70,13 @@ body.nui .ck-list .n{margin-left:auto;font-weight:650}
 .ib-bar .chip .n{font-weight:650;opacity:.8}
 .ib-bar .chip.on,html .ib-bar a.chip.on{background:#811D40!important;color:#fff!important;border-color:#811D40!important}
 .ib-list{padding:4px 18px!important}
+.ib-groups{display:flex;flex-direction:column;gap:10px}
+.ib-grp{padding:0!important;overflow:hidden}
+.ib-grp>summary{display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;list-style:none;font-size:15px}
+.ib-grp>summary::-webkit-details-marker{display:none}
+.ib-grp>summary .ib-dot{width:28px;height:28px}
+.ib-grp>summary .ib-n{background:#F7EDF1;color:#811D40;border-radius:999px;padding:1px 9px;font-size:12.5px;font-weight:650}
+.ib-grp[open]>summary{border-bottom:1px solid #E5E5EA}
 .ib-row{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid #E5E5EA}
 .ib-row:first-child{border-top:0}
 .ib-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none}

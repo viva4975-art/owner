@@ -3,6 +3,7 @@ import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, isoWeekday } from '../domain/time/holidays.js';
 import { ABSENCE_LABEL, type AbsenceKind } from '../services/absences.js';
 import { BusinessError } from '../services/errors.js';
+import { FREQUENCY } from '../services/subcontractors.js';
 import {
   EXCEPTION_LABEL,
   type ExceptionKind,
@@ -38,10 +39,15 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
         supplier_name: string;
         site_id: string;
         site_name: string;
+        site_no: string | null;
         service_kind: string;
+        frequency: string;
+        site_ids: string[];
       }[]
     >`
-      select sc.id, sc.number, sp.name as supplier_name, sc.site_id, s.name as site_name, sc.service_kind
+      select sc.id, sc.number, sp.name as supplier_name, sc.site_id, s.name as site_name, s.site_no,
+             sc.service_kind, sc.frequency,
+             array(select ss.site_id::text from app.subcontract_sites ss where ss.subcontract_id = sc.id) as site_ids
         from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
        where sc.status = 'erteilt' and sc.valid_from <= ${to} and (sc.valid_to is null or sc.valid_to >= ${from})
        order by sp.name, sc.number`;
@@ -117,21 +123,42 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
                             </option>
                           ))}
                         </optgroup>
-                        {orders.length > 0 && (
-                          <optgroup label="Nachunternehmer-Bestellung">
-                            {[...orders]
-                              .sort(
-                                (a, b) =>
-                                  Number(b.site_id === s.plan.site_id) - Number(a.site_id === s.plan.site_id),
-                              )
-                              .map((o) => (
-                                <option value={`nu:${o.id}`}>
-                                  {o.number} · {o.supplier_name}
-                                  {o.site_id === s.plan.site_id ? ' ·Objekt' : ` (${o.site_name})`}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
+                        {(() => {
+                          const here = (o: (typeof orders)[number]) =>
+                            o.site_id === s.plan.site_id || o.site_ids.includes(s.plan.site_id);
+                          const label = (o: (typeof orders)[number]) =>
+                            `${o.supplier_name} · ${o.service_kind || 'Leistung'} · ${FREQUENCY[o.frequency] ?? o.frequency}` +
+                            (here(o)
+                              ? o.site_ids.length > 1
+                                ? ` · Sammelbestellung (${o.site_ids.length} Objekte)`
+                                : ''
+                              : ` · ${o.site_no ? `${o.site_no} ` : ''}${o.site_name}`) +
+                            ` · ${o.number}`;
+                          const sug = orders.filter(here);
+                          const rest = orders.filter((o) => !here(o));
+                          const pre =
+                            !s.exception && sug.length === 1 && !cands.some((e) => e.on_site && !e.busy);
+                          return (
+                            <>
+                              {sug.length > 0 && (
+                                <optgroup label="Vorschlag: Nachunternehmer an diesem Objekt">
+                                  {sug.map((o) => (
+                                    <option value={`nu:${o.id}`} selected={pre}>
+                                      {label(o)}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {rest.length > 0 && (
+                                <optgroup label="Andere Nachunternehmer-Bestellungen">
+                                  {rest.map((o) => (
+                                    <option value={`nu:${o.id}`}>{label(o)}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          );
+                        })()}
                       </select>
                       <button class="btn sm">Übernehmen</button>
                     </form>
@@ -142,9 +169,11 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
           </table>
         </div>
         <p class="small mut">
-          „·Objekt“ = dem Objekt zugeordnet. Belegte Mitarbeitende (Überschneidung) sind nicht wählbar. „Nicht
-          notwendig“ und „Nachunternehmer“ zählen wie ein Ausfall nicht als eigener Einsatz; die Bestellung
-          wird am Tag vermerkt (<a href="/bestellungen?art=nu">Bestellungen</a>).
+          „·Objekt“ = dem Objekt zugeordnet. Bestellungen an diesem Objekt (auch Sammelbestellungen) stehen
+          als Vorschlag oben; gibt es genau eine und keine freie Kraft am Objekt, ist sie vorausgewählt.
+          Belegte Mitarbeitende (Überschneidung) sind nicht wählbar. „Nicht notwendig“ und „Nachunternehmer“
+          zählen wie ein Ausfall nicht als eigener Einsatz; die Bestellung wird am Tag vermerkt (
+          <a href="/bestellungen?art=nu">Bestellungen</a>).
         </p>
       </>,
     );

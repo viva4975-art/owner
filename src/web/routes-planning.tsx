@@ -72,13 +72,13 @@ const UK_CSS = `
 .uk-legend i{display:inline-block;width:14px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 .uk-wrap{overflow:auto;max-height:75vh}
 table.uk{border-collapse:separate;border-spacing:0;font-size:12px;width:100%}
-table.uk th,table.uk td{padding:0;height:30px;vertical-align:middle;border-bottom:1px solid var(--line);text-align:center;min-width:26px}
+table.uk th,table.uk td{padding:0;height:30px;vertical-align:middle;border-bottom:1px solid var(--line);text-align:center;min-width:34px}
 table.uk thead th{position:sticky;top:0;background:#f7f7f9;z-index:2;font-weight:600;line-height:1.1;padding:4px 0}
 table.uk thead th span{display:block;font-size:10px;font-weight:400;color:var(--mut)}
 table.uk .uk-name{position:sticky;left:0;background:#fff;z-index:1;text-align:left;padding:0 10px;white-space:nowrap;min-width:190px}
-table.uk thead .uk-name{z-index:3;background:#f7f7f9}
+table.uk thead .uk-name{z-index:3;background:#f7f7f9!important;left:0!important;position:sticky!important}table.uk tbody .uk-name{background:#fff!important}
 table.uk td.off,table.uk th.off{background:#f1f2f5}
-table.uk th.today{background:#fff3c4}table.uk td.today{box-shadow:inset 1px 0 #e0b800,inset -1px 0 #e0b800}
+table.uk thead th.today{background:#811D40!important;color:#fff!important}table.uk thead th.today span{color:#f3d6e0!important}table.uk td.today{background:#F3E1E8!important;box-shadow:inset 2px 0 #811D40,inset -2px 0 #811D40}
 table.uk td.r,table.uk th.r{padding:0 8px;text-align:right;min-width:34px}
 .uk-b{display:block;height:20px;margin:0 -1px;line-height:20px;font-weight:700;font-size:11px;color:#fff;text-decoration:none}
 .uk-b.s{margin-left:3px;border-top-left-radius:6px;border-bottom-left-radius:6px}
@@ -636,9 +636,16 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const withRequested = c.req.query('beantragt') !== '0';
     const from = `${month}-01`;
     const to = addDays(`${addDays(from, 32).slice(0, 7)}-01`, -1);
+    // Aktueller Monat: Anzeige bis Ende des Folgemonats, Start beim heutigen Tag (frühere Tage nach links scrollen)
+    const viewTo =
+      month === todayBerlin().slice(0, 7) ? addDays(`${addDays(to, 32).slice(0, 7)}-01`, -1) : to;
     const [allEmps0, allAbs0, sc] = await Promise.all([
       listEmployees(sql, { status: 'aktiv' }),
-      listAbsences(sql, { from, to, status: withRequested ? ['beantragt', 'genehmigt'] : ['genehmigt'] }),
+      listAbsences(sql, {
+        from,
+        to: viewTo,
+        status: withRequested ? ['beantragt', 'genehmigt'] : ['genehmigt'],
+      }),
       olScope(c, from, to),
     ]);
     const allEmps = allEmps0.filter((e) => inOl(sc, e.id));
@@ -651,6 +658,8 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     );
     const days: string[] = [];
     for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+    const viewDays: string[] = [];
+    for (let d = from; d <= viewTo; d = addDays(d, 1)) viewDays.push(d);
     const cell = (empId: string, d: string) =>
       abs.find((x) => x.employee_id === empId && x.start_date <= d && x.end_date >= d);
     const off = (d: string) => isoWeekday(d) >= 6 || !!holidayName(d);
@@ -668,7 +677,24 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       year: 'numeric',
       timeZone: 'UTC',
     });
-    return { month, kind, q, onlyAbsent, withRequested, from, to, emps, abs, days, cell, off, totals, label };
+    return {
+      month,
+      kind,
+      q,
+      onlyAbsent,
+      withRequested,
+      from,
+      to,
+      viewTo,
+      viewDays,
+      emps,
+      abs,
+      days,
+      cell,
+      off,
+      totals,
+      label,
+    };
   };
   const qsOf = (d: Awaited<ReturnType<typeof calendarData>>, monat = d.month) => {
     const p = new URLSearchParams({ monat });
@@ -682,9 +708,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/urlaub/kalender', async (c) => {
     const d = await calendarData(c);
-    const { from, to, emps, days, cell, off, totals } = d;
+    const { from, viewTo, viewDays, emps, cell, off, totals } = d;
     const prev = addDays(from, -1).slice(0, 7);
-    const next = addDays(to, 1).slice(0, 7);
+    const next = addDays(d.to, 1).slice(0, 7);
     const today = todayBerlin();
     const open = d.abs.filter((a) => a.status === 'beantragt').length;
     const sum = (k: AbsenceKind[]) =>
@@ -808,17 +834,18 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         ) : (
           <div class="card" style="padding:0">
             <div class="uk-wrap">
-              <table class="uk">
+              <table class="uk" data-nostick>
                 <thead>
                   <tr>
                     <th class="uk-name">Mitarbeiter</th>
-                    {days.map((x) => (
+                    {viewDays.map((x) => (
                       <th
                         class={`${off(x) ? 'off' : ''}${x === today ? ' today' : ''}`}
                         title={holidayName(x) ?? ''}
                       >
                         <span>{WEEKDAYS_SHORT[isoWeekday(x)]?.slice(0, 2)}</span>
                         {Number(x.slice(8))}
+                        {x.slice(8) === '01' && x !== from ? `.${Number(x.slice(5, 7))}.` : ''}
                       </th>
                     ))}
                     <th class="r" title="Urlaubstage im Monat">
@@ -840,11 +867,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                           </a>
                           <span class="mut small"> {e.personnel_no}</span>
                         </td>
-                        {days.map((x) => {
+                        {viewDays.map((x) => {
                           const a = cell(e.id, x);
                           const o = off(x);
                           const startBar = a && (x === a.start_date || x === from);
-                          const endBar = a && (x === a.end_date || x === to);
+                          const endBar = a && (x === a.end_date || x === viewTo);
                           return (
                             <td
                               class={`${o ? 'off' : ''}${x === today ? ' today' : ''}`}
@@ -873,10 +900,17 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 </tbody>
               </table>
             </div>
+            <script
+              dangerouslySetInnerHTML={{
+                __html:
+                  "(function(){function go(){var w=document.querySelector('.uk-wrap'),t=w&&w.querySelector('thead th.today'),n=w&&w.querySelector('thead .uk-name');if(t){w.scrollLeft=0;w.scrollLeft=Math.max(0,t.getBoundingClientRect().left-w.getBoundingClientRect().left-(n?n.offsetWidth:0))}}go();addEventListener('load',function(){go();setTimeout(go,60)});addEventListener('pageshow',function(e){if(e.persisted)go()})})()",
+              }}
+            />
           </div>
         )}
         <p class="small mut">
-          Tage = Arbeitstage ohne Wochenende/Feiertag. Balken anklicken = Abwesenheit ändern.
+          Der Kalender beginnt beim heutigen Tag (dunkel markiert) – frühere Tage nach links scrollen. Tage =
+          Arbeitstage ohne Wochenende/Feiertag. Balken anklicken = Abwesenheit ändern.
         </p>
         <style dangerouslySetInnerHTML={{ __html: UK_CSS }} />
       </>,
@@ -1292,7 +1326,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           )}
           <div class="cols">
             <AbsenceTable rows={list} showEmployee={false} />
-            <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />
+            <div id="erfassen">
+              <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />
+            </div>
           </div>
           {(canExtra || extras.length > 0) && (
             <div class="card" id="zusatzurlaub">

@@ -326,46 +326,65 @@ export function registerInboxRoutes(ctx: Ctx) {
         {rows.length === 0 ? (
           <div class="empty">Nichts offen – alles erledigt.</div>
         ) : (
-          <div class="card ib-list">
-            {rows.map((i) => {
-              const k = INBOX_KIND[i.kind];
-              return (
-                <div class="ib-row">
-                  <span class="ib-dot" style={DOT[k.tone]}>
-                    <Icon name={k.icon} size={17} />
-                  </span>
-                  <div class="ib-main">
-                    <div class="ib-meta">
-                      {dateDe(i.date)} · {k.label}
-                      {i.due && i.kind === 'aufgabe' ? ` · fällig ${dateDe(i.due)}` : ''}
+          <div class="ib-groups">
+            {(Object.keys(INBOX_KIND) as InboxKind[])
+              .filter((g) => rows.some((i) => i.kind === g))
+              .map((g) => {
+                const grp = rows.filter((i) => i.kind === g);
+                const kg = INBOX_KIND[g];
+                return (
+                  <details class="card ib-grp" open={!!art || grp.length <= 8}>
+                    <summary>
+                      <span class="ib-dot" style={DOT[kg.tone]}>
+                        <Icon name={kg.icon} size={15} />
+                      </span>
+                      <b>{kg.label}</b>
+                      <span class="ib-n">{grp.length}</span>
+                    </summary>
+                    <div class="ib-list">
+                      {grp.map((i) => {
+                        const k = INBOX_KIND[i.kind];
+                        return (
+                          <div class="ib-row">
+                            <span class="ib-dot" style={DOT[k.tone]}>
+                              <Icon name={k.icon} size={17} />
+                            </span>
+                            <div class="ib-main">
+                              <div class="ib-meta">
+                                {dateDe(i.date)} · {k.label}
+                                {i.due && i.kind === 'aufgabe' ? ` · fällig ${dateDe(i.due)}` : ''}
+                              </div>
+                              <a class="ib-title" href={i.href}>
+                                {i.title}
+                              </a>
+                              {(i.sub || i.tags.length > 0) && (
+                                <div class="ib-sub">
+                                  {i.sub && <span>{i.sub}</span>}
+                                  {i.tags.map((t) => (
+                                    <span class={`ib-tag ${t.tone ?? ''}`}>{t.t}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {i.who && (
+                              <span class="ib-who" title={`zuständig: ${i.who}`}>
+                                {i.who}
+                              </span>
+                            )}
+                            <span class={`ib-st ${i.status === 'neu' ? 'new' : 'work'}`}>{i.status}</span>
+                            <div class="ib-act">
+                              {i.actions}
+                              <a class="btn sm sec" href={i.href}>
+                                Öffnen
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <a class="ib-title" href={i.href}>
-                      {i.title}
-                    </a>
-                    {(i.sub || i.tags.length > 0) && (
-                      <div class="ib-sub">
-                        {i.sub && <span>{i.sub}</span>}
-                        {i.tags.map((t) => (
-                          <span class={`ib-tag ${t.tone ?? ''}`}>{t.t}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {i.who && (
-                    <span class="ib-who" title={`zuständig: ${i.who}`}>
-                      {i.who}
-                    </span>
-                  )}
-                  <span class={`ib-st ${i.status === 'neu' ? 'new' : 'work'}`}>{i.status}</span>
-                  <div class="ib-act">
-                    {i.actions}
-                    <a class="btn sm sec" href={i.href}>
-                      Öffnen
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
+                  </details>
+                );
+              })}
           </div>
         )}
         <p class="small mut" style="margin-top:10px">

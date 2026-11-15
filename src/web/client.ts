@@ -206,6 +206,11 @@ export const CLIENT_JS = String.raw`
     var id = decodeURIComponent(location.hash.slice(1));
     var t = id && document.getElementById(id);
     for (var el = t; el; el = el.parentElement) if (el.tagName === 'DETAILS') el.open = true;
+    // Eingabemaske direkt bereit: erstes Feld fokussieren (z. B. Aktionen → Abwesenheit erfassen)
+    if (t && /^(erfassen|austritt|neu)$/.test(id)) {
+      var f = t.querySelector('input:not([type=hidden]):not([type=checkbox]),select,textarea');
+      if (f) setTimeout(function () { try { f.focus({ preventScroll: true }); } catch (x) {} }, 50);
+    }
   }
   openHash();
   window.addEventListener('hashchange', openHash);

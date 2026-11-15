@@ -2005,9 +2005,9 @@ const NSIDE_HEAD_JS = `(function(){try{var w=+localStorage.getItem('vd_nw');if(w
 /** Menü links: ausblenden/einblenden, Breite ziehen, Scrollstelle merken und aktiven Punkt sichtbar halten. */
 const NSIDE_JS = `(function(){var d=document.documentElement,side=document.querySelector('.nside'),m=side&&side.querySelector('.nmenu');if(!side)return;
 function set(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}}
-var h=document.querySelector('[data-nside-hide]'),s=document.querySelector('[data-nside-show]');
-if(h)h.addEventListener('click',function(){d.classList.add('nside-off');set('vd_nhide','1')});
-if(s)s.addEventListener('click',function(){d.classList.remove('nside-off');set('vd_nhide',null)});
+document.addEventListener('click',function(e){var t=e.target&&e.target.closest?e.target:null;if(!t)return;
+if(t.closest('[data-nside-hide]')){d.classList.add('nside-off');set('vd_nhide','1')}
+else if(t.closest('[data-nside-show]')){d.classList.remove('nside-off');set('vd_nhide',null)}});
 var r=side.querySelector('[data-nside-resize]');if(r){r.addEventListener('pointerdown',function(e){e.preventDefault();r.setPointerCapture(e.pointerId);d.classList.add('nside-drag');
 function mv(ev){var w=Math.max(200,Math.min(420,ev.clientX));d.style.setProperty('--nw',w+'px')}
 function up(ev){r.removeEventListener('pointermove',mv);r.removeEventListener('pointerup',up);d.classList.remove('nside-drag');var w=Math.max(200,Math.min(420,ev.clientX));set('vd_nw',String(w))}

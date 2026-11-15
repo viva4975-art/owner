@@ -169,7 +169,7 @@ check(
 
 console.log('5. Auftrag');
 await p.goto(nuUrl.replace('/nachweise', '/auftraege'));
-await p.click('a:has-text("+ Auftrag")');
+await p.click('a:has-text("+ Nachunternehmer beauftragen")');
 await p.waitForLoadState();
 await p.selectOption('#site', { index: 1 });
 check('Abrechnung „je Tag“ wählbar', (await p.locator('#billing option[value=tag]').count()) === 1);
@@ -195,14 +195,13 @@ check(
   'nicht in der Lieferantenliste',
   (await p.locator('.sup-tbl tr', { hasText: `E2E Reinigung ${stamp}` }).count()) === 0,
 );
-await p.goto(B + '/bestellungen?ansicht=alle&art=nu');
+await p.goto(nuUrl.replace('/nachweise', '/auftraege?f=alle'));
 check(
-  'NU-Bestellung in der gemeinsamen Bestellliste',
-  (await p
-    .locator('.bs-group', { hasText: `E2E Reinigung ${stamp}` })
-    .locator('.bs-tr:not(.bs-th)')
-    .count()) >= 1,
+  'NU-Bestellung beim Nachunternehmer (Bestellungen)',
+  (await p.locator('.tabbody table tbody tr').count()) >= 1,
 );
+await p.goto(B + '/bestellungen');
+check('Bestellliste entfällt (Weiterleitung)', p.url().includes('/nachunternehmer'), p.url());
 await p.screenshot({ path: `${out}/n3-uebersicht.png`, fullPage: true });
 check('Zahlungsliste lädt', (await p.goto(B + '/zahlungsliste')).ok());
 check(
@@ -212,7 +211,7 @@ check(
     0,
 );
 await p.goto(B + '/nachunternehmer/monat');
-check('Soll/Ist entfällt (Weiterleitung)', p.url().includes('/bestellungen'), p.url());
+check('Soll/Ist entfällt (Weiterleitung)', p.url().includes('/nachunternehmer/abrechnung'), p.url());
 
 await browser.close();
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

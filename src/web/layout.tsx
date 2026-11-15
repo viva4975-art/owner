@@ -683,6 +683,7 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .pb-rn{display:flex;flex-direction:column;justify-content:center;padding:6px 8px 6px 2px;font-size:13.5px;border-top:1px solid var(--line);min-height:44px}
 .pb-rn a{color:var(--ink);font-weight:500}
 .pb-c{border-top:1px solid var(--line);border-left:1px solid var(--line);padding:3px;min-height:44px;display:flex;flex-direction:column;gap:3px}
+.pb-ev[draggable=true]{cursor:grab}.pb-ev.dragging{opacity:.45}.pb-c.drop-ok{outline:2px dashed #7d1435;outline-offset:-2px;background:#f7edf1!important}body.pb-dnd .pb-c[data-drop]{transition:background .12s}
 .pb-c.hol{background:#eef5fb}.pb-c.today{background:#fffbe6}.pb-c.abs{background:repeating-linear-gradient(135deg,#fff,#fff 6px,#fbeaea 6px,#fbeaea 12px)}
 .pb-abs{font-size:11px;color:var(--err);font-weight:600;padding:1px 4px}
 .pb-ev{display:block;border-radius:4px;padding:3px 6px;font-size:12px;line-height:1.3;color:#1d1d1f;background:#fff;box-shadow:inset 0 0 0 1px #c9c4c7;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
@@ -1616,11 +1617,12 @@ export const MENU: { key: string; label: string; href?: string; items?: MenuEntr
   {
     key: 'lieferanten',
     label: 'Einkauf',
-    // Zwei Punkte (Ahmed 15.11.): Nachunternehmer & Lieferanten (mit Bestellungen und NU-Abrechnung als Reiter)
-    // und Rechnungseingang (mit Zahlungsliste, Wiederkehrend, Vorschüsse als Reiter)
+    // Drei Punkte (Ahmed 15.11.): Nachunternehmer (Bestellungen je NU), Lieferanten, Abrechnung (NU-Monatsabrechnung,
+    // Eingangsrechnungen, Vorschüsse, Zahlungsliste, wiederkehrende Zahlungen als Reiter). Keine eigene Bestellliste mehr.
     items: [
-      { label: 'Nachunternehmer & Lieferanten', href: '/nachunternehmer' },
-      { label: 'Rechnungseingang', href: '/rechnungseingang' },
+      { label: 'Nachunternehmer', href: '/nachunternehmer' },
+      { label: 'Lieferanten', href: '/lieferanten' },
+      { label: 'Abrechnung', href: '/nachunternehmer/abrechnung' },
     ],
   },
   {
@@ -1728,11 +1730,13 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
     { label: 'Verdiensterhebung (Statistik)', href: '/personal/lohnabrechnungen/verdiensterhebung' },
     { label: 'Mitarbeiter-Export Lexware (CSV)', href: '/personal/export.csv' },
   ],
+  // Abrechnung: Reiter zeichnet die Seite selbst (mit Zählern); hier nur für die Markierung im Menü
   [
-    { label: 'Nachunternehmer', href: '/nachunternehmer' },
-    { label: 'Lieferanten', href: '/lieferanten' },
-    { label: 'Bestellungen', href: '/bestellungen' },
-    { label: 'NU-Abrechnung', href: '/nachunternehmer/abrechnung' },
+    {
+      label: 'Abrechnung',
+      href: '/nachunternehmer/abrechnung',
+      also: ['/rechnungseingang', '/zahlungsliste', '/zahlungslauf', '/gutschriften'],
+    },
   ],
   [
     { label: 'Import Fortytools', href: '/transfer/import' },
@@ -1835,8 +1839,9 @@ const NUI_GROUPS: NuiGroup[] = [
     label: 'Einkauf & Nachunternehmer',
     icon: 'cart',
     items: [
-      { label: 'Nachunternehmer & Lieferanten', href: '/nachunternehmer' },
-      { label: 'Rechnungseingang', href: '/rechnungseingang' },
+      { label: 'Nachunternehmer', href: '/nachunternehmer' },
+      { label: 'Lieferanten', href: '/lieferanten' },
+      { label: 'Abrechnung', href: '/nachunternehmer/abrechnung' },
     ],
   },
   {
@@ -1910,7 +1915,12 @@ const NUI_OL_GROUPS: NuiGroup[] = [
 const NUI_SOON = new Set<string>([]);
 
 /** Welcher Menüpunkt passt am besten zur Adresse (längster Treffer, Bereichs-Reiter zählen mit). */
-function nuiActive(path: string, hrefs: string[]): string | null {
+function nuiActive(path0: string, hrefs: string[]): string | null {
+  // Unterseiten eines Nachunternehmers (/lieferanten/<id>/nachweise …) gehören zu „Nachunternehmer“
+  const path =
+    /^\/lieferanten\/[0-9a-f-]{36}\/(nachweise|auftraege|vorschuesse|ansprechpartner|dokumente)/.test(path0)
+      ? '/nachunternehmer/x'
+      : path0;
   let best: string | null = null;
   let len = -1;
   for (const h of hrefs) {
@@ -1921,7 +1931,9 @@ function nuiActive(path: string, hrefs: string[]): string | null {
     const hit =
       h === '/'
         ? path === '/'
-        : path === h || path.startsWith(h + '/') || !!also?.some((a) => path === a || path.startsWith(a + '/'));
+        : path === h ||
+          path.startsWith(h + '/') ||
+          !!also?.some((a) => path === a || path.startsWith(a + '/'));
     if (hit && h.length > len) {
       best = h;
       len = h.length;

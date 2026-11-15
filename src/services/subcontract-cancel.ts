@@ -5,7 +5,7 @@ import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { getSupplier } from './inventory.js';
 import { getSeller } from './masterdata.js';
-import { FREQUENCY } from './subcontractors.js';
+import { attnLine, FREQUENCY } from './subcontractors.js';
 import { storeFile } from './uploads.js';
 
 /*
@@ -134,7 +134,7 @@ export async function cancellationPdf(
     buyer: {
       customerNo: s.supplier_no,
       name: s.name,
-      name2: s.contact_name ? `z. Hd. ${s.contact_name}` : null,
+      name2: attnLine(s.contact_name),
       street: s.street ?? '',
       postalCode: s.postal_code ?? '',
       city: s.city ?? '',

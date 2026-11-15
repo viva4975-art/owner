@@ -63,6 +63,7 @@ import {
   uploadSignedSubcontract,
   signSubcontract,
   subcontractTotal,
+  type SubcontractRow,
 } from '../services/subcontractors.js';
 import { type AppEnv, type Ctx, assertSite, officeSecret, UUID } from './app.js';
 import { arr, centsToInput, str } from './forms.js';
@@ -218,7 +219,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const showInactive = q.inaktiv === '1';
     const search = (q.q ?? '').trim().toLowerCase();
     const base = nuMode ? '/nachunternehmer' : '/lieferanten';
-    const [compliance, suppliers, openOrders, pending] = await Promise.all([
+    const [compliance, suppliers, openOrders, pending, unsignedRows] = await Promise.all([
       nuMode ? complianceOverview(sql) : Promise.resolve([]),
       sql<
         {
@@ -243,7 +244,12 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
           select supplier_id from app.purchase_orders where status in ('entwurf', 'bestellt')) x
          group by supplier_id`,
       nuMode ? pendingCount() : Promise.resolve(0),
+      sql<{ supplier_id: string; n: number }[]>`
+        select supplier_id, count(*)::int as n from app.subcontracts
+         where status = 'erteilt' and signed_file_path is null and signed_external is null
+         group by supplier_id`,
     ]);
+    const unsignedBy = new Map(unsignedRows.map((r) => [r.supplier_id, r.n]));
     const comp = new Map(compliance.map((r) => [r.supplier.id, r]));
     const orders = new Map(openOrders.map((r) => [r.supplier_id, r.n]));
     const statusOf = (s: (typeof suppliers)[number]): Overall =>
@@ -337,7 +343,20 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 {pending} Uploads prüfen
               </a>
             )}
-            <a class="btn" href={`/lieferanten/${randomUUID()}/bearbeiten?art=${mode}`}>
+            {nuMode && unsignedRows.length > 0 && (
+              <a class="btn sec" href="/bestellungen/ohne-unterschrift.pdf" target="_blank">
+                {unsignedRows.reduce((a, r) => a + r.n, 0)} ohne Unterschrift drucken
+              </a>
+            )}
+            {nuMode && (
+              <a class="btn" href={`/nachunternehmer/auftraege/${randomUUID()}`}>
+                + Nachunternehmer beauftragen
+              </a>
+            )}
+            <a
+              class={nuMode ? 'btn sec' : 'btn'}
+              href={`/lieferanten/${randomUUID()}/bearbeiten?art=${mode}`}
+            >
               {nuMode ? '+ Nachunternehmer anlegen' : '+ Lieferant anlegen'}
             </a>
           </div>
@@ -467,7 +486,31 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         </td>
                       )}
                       <td class="r" data-label="Offene Bestell.">
-                        {o > 0 ? <a href={`/bestellungen?lieferant=${s.id}&ansicht=alle`}>{o}</a> : '–'}
+                        {o > 0 ? (
+                          <a
+                            href={
+                              nuMode ? `/lieferanten/${s.id}/auftraege` : `/lieferanten/${s.id}#bestellungen`
+                            }
+                          >
+                            {o}
+                          </a>
+                        ) : (
+                          '–'
+                        )}
+                        {(unsignedBy.get(s.id) ?? 0) > 0 && (
+                          <div>
+                            <a class="badge warn" href={`/lieferanten/${s.id}/auftraege?f=unterschrift`}>
+                              {unsignedBy.get(s.id)} ohne Unterschrift
+                            </a>
+                          </div>
+                        )}
+                        {nuMode && s.active && !s.terminated_on && (
+                          <div>
+                            <a class="small" href={`/nachunternehmer/auftraege/${randomUUID()}?nu=${s.id}`}>
+                              + beauftragen
+                            </a>
+                          </div>
+                        )}
                       </td>
                       {nuMode && (
                         <td data-label="Status">
@@ -928,42 +971,82 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     const id = c.req.param('id');
     const data = await getSubcontractor(sql, id);
     if (!data) return c.redirect(`/lieferanten/${id}`);
-    const contracts = await listSubcontracts(sql, { supplierId: id });
+    const all = await listSubcontracts(sql, { supplierId: id });
+    // Bestellungen je Nachunternehmer statt eigener Seite (Ahmed 15.11.): Filter wie die frühere Bestellliste
+    const unsigned = (x: (typeof all)[number]) =>
+      x.status === 'erteilt' && !x.signed_file_path && !x.signed_external;
+    const FILTERS: [string, string, (x: (typeof all)[number]) => boolean][] = [
+      ['', 'Laufend', (x) => x.status === 'erteilt'],
+      ['unterschrift', 'Unterschrift fehlt', unsigned],
+      ['entwurf', 'Entwürfe', (x) => x.status === 'entwurf'],
+      ['beendet', 'Beendet / storniert', (x) => x.status === 'beendet' || x.status === 'storniert'],
+      ['alle', 'Alle', () => true],
+    ];
+    const fk = FILTERS.some(([k]) => k === c.req.query('f')) ? c.req.query('f')! : '';
+    const contracts = all.filter(FILTERS.find(([k]) => k === fk)![2]);
+    const nUnsigned = all.filter(unsigned).length;
     return page(
       c,
-      `${data.supplier.name} – Aufträge`,
+      `${data.supplier.name} – Bestellungen`,
       'lieferanten',
       <>
         {subHead(data.supplier)}
         <SubTabs id={id} active="auftraege" counts={catCounts(data.rows)} />
         <div class="tabbody">
           <div class="actions" style="margin-top:0">
-            <a class="btn sm" href={`/nachunternehmer/auftraege/${randomUUID()}?nu=${id}`}>
-              + Auftrag
+            <a class="btn" href={`/nachunternehmer/auftraege/${randomUUID()}?nu=${id}`}>
+              + Nachunternehmer beauftragen
+            </a>
+            {nUnsigned > 0 && (
+              <a class="btn sec" href={`/bestellungen/ohne-unterschrift.pdf?lieferant=${id}`} target="_blank">
+                {nUnsigned} ohne Unterschrift drucken (PDF)
+              </a>
+            )}
+            <a class="btn ghost" href={`/lieferanten/${id}/abrechnung`}>
+              Abrechnung
             </a>
           </div>
-          <SubcontractTable
-            rows={contracts}
-            hours={await hoursOfMonth(
-              sql,
-              contracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
-              todayBerlin().slice(0, 7),
-              contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
-            )}
-            days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
-            totals={await sammelTotals(sql, contracts)}
-            regie={await hoursOfMonth(
-              sql,
-              contracts.filter((x) => x.regie_rate_cents != null && x.regie_rate_cents > 0n).map((x) => x.id),
-              todayBerlin().slice(0, 7),
-              contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
-              true,
-            )}
-            sammelInfo={await sammelSummaries(
-              sql,
-              contracts.map((x) => x.id),
-            )}
-          />
+          <div class="ls-tabs">
+            {FILTERS.map(([k, l, f]) => (
+              <a class={fk === k ? 'on' : ''} href={`/lieferanten/${id}/auftraege${k ? `?f=${k}` : ''}`}>
+                {l} <span>{all.filter(f).length}</span>
+              </a>
+            ))}
+          </div>
+          {fk === 'unterschrift' && nUnsigned > 0 && (
+            <p class="small mut">
+              Ausdrucken, unterschreiben lassen und den Scan in der Bestellung unter „Auf Papier
+              unterschrieben“ hochladen.
+            </p>
+          )}
+          {contracts.length === 0 ? (
+            <div class="empty">Keine Bestellungen in dieser Auswahl.</div>
+          ) : (
+            <SubcontractTable
+              rows={contracts}
+              hours={await hoursOfMonth(
+                sql,
+                contracts.filter((x) => x.billing === 'stunde').map((x) => x.id),
+                todayBerlin().slice(0, 7),
+                contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
+              )}
+              days={await dayAmounts(sql, contracts, todayBerlin().slice(0, 7))}
+              totals={await sammelTotals(sql, contracts)}
+              regie={await hoursOfMonth(
+                sql,
+                contracts
+                  .filter((x) => x.regie_rate_cents != null && x.regie_rate_cents > 0n)
+                  .map((x) => x.id),
+                todayBerlin().slice(0, 7),
+                contracts.filter((x) => !isRecurringOrder(x.frequency)).map((x) => x.id),
+                true,
+              )}
+              sammelInfo={await sammelSummaries(
+                sql,
+                contracts.map((x) => x.id),
+              )}
+            />
+          )}
         </div>
       </>,
     );
@@ -1640,7 +1723,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Aufträge
   // Aufträge an Nachunternehmer = Bestellungen (eine gemeinsame Liste unter /bestellungen)
-  app.get('/nachunternehmer/auftraege', (c) => c.redirect('/bestellungen?art=nu'));
+  app.get('/nachunternehmer/auftraege', (c) => c.redirect('/nachunternehmer'));
 
   app.get(`/nachunternehmer/auftraege/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
@@ -3244,7 +3327,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
         <PageHead
           title={sc ? `Bestellung ${sc.number}` : 'Neue Bestellung an Nachunternehmer'}
           no={sc ? SC_STATUS[sc.status] : null}
-          crumbs={[['Bestellungen', '/bestellungen']]}
+          crumbs={
+            sc
+              ? [
+                  ['Nachunternehmer', '/nachunternehmer'],
+                  [sc.supplier_name ?? 'Bestellungen', `/lieferanten/${sc.supplier_id}/auftraege`],
+                ]
+              : [['Nachunternehmer', '/nachunternehmer']]
+          }
         />
         {sc?.requested_by && sc.status === 'entwurf' ? (
           <div class="flash warn">
@@ -3794,7 +3884,7 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Soll/Ist je Monat
   // Soll/Ist je Monat entfällt (Ahmed 06.10.)
-  app.get('/nachunternehmer/monat', (c) => c.redirect('/bestellungen?art=nu'));
+  app.get('/nachunternehmer/monat', (c) => c.redirect('/nachunternehmer/abrechnung'));
 
   // ================================================================== Upload-Portal (öffentlich, Link + PIN)
   const portalSecret = (token: string) => `${officeSecret(env)}:np:${token}`;
@@ -4000,7 +4090,7 @@ function SubcontractTable({
 }: {
   /** erfasste Regiestunden (laufender Monat bzw. bisher) */
   regie?: Map<string, { minutes: number; amount: bigint }>;
-  rows: Awaited<ReturnType<typeof listSubcontracts>>;
+  rows: SubcontractRow[];
   /** Sammelbestellungen: Anzahl Objekte + Kunde/erste Objekte */
   sammelInfo?: Map<string, { n: number; text: string }>;
   /** Sammelbestellungen je Objekt: Summe der Objekte */

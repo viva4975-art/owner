@@ -111,6 +111,9 @@ const Block: FC<{
       class={`pb-ev ${cls}`}
       href={href}
       data-ev={JSON.stringify(data)}
+      {...(s.entry || s.exception?.kind === 'ausfall'
+        ? {}
+        : { draggable: 'true', 'data-dnd': `${s.plan.id}|${s.date}|${s.plan.employee_id ?? ''}` })}
       title={`${data.site} · ${data.time} · ${status}${s.plan.note ? ` · ${s.plan.note}` : ''}`}
     >
       <span class="t">{s.plan.site_name}</span>
@@ -123,6 +126,22 @@ const Block: FC<{
     </a>
   );
 };
+
+/**
+ * Ziehen & Ablegen (Ahmed 15.11.): Einsatz auf einen anderen Mitarbeiter am selben Tag ziehen → Vertretung für diesen
+ * Tag (wie „Vertretung einplanen“, mit allen Prüfungen auf dem Server). Offene Termine auf einen Mitarbeiter ziehen →
+ * an diesem Tag besetzt. Andere Tage nehmen den Einsatz nicht an (Serie über „Serie bearbeiten“ ändern).
+ */
+const DND_JS = (back: string) => `(function(){
+var cur=null;
+document.addEventListener('dragstart',function(e){var a=e.target.closest&&e.target.closest('a.pb-ev[data-dnd]');if(!a)return;var p=a.getAttribute('data-dnd').split('|');cur={plan:p[0],date:p[1],emp:p[2],el:a};e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',a.getAttribute('data-dnd'))}catch(_){}a.classList.add('dragging');document.body.classList.add('pb-dnd')});
+document.addEventListener('dragend',function(){if(cur)cur.el.classList.remove('dragging');cur=null;document.body.classList.remove('pb-dnd');document.querySelectorAll('.pb-c.drop-ok').forEach(function(c){c.classList.remove('drop-ok')})});
+function target(e){var c=e.target.closest&&e.target.closest('[data-drop]');if(!c||!cur)return null;var p=c.getAttribute('data-drop').split('|');if(p[1]!==cur.date||p[0]===cur.emp)return null;return {cell:c,emp:p[0],name:c.getAttribute('data-drop-name')}}
+document.addEventListener('dragover',function(e){var t=target(e);if(!t)return;e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.pb-c.drop-ok').forEach(function(c){if(c!==t.cell)c.classList.remove('drop-ok')});t.cell.classList.add('drop-ok')});
+document.addEventListener('drop',function(e){var t=target(e);if(!t)return;e.preventDefault();var f=document.createElement('form');f.method='post';f.action='/einsatzplanung/'+cur.plan+'/tag/'+cur.date;
+function h(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i)}
+h('sub',t.emp);h('back',${JSON.stringify(back)});document.body.appendChild(f);f.submit()});
+})();`;
 
 const EV_DIALOG_JS = `(function(){
 var d=document.getElementById('ev-dlg');if(!d)return;
@@ -464,6 +483,8 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                           return (
                             <div
                               class={`pb-c${holidayName(d) ? ' hol' : ''}${d === today ? ' today' : ''}${abs ? ' abs' : ''}`}
+                              data-drop={`${e.id}|${d}`}
+                              data-drop-name={`${e.last_name}, ${e.first_name}`}
                             >
                               {abs && !compact && <span class="pb-abs">{ABSENCE_LABEL[abs.kind]}</span>}
                               {mine
@@ -499,6 +520,10 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
           <span class="pb-ev changed">Vertretung / umgeplant</span>
           <span class="pb-ev absent">Mitarbeiter abwesend</span>
           <span class="pb-lh">Feiertage (Bayern) farbig</span>
+          <span class="pb-lh">
+            Ziehen &amp; Ablegen: Einsatz auf einen anderen Mitarbeiter am selben Tag ziehen = Vertretung für
+            diesen Tag (die Serie bleibt unverändert)
+          </span>
         </div>
         <p class="small mut">
           Klick auf einen Termin zeigt alle Angaben mit „Vertretung einplanen“, „Umplanen / Ausfall“ und
@@ -507,6 +532,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         <dialog id="ev-dlg" class="ev-dlg" />
         <script dangerouslySetInnerHTML={{ __html: FILTER_JS }} />
         <script dangerouslySetInnerHTML={{ __html: EV_DIALOG_JS }} />
+        <script dangerouslySetInnerHTML={{ __html: DND_JS(backUrl) }} />
       </div>,
     );
   });

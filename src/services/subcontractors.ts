@@ -765,11 +765,25 @@ export async function uploadSignedSubcontract(deps: Deps, id: string, data: Uint
   await deps.sql`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, 'signed_upload', 'subcontract', ${id})`;
 }
 
-function supplierBuyer(s: Supplier): BuyerSnapshot {
+/**
+ * Ansprechpartner für die Anschrift „z. Hd. …“: eine Zeile, doppelte Wörter am Ende weg (Import lieferte
+ * „Herr Mohammed Ahmed Tawfeeq\nTawfeeq“), „Herr“ → „Herrn“ (Ahmed 15.11., Vereinbarung Gutschriftverfahren).
+ */
+export function attnLine(contact: string | null | undefined): string | null {
+  const words = (contact ?? '').split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  for (const w of words)
+    if (!out.some((x) => x.toLowerCase() === w.toLowerCase()) || w.length < 3) out.push(w);
+  if (!out.length) return null;
+  if (out[0] === 'Herr') out[0] = 'Herrn';
+  return `z. Hd. ${out.join(' ')}`;
+}
+
+export function supplierBuyer(s: Supplier): BuyerSnapshot {
   return {
     customerNo: s.supplier_no,
     name: s.name,
-    name2: s.contact_name ? `z. Hd. ${s.contact_name}` : null,
+    name2: attnLine(s.contact_name),
     street: s.street ?? '',
     postalCode: s.postal_code ?? '',
     city: s.city ?? '',

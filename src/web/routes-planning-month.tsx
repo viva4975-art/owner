@@ -13,7 +13,8 @@ import {
   uncoveredShifts,
 } from '../services/planning.js';
 import { WEEKDAYS_SHORT, plannedShifts } from '../services/time.js';
-import { type Ctx, UUID, assertSite } from './app.js';
+import type { Context } from 'hono';
+import { type AppEnv, type Ctx, UUID, assertSite } from './app.js';
 import { str } from './forms.js';
 import { PageHead, dateDe } from './layout.js';
 
@@ -51,6 +52,36 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
         from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id join app.sites s on s.id = sc.site_id
        where sc.status = 'erteilt' and sc.valid_from <= ${to} and (sc.valid_to is null or sc.valid_to >= ${from})
        order by sp.name, sc.number`;
+    // Mehrere Tage auf einmal (Ahmed 15.11.: „fehlt eine Woche – nur einmal die Vertretung wählen“): je abwesender
+    // Person gruppiert, Tage ankreuzen, unten einmal Vertretung/Nachunternehmer wählen und „Markierte planen“.
+    const here = (o: (typeof orders)[number], siteId: string) =>
+      o.site_id === siteId || o.site_ids.includes(siteId);
+    const orderLabel = (o: (typeof orders)[number]) =>
+      `${o.number} · ${o.supplier_name} · ${o.service_kind || 'Leistung'} (${FREQUENCY[o.frequency] ?? o.frequency}) · ` +
+      (o.site_ids.length > 1
+        ? `Sammelbestellung ${o.site_ids.length} Objekte (u. a. ${o.site_no ? `${o.site_no} ` : ''}${o.site_name})`
+        : `Objekt ${o.site_no ? `${o.site_no} ` : ''}${o.site_name}`);
+    const selSites = new Set(list.map((x) => x.plan.site_id));
+    const sugOrders = orders.filter((o) => [...selSites].some((sid) => here(o, sid)));
+    const restOrders = orders.filter((o) => !sugOrders.includes(o));
+    // Mitarbeiter-Auswahl: alle Kandidaten der angezeigten Tage; „frei an n von m Tagen“
+    const emp = new Map<string, { name: string; free: number; onSite: boolean }>();
+    for (const { cands } of rows)
+      for (const e of cands) {
+        const x = emp.get(e.id) ?? { name: e.name, free: 0, onSite: false };
+        if (!e.busy) x.free += 1;
+        x.onSite ||= e.on_site;
+        emp.set(e.id, x);
+      }
+    const emps = [...emp.entries()].sort(
+      (a, b) => Number(b[1].onSite) - Number(a[1].onSite) || a[1].name.localeCompare(b[1].name, 'de'),
+    );
+    const groups = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const k = `${r.s.plan.employee_name}|${r.s.absence}`;
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+    const self = `/einsatzplanung/vertretungen?von=${from}&bis=${to}`;
     return page(
       c,
       'Vertretungen',
@@ -60,120 +91,138 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
           title="Einsätze für abwesende Mitarbeiter"
           crumbs={[['Einsatzplanung', '/einsatzplanung']]}
         />
-        <form method="get" action="/einsatzplanung/vertretungen" class="actions" style="margin-top:0">
-          <input type="date" name="von" value={from} style="max-width:170px" />
-          <input type="date" name="bis" value={to} style="max-width:170px" />
+        <form method="get" action="/einsatzplanung/vertretungen" class="ls-bar" style="margin-top:0">
+          <input type="date" name="von" value={from} style="max-width:170px" aria-label="von" />
+          <input type="date" name="bis" value={to} style="max-width:170px" aria-label="bis" />
           <button class="btn sm sec">Anzeigen</button>
           <span class="small mut">{list.length} offen</span>
         </form>
         {list.length === 0 && (
           <div class="empty">Alles geregelt – keine Einsätze ohne Vertretung im Zeitraum.</div>
         )}
-        <div class="tbl">
-          <table>
-            <thead>
-              <tr>
-                <th>Tag</th>
-                <th>Objekt</th>
-                <th>Zeit</th>
-                <th>abwesend</th>
-                <th>Vertretung / Ausfall</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ s, cands }) => (
-                <tr>
-                  <td>
-                    {WEEKDAYS_SHORT[isoWeekday(s.date)]} {dateDe(s.date)}
-                  </td>
-                  <td>{s.plan.site_name}</td>
-                  <td>
-                    {s.plan.start_time}–{s.plan.end_time}
-                  </td>
-                  <td>
-                    {s.plan.employee_name}{' '}
-                    <span class="badge err">{ABSENCE_LABEL[s.absence as AbsenceKind]}</span>
-                  </td>
-                  <td>
-                    <form
-                      method="post"
-                      action={`/einsatzplanung/${s.plan.id}/tag/${s.date}`}
-                      class="actions"
-                      style="margin:0;gap:6px;flex-wrap:nowrap"
-                    >
-                      <input type="hidden" name="id" value={randomUUID()} />
-                      <input
-                        type="hidden"
-                        name="back"
-                        value={`/einsatzplanung/vertretungen?von=${from}&bis=${to}`}
-                      />
-                      {s.exception && (
-                        <input type="hidden" name="version" value={String(s.exception.version)} />
-                      )}
-                      <select name="sub" aria-label="Vertretung" style="min-width:220px" required>
-                        <option value="">– Vertretung wählen –</option>
-                        <option value="nicht_notwendig">Nicht notwendig (wird nicht benötigt)</option>
-                        <option value="ausfall">Ausfall (findet nicht statt)</option>
-                        <optgroup label="Vertretung (Mitarbeiter)">
-                          {cands.map((e) => (
-                            <option value={e.id} disabled={!!e.busy}>
-                              {e.name}
-                              {e.on_site ? ' ·Objekt' : ''}
-                              {e.busy ? ` – belegt ${e.busy}` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {(() => {
-                          const here = (o: (typeof orders)[number]) =>
-                            o.site_id === s.plan.site_id || o.site_ids.includes(s.plan.site_id);
-                          const label = (o: (typeof orders)[number]) =>
-                            `${o.supplier_name} · ${o.service_kind || 'Leistung'} · ${FREQUENCY[o.frequency] ?? o.frequency}` +
-                            (here(o)
-                              ? o.site_ids.length > 1
-                                ? ` · Sammelbestellung (${o.site_ids.length} Objekte)`
-                                : ''
-                              : ` · ${o.site_no ? `${o.site_no} ` : ''}${o.site_name}`) +
-                            ` · ${o.number}`;
-                          const sug = orders.filter(here);
-                          const rest = orders.filter((o) => !here(o));
-                          const pre =
-                            !s.exception && sug.length === 1 && !cands.some((e) => e.on_site && !e.busy);
-                          return (
-                            <>
-                              {sug.length > 0 && (
-                                <optgroup label="Vorschlag: Nachunternehmer an diesem Objekt">
-                                  {sug.map((o) => (
-                                    <option value={`nu:${o.id}`} selected={pre}>
-                                      {label(o)}
-                                    </option>
-                                  ))}
-                                </optgroup>
+        {list.length > 0 && (
+          <form method="post" action="/einsatzplanung/vertretungen/planen" id="vt">
+            <input type="hidden" name="back" value={self} />
+            {[...groups.entries()].map(([k, g]) => (
+              <section class="card" style="padding:0;margin-bottom:12px">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)">
+                  <label style="margin:0;display:flex;gap:8px;align-items:center;font-weight:600">
+                    <input
+                      type="checkbox"
+                      data-vt-all={k}
+                      aria-label={`alle Tage von ${g[0]!.s.plan.employee_name}`}
+                    />
+                    {g[0]!.s.plan.employee_name}
+                  </label>
+                  <span class="badge err">{ABSENCE_LABEL[g[0]!.s.absence as AbsenceKind]}</span>
+                  <span class="small mut">{g.length === 1 ? '1 Einsatz' : `${g.length} Einsätze`}</span>
+                </div>
+                <div class="tbl">
+                  <table class="keep" data-nostick>
+                    <tbody>
+                      {g.map(({ s, cands }) => {
+                        const free = cands.filter((e) => e.on_site && !e.busy).slice(0, 3);
+                        const nu = orders.filter((o) => here(o, s.plan.site_id));
+                        return (
+                          <tr>
+                            <td style="width:30px">
+                              <input
+                                type="checkbox"
+                                name="sel"
+                                value={`${s.plan.id}|${s.date}`}
+                                data-vt={k}
+                                aria-label={`${dateDe(s.date)} ${s.plan.site_name}`}
+                              />
+                            </td>
+                            <td style="white-space:nowrap">
+                              {WEEKDAYS_SHORT[isoWeekday(s.date)]} {dateDe(s.date)}
+                            </td>
+                            <td>
+                              <b>{s.plan.site_name}</b>
+                              <div class="small mut">
+                                {s.plan.start_time}–{s.plan.end_time}
+                              </div>
+                            </td>
+                            <td class="small">
+                              {free.length > 0 && (
+                                <div>frei am Objekt: {free.map((e) => e.name).join(', ')}</div>
                               )}
-                              {rest.length > 0 && (
-                                <optgroup label="Andere Nachunternehmer-Bestellungen">
-                                  {rest.map((o) => (
-                                    <option value={`nu:${o.id}`}>{label(o)}</option>
-                                  ))}
-                                </optgroup>
+                              {nu.length > 0 && (
+                                <div>
+                                  NU an diesem Objekt:{' '}
+                                  {nu.map((o) => `${o.supplier_name} (${o.number})`).join(', ')}
+                                </div>
                               )}
-                            </>
-                          );
-                        })()}
-                      </select>
-                      <button class="btn sm">Übernehmen</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                              {!free.length && !nu.length && <span class="mut">kein Vorschlag</span>}
+                              {s.exception && (
+                                <div class="mut">bisher: {EXCEPTION_LABEL[s.exception.kind]}</div>
+                              )}
+                            </td>
+                            <td class="r">
+                              <a
+                                class="small"
+                                href={`/einsatzplanung/${s.plan.id}/tag/${s.date}?zurueck=${encodeURIComponent(self)}`}
+                              >
+                                einzeln …
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+            <div
+              class="card"
+              style="position:sticky;bottom:8px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;box-shadow:var(--sh-float,0 6px 24px rgba(0,0,0,.12))"
+            >
+              <label style="margin:0;flex:1 1 360px">
+                Vertretung für die markierten Tage
+                <select name="sub" required>
+                  <option value="">– wählen –</option>
+                  <option value="nicht_notwendig">Nicht notwendig (wird nicht benötigt)</option>
+                  <option value="ausfall">Ausfall (findet nicht statt)</option>
+                  {sugOrders.length > 0 && (
+                    <optgroup label="Nachunternehmer an diesen Objekten">
+                      {sugOrders.map((o) => (
+                        <option value={`nu:${o.id}`}>{orderLabel(o)}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Mitarbeiter (frei an … der angezeigten Tage)">
+                    {emps.map(([id, e]) => (
+                      <option value={id}>
+                        {e.name}
+                        {e.onSite ? ' · am Objekt' : ''} – frei an {e.free} von {rows.length}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {restOrders.length > 0 && (
+                    <optgroup label="Andere Nachunternehmer-Bestellungen">
+                      {restOrders.map((o) => (
+                        <option value={`nu:${o.id}`}>{orderLabel(o)}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+              <button class="btn">
+                Markierte planen (<span data-vt-n>0</span>)
+              </button>
+            </div>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `(function(){var f=document.getElementById('vt');function n(){f.querySelector('[data-vt-n]').textContent=f.querySelectorAll('input[name=sel]:checked').length}f.addEventListener('change',function(e){var k=e.target.getAttribute('data-vt-all');if(k!==null)f.querySelectorAll('input[name=sel]').forEach(function(b){if(b.getAttribute('data-vt')===k)b.checked=e.target.checked});n()});n()})();`,
+              }}
+            />
+          </form>
+        )}
         <p class="small mut">
-          „·Objekt“ = dem Objekt zugeordnet. Bestellungen an diesem Objekt (auch Sammelbestellungen) stehen
-          als Vorschlag oben; gibt es genau eine und keine freie Kraft am Objekt, ist sie vorausgewählt.
-          Belegte Mitarbeitende (Überschneidung) sind nicht wählbar. „Nicht notwendig“ und „Nachunternehmer“
-          zählen wie ein Ausfall nicht als eigener Einsatz; die Bestellung wird am Tag vermerkt (
-          <a href="/bestellungen?art=nu">Bestellungen</a>).
+          Tage ankreuzen (Häkchen am Namen = alle Tage dieser Person) und unten einmal wählen. Belegte Tage
+          einer Vertretung werden übersprungen und gemeldet. „Nicht notwendig“ und „Nachunternehmer“ zählen
+          wie ein Ausfall nicht als eigener Einsatz; die Bestellung wird am Tag vermerkt.
         </p>
       </>,
     );
@@ -187,6 +236,86 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
 
   /** Rücksprung nur auf eigene Seiten (Planung, Mitarbeiter-/Objekt-Kalender …). */
   const okBack = (x: string | null | undefined) => !!x && /^\/(?!\/)[\w/?=&.%-]*$/.test(x);
+
+  /** Vertretung/Ausfall/Nachunternehmer für einen geplanten Tag eintragen (einzeln und für mehrere Tage). */
+  const applySub = async (
+    c: Context<AppEnv>,
+    planId: string,
+    date: string,
+    subRaw: string | null,
+    o: {
+      note?: string | null;
+      kind?: string | null;
+      start?: string | null;
+      end?: string | null;
+      id?: string | null;
+      version?: number | null;
+    },
+  ) => {
+    const s = await loadShift(planId, date);
+    if (!s) throw new BusinessError('An diesem Tag ist dieser Einsatz nicht geplant');
+    assertSite(c, s.plan.site_id);
+    const nuId = subRaw?.startsWith('nu:') ? subRaw.slice(3) : null;
+    if (nuId && !/^[0-9a-f-]{36}$/.test(nuId)) throw new BusinessError('Bestellung ungültig');
+    let note = o.note ?? null;
+    if (subRaw === 'nicht_notwendig') note = note ?? 'nicht notwendig';
+    if (nuId) {
+      const [x] = await sql<{ number: string; name: string }[]>`
+        select sc.number, sp.name from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id where sc.id = ${nuId}`;
+      note = note ?? (x ? `Nachunternehmer: ${x.name} (${x.number})` : null);
+    }
+    const sub = subRaw === 'ausfall' || subRaw === 'nicht_notwendig' || nuId ? null : subRaw;
+    if (!o.kind && !subRaw) throw new BusinessError('Bitte Vertretung oder „Ausfall“ wählen');
+    const kind: ExceptionKind =
+      o.kind && o.kind in EXCEPTION_LABEL ? (o.kind as ExceptionKind) : sub ? 'vertretung' : 'ausfall';
+    const id = o.id && /^[0-9a-f-]{36}$/.test(o.id) ? o.id : randomUUID();
+    await saveException(
+      sql,
+      id,
+      {
+        planId,
+        date,
+        kind,
+        substituteId: sub,
+        start: o.start ?? null,
+        end: o.end ?? null,
+        note,
+        subcontractId: nuId,
+        expectedVersion: o.version === undefined ? (s.exception?.version ?? null) : o.version,
+      },
+      c.get('actor'),
+    );
+    return { kind, nuId };
+  };
+
+  app.post('/einsatzplanung/vertretungen/planen', async (c) => {
+    const b = await c.req.parseBody({ all: true });
+    const sel = ([] as unknown[]).concat(b.sel ?? []).map(String);
+    const subRaw = str(b, 'sub');
+    const to = str(b, 'back');
+    const ret = okBack(to) ? to! : '/einsatzplanung/vertretungen';
+    if (!sel.length) return back(c, ret, { fehler: 'Bitte mindestens einen Tag ankreuzen' });
+    if (!subRaw) return back(c, ret, { fehler: 'Bitte Vertretung oder „Ausfall“ wählen' });
+    let ok = 0;
+    const errs: string[] = [];
+    for (const v of sel) {
+      const [planId, date] = v.split('|');
+      if (!planId || !/^[0-9a-f-]{36}$/.test(planId) || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      try {
+        await applySub(c, planId, date, subRaw, {});
+        ok += 1;
+      } catch (e) {
+        if (!(e instanceof BusinessError)) throw e;
+        errs.push(`${dateDe(date)}: ${e.message}`);
+      }
+    }
+    return back(c, ret, {
+      ...(ok ? { ok: `${ok === 1 ? '1 Tag' : `${ok} Tage`} geplant.` } : {}),
+      ...(errs.length
+        ? { fehler: `Nicht geplant – ${errs.slice(0, 6).join(' · ')}${errs.length > 6 ? ' …' : ''}` }
+        : {}),
+    });
+  });
 
   app.get(`/einsatzplanung/:id{${UUID}}/tag/:date{\\d{4}-\\d{2}-\\d{2}}`, async (c) => {
     const s = await loadShift(c.req.param('id'), c.req.param('date'));
@@ -304,42 +433,16 @@ export function registerPlanningMonthRoutes({ app, deps, page, back }: Ctx) {
   app.post(`/einsatzplanung/:id{${UUID}}/tag/:date{\\d{4}-\\d{2}-\\d{2}}`, async (c) => {
     const planId = c.req.param('id');
     const date = c.req.param('date');
-    const s = await loadShift(planId, date);
-    if (!s) throw new BusinessError('An diesem Tag ist dieser Einsatz nicht geplant');
-    assertSite(c, s.plan.site_id);
     const b = await c.req.parseBody({ all: true });
     const subRaw = str(b, 'sub');
-    const nuId = subRaw?.startsWith('nu:') ? subRaw.slice(3) : null;
-    if (nuId && !/^[0-9a-f-]{36}$/.test(nuId)) throw new BusinessError('Bestellung ungültig');
-    let note = str(b, 'note');
-    if (subRaw === 'nicht_notwendig') note = note ?? 'nicht notwendig';
-    if (nuId) {
-      const [o] = await sql<{ number: string; name: string }[]>`
-        select sc.number, sp.name from app.subcontracts sc join app.suppliers sp on sp.id = sc.supplier_id where sc.id = ${nuId}`;
-      note = note ?? (o ? `Nachunternehmer: ${o.name} (${o.number})` : null);
-    }
-    const sub = subRaw === 'ausfall' || subRaw === 'nicht_notwendig' || nuId ? null : subRaw;
-    const kindRaw = str(b, 'kind');
-    if (!kindRaw && !subRaw) throw new BusinessError('Bitte Vertretung oder „Ausfall“ wählen');
-    const kind: ExceptionKind =
-      kindRaw && kindRaw in EXCEPTION_LABEL ? (kindRaw as ExceptionKind) : sub ? 'vertretung' : 'ausfall';
-    const id = str(b, 'id') ?? randomUUID();
-    await saveException(
-      sql,
-      /^[0-9a-f-]{36}$/.test(id) ? id : randomUUID(),
-      {
-        planId,
-        date,
-        kind,
-        substituteId: sub,
-        start: str(b, 'start'),
-        end: str(b, 'end'),
-        note,
-        subcontractId: nuId,
-        expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
-      },
-      c.get('actor'),
-    );
+    const { kind, nuId } = await applySub(c, planId, date, subRaw, {
+      note: str(b, 'note'),
+      kind: str(b, 'kind'),
+      start: str(b, 'start'),
+      end: str(b, 'end'),
+      id: str(b, 'id'),
+      version: typeof b.version === 'string' && b.version ? Number(b.version) : null,
+    });
     const to = str(b, 'back');
     return back(c, okBack(to) ? to! : `/einsatzplanung?datum=${date}`, {
       ok:

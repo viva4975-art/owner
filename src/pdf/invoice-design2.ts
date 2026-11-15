@@ -878,6 +878,14 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     p.line(L, hy + 6, R, hy + 6, 0.5, INK);
     p.y = hy + 22;
   };
+  // Beschriftung der Summen: rechtsbündig an der vorletzten Spalte – ist die linksbündig (z. B. Leistungstext), dann
+  // ein Stück links der Betragsspalte (sonst lief „Summe netto“ aus dem Blatt, Gutschrift 15.11.)
+  const sumLabelX = () => {
+    const pre = cols[cols.length - 2];
+    const lastX = cols[cols.length - 1]?.x ?? R;
+    return !pre ? lastX - 100 : pre.align === 'left' ? lastX - 110 : pre.x;
+  };
+  const labelX0 = sumLabelX();
   if (cols.length) {
     p.ensure(60);
     head();
@@ -889,11 +897,33 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
       if (nx.align === 'left') return nx.x - c.x - 8;
       const widest = Math.max(
         p.w(nx.label.toUpperCase(), 6.2, 's'),
-        ...lp.rows.map((r) => p.w(r[i + 1] ?? '', 8.6, 'r')),
+        ...lp.rows.filter(Array.isArray).map((r) => p.w(r[i + 1] ?? '', 8.6, 'r')),
       );
       return nx.x - widest - c.x - 10;
     });
     for (const row of lp.rows) {
+      if (!Array.isArray(row)) {
+        if ('group' in row) {
+          const sub = row.sub ? wrap(row.sub, f.r, 7.8, R - L) : [];
+          p.ensure(30 + sub.length * 10, head);
+          p.y += 4;
+          p.text(row.group, L, p.y, 9, 's', INK);
+          p.y += 11;
+          for (const t of sub) {
+            p.text(t, L, p.y, 7.8, 'r', GREY);
+            p.y += 10;
+          }
+          p.y += 6;
+        } else {
+          p.ensure(24, head);
+          p.right(row.subtotal[0], labelX0, p.y, 8.2, 'r', GREY);
+          p.right(row.subtotal[1], cols[cols.length - 1]!.x, p.y, 8.6, 's', INK);
+          p.y += 9;
+          p.line(L, p.y, R, p.y, 0.5, INK);
+          p.y += 14;
+        }
+        continue;
+      }
       const cells = cols.map((c, i) => {
         const t = row[i] ?? '';
         const font = i === 0 ? f.m : f.r;
@@ -916,7 +946,7 @@ export async function renderLetterEdel(lp: LetterPdfInput): Promise<Uint8Array> 
     }
   }
   const last = cols[cols.length - 1]?.x ?? R;
-  const labelX = cols[cols.length - 2]?.x ?? last - 100;
+  const labelX = sumLabelX();
   if (lp.sums.length || lp.total) {
     p.ensure(lp.sums.length * 14 + 50);
     p.y += 6;

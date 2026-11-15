@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
+import { offsetAdvance, openAdvances } from '../services/advances.js';
 import { getSupplier } from '../services/inventory.js';
+import { listIncoming } from '../services/purchasing.js';
 import {
   SELF_BILLING_VAT,
   type ExtraLine,
@@ -20,8 +22,8 @@ import {
 } from '../services/nu-statement.js';
 import { type Ctx, UUID } from './app.js';
 import { centsToInput, str } from './forms.js';
-import { PageHead, anz, euro } from './layout.js';
-import { MonthSelect } from './routes-purchasing.js';
+import { PageHead, Tabs, anz, euro } from './layout.js';
+import { MonthSelect, incomingTabs } from './routes-purchasing.js';
 
 /*
  * NU-Abrechnung je Monat (Ahmed 15.11.): Übersicht aller Nachunternehmer eines Monats und je Nachunternehmer ein Blatt
@@ -56,6 +58,11 @@ const STATE_BADGE: Record<string, [string, string]> = {
   keine: ['grey', 'keine Rechnung'],
 };
 
+const advanceOf = (b: Record<string, unknown>) => {
+  const v = String(b.vorschuss ?? '').trim();
+  return v ? parseEuro(v) : 0n;
+};
+
 export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
   const { sql, env } = deps;
   const files = { sql, filesDir: env.FILES_DIR, maxBytes: env.UPLOAD_MAX_BYTES };
@@ -77,7 +84,11 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
   // ------------------------------------------------------------------ Übersicht
   app.get('/nachunternehmer/abrechnung', async (c) => {
     const month = monthOf(c.req.query('monat'));
-    const [list, notes] = await Promise.all([nuStatements(sql, month), listCreditNotes(sql, { month })]);
+    const [list, notes, inc] = await Promise.all([
+      nuStatements(sql, month),
+      listCreditNotes(sql, { month }),
+      listIncoming(sql),
+    ]);
     const open = list.filter((s) => s.lines.some((l) => l.state === 'offen'));
     const done = list.filter((s) => !s.lines.some((l) => l.state === 'offen'));
     const total = open.reduce((a, s) => a + s.openTotal, 0n);
@@ -122,10 +133,8 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
       'NU-Abrechnung',
       'lieferanten',
       <>
-        <PageHead
-          title={`NU-Abrechnung ${monthName(month)}`}
-          crumbs={[['Nachunternehmer', '/nachunternehmer']]}
-        />
+        <PageHead title={`Abrechnung ${monthName(month)}`} />
+        <Tabs tabs={incomingTabs(inc)} active="nu" />
         <MonthNav month={month} base="/nachunternehmer/abrechnung" />
         <p class="small mut" style="max-width:860px;margin-top:-4px">
           Je Nachunternehmer alles, was laut erteilten Bestellungen in diesem Monat anfällt (Pauschalen, je
@@ -191,13 +200,15 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
     const month = monthOf(c.req.query('monat'));
     const s = await getSupplier(sql, id);
     if (!s) return c.notFound();
-    const [st, notes, last] = await Promise.all([
+    const [st, notes, last, advMap] = await Promise.all([
       nuStatement(sql, id, month),
       listCreditNotes(sql, { supplierId: id }),
       sql<{ reverse_charge: boolean }[]>`
         select reverse_charge from app.incoming_invoices where supplier_id = ${id}
          order by invoice_date desc limit 1`,
+      openAdvances(sql, [id]),
     ]);
+    const advOpen = advMap.get(id) ?? 0n;
     const rc = s.self_billing_vat ? s.self_billing_vat === '13b' : (last[0]?.reverse_charge ?? true);
     const anyOpen = st.lines.some((l) => l.state === 'offen');
     const rid = randomUUID();
@@ -346,6 +357,25 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
             )}
           </div>
 
+          {anyOpen && advOpen > 0n && (
+            <section class="card accent" style="margin-top:14px">
+              <h3 style="margin-top:0">Vorschüsse verrechnen</h3>
+              <p class="small mut" style="margin-top:-6px">
+                Offene Vorschüsse an {s.name}: <b>{euro(advOpen)}</b> (
+                <a href={`/lieferanten/${id}/vorschuesse`}>ansehen</a>). Der Betrag wird mit der Gutschrift
+                bzw. der erfassten Rechnung verrechnet (älteste Vorschüsse zuerst); in der Zahlungsliste steht
+                dann nur noch der Rest.
+              </p>
+              <label style="max-width:260px">
+                Davon jetzt verrechnen (€, 0 = nicht)
+                <input
+                  name="vorschuss"
+                  inputmode="decimal"
+                  value={centsToInput(advOpen < st.openTotal ? advOpen : st.openTotal)}
+                />
+              </label>
+            </section>
+          )}
           {anyOpen && (
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px;align-items:start">
               {st.selfBilling && (
@@ -624,8 +654,20 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
         },
         c.get('actor'),
       );
+      const adv = advanceOf(b);
+      if (adv > 0n)
+        await offsetAdvance(
+          sql,
+          invoiceId,
+          adv,
+          c.get('actor'),
+          `nuabr:${str(b as never, 'rid') ?? invoiceId}`,
+        );
       return back(c, `/rechnungseingang/${invoiceId}`, {
-        ok: 'Rechnung erfasst und den Bestellungen zugeordnet – bitte prüfen und freigeben.',
+        ok:
+          'Rechnung erfasst und den Bestellungen zugeordnet' +
+          (adv > 0n ? `, Vorschuss ${euro(adv)} verrechnet` : '') +
+          ' – bitte prüfen und freigeben.',
       });
     } catch (e) {
       if (e instanceof BusinessError) return back(c, ret, { fehler: e.message });
@@ -658,6 +700,7 @@ export function registerNuBillingRoutes({ app, deps, page, back }: Ctx) {
           extras,
           date: str(b as never, 'datum') ?? todayBerlin(),
           note: str(b as never, 'g_note'),
+          advance: advanceOf(b),
         },
         c.get('actor'),
       );

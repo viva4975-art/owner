@@ -60,7 +60,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   employee: (id) => `/personal/${id}`,
   supplier: () => '/lieferanten',
   incoming_invoice: () => '/rechnungseingang',
-  purchase_order: () => '/bestellungen',
+  purchase_order: (id) => `/bestellungen/${id}`,
   order: (id) => `/auftraege/${id}`,
   work_report: () => '/arbeitsscheine',
   quality_check: () => '/qualitaet',

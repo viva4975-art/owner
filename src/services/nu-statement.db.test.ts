@@ -5,8 +5,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { saveSupplier } from './inventory.js';
+import { invoiceOffsets, saveAdvance } from './advances.js';
 import {
   createCreditNote,
+  creditRows,
+  selfBillingAgreementPdf,
   invoiceFromStatement,
   listCreditNotes,
   nuStatement,
@@ -62,9 +65,15 @@ describe.skipIf(!available)('NU-Abrechnung je Monat', () => {
       note: null,
     };
     await saveSubcontract(sql, flat, { ...base, billing: 'pauschale_monat', priceCents: 100000n }, 't');
-    await saveSubcontract(sql, day, { ...base, siteId: DEMO.siteOffice, billing: 'tag', priceCents: 5000n }, 't');
+    await saveSubcontract(
+      sql,
+      day,
+      { ...base, siteId: DEMO.siteOffice, billing: 'tag', priceCents: 5000n },
+      't',
+    );
     await sql`update app.subcontracts set regie_rate_cents = 3000 where id = ${flat}`;
-    for (const id of [flat, day]) await setSubcontractStatus(sql, id, 'erteilt', 't', { acceptMissing: true });
+    for (const id of [flat, day])
+      await setSubcontractStatus(sql, id, 'erteilt', 't', { acceptMissing: true });
     // 2 Personen × 1,5 Std. Regie im November
     await addSubcontractHours(sql, {
       id: randomUUID(),
@@ -143,7 +152,12 @@ describe.skipIf(!available)('NU-Abrechnung je Monat', () => {
     await expect(
       setSelfBilling(sql, nu, { since: '2026-12-01', vat: '13b', taxNo: null, vatId: null }, 't'),
     ).rejects.toThrow(/Steuernummer/);
-    await setSelfBilling(sql, nu, { since: '2026-12-01', vat: '13b', taxNo: '143/123/45678', vatId: null }, 't');
+    await setSelfBilling(
+      sql,
+      nu,
+      { since: '2026-12-01', vat: '13b', taxNo: '143/123/45678', vatId: null },
+      't',
+    );
     const r = await createCreditNote(files, p, 't');
     expect(r.number).toMatch(/^GS-2026-\d{4}$/);
     const again = await createCreditNote(files, p, 't');
@@ -152,12 +166,58 @@ describe.skipIf(!available)('NU-Abrechnung je Monat', () => {
       { status: string; net_cents: bigint; vat_cents: bigint; reverse_charge: boolean; invoice_no: string }[]
     >`select status, net_cents, vat_cents, reverse_charge, invoice_no from app.incoming_invoices where id = ${p.id}`;
     const sum = picked.reduce((a, x) => a + x.amount, 0n) - 5000n;
-    expect(inv).toMatchObject({ status: 'freigegeben', vat_cents: 0n, reverse_charge: true, invoice_no: r.number });
+    expect(inv).toMatchObject({
+      status: 'freigegeben',
+      vat_cents: 0n,
+      reverse_charge: true,
+      invoice_no: r.number,
+    });
     expect(BigInt(inv!.net_cents)).toBe(sum);
     expect((await listCreditNotes(sql, { supplierId: nu })).length).toBe(1);
     const sent = await sendCreditNote(deps, p.id, 't');
     expect(sent.length).toBe(1);
     expect(deps.mailer.sent.at(-1)!.attachments[0]!.filename).toMatch(/Gutschrift_GS-/);
+  });
+
+  it('Gutschrift mit Vorschuss: Objekte je Position, Vorschuss verrechnet, Vereinbarung als Vertrag', async () => {
+    await saveAdvance(
+      sql,
+      randomUUID(),
+      {
+        supplierId: nu,
+        subcontractId: null,
+        paidOn: '2026-11-01',
+        amount: 20000n,
+        method: 'bar',
+        purpose: 'Vorschuss',
+      },
+      't',
+    );
+    const st = await nuStatement(sql, nu, '2027-02');
+    const picked = st.lines.map((l) => ({ key: l.key, amount: l.amount! }));
+    const id = randomUUID();
+    await createCreditNote(
+      files,
+      {
+        id,
+        supplierId: nu,
+        month: '2027-02',
+        picked,
+        extras: [],
+        date: '2027-02-28',
+        note: null,
+        advance: 20000n,
+      },
+      't',
+    );
+    expect((await invoiceOffsets(sql, [id])).get(id)).toBe(20000n);
+    const [cn] = await sql<{ lines: { object: string | null; address: string | null }[] }[]>`
+      select lines from app.nu_credit_notes where incoming_invoice_id = ${id}`;
+    expect(cn!.lines.every((l) => !!l.object)).toBe(true);
+    const rows = creditRows(cn!.lines as never);
+    expect(rows.filter((r) => !Array.isArray(r) && 'group' in r).length).toBe(2);
+    const pdf = await selfBillingAgreementPdf(sql, nu, '2026-12-01');
+    expect(pdf.length).toBeGreaterThan(1000);
   });
 
   it('keine Rechnung vermerken; einzelne Bestellung kündigen und zurücknehmen', async () => {
@@ -177,7 +237,12 @@ describe.skipIf(!available)('NU-Abrechnung je Monat', () => {
     expect(sc!.valid_to).toBe('2027-03-31');
     expect(sc!.cancel_file_id).not.toBeNull();
     await expect(
-      cancelSubcontract(files, day, { date: '2027-04-30', reason: null, reasonInLetter: false, note: null }, 't'),
+      cancelSubcontract(
+        files,
+        day,
+        { date: '2027-04-30', reason: null, reasonInLetter: false, note: null },
+        't',
+      ),
     ).rejects.toThrow(/schon gekündigt/);
     await revokeCancellation(sql, day, 't');
     const [back] = await sql<{ valid_to: string | null; cancelled_on: string | null }[]>`

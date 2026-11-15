@@ -5635,3 +5635,37 @@ Testadresse.
   - **Unterschrift als Scan:** im Entwurf oben „Scan hochladen & erteilen“ (ein Schritt), daneben „Erteilen, Unterschrift
     folgt“; rechts zuerst „Auf Papier unterschrieben“, Handy als zweite Möglichkeit.
   - Tests: neu `nu-statement.db.test.ts` (4); e2e nachunternehmer 32, einkauf 21, menu grün.
+- 2026-11-15: Runde 48 (Ahmed, 6 Punkte + Nachtrag):
+  - **Vereinbarung Gutschriftverfahren neu** (war ein Brief mit „Sehr geehrte Damen und Herren“, doppelter Name „z. Hd.
+    Herr … / Tawfeeq“, Unterschrift als Unterstriche): jetzt Vertrag auf einer Seite (FormDoc) mit Parteien beider
+    Seiten inkl. Steuernummer/USt-IdNr., §§ Gegenstand, Abrechnung, Umsatzsteuer (§ 13b Abs. 2 Nr. 8 / 19 % /
+    Kleinunternehmer), Übermittlung per E-Mail + Widerspruch (§ 14 Abs. 2 S. 3 UStG), Zahlung (Zahlungsziel, Vorschüsse),
+    Laufzeit, echte Unterschriftslinien. Ohne „vereinbart ab“ bleibt das Datum als Linie. „z. Hd.“ allgemein bereinigt
+    (`attnLine`: eine Zeile, doppelte Wörter weg, „Herr“ → „Herrn“; auch Bestellschein, Kündigung, Gutschrift).
+  - **Gutschrift mit Objekten wie unsere Rechnung**: Positionen je Objekt gruppiert (Überschrift „Objekt: Name (Nr.)“ +
+    Adresse, ab zwei Positionen „Summe <Objekt>“, Abzüge unter „Weitere Positionen“). Neu im Briefbaustein: Zeilen
+    `{ group }`/`{ subtotal }` (`LetterPdfInput.rows`). **Fund:** „Summe netto“ stand bei Tabellen mit linksbündiger
+    Textspalte links außerhalb des Blatts (Gutschrift) – Summenbeschriftung jetzt links der Betragsspalte.
+  - **Menü Einkauf: Nachunternehmer · Lieferanten · Abrechnung.** **Seite „Bestellungen“ gelöscht** (`/bestellungen`
+    leitet um: mit Lieferant → dessen Bestellungen, sonst Nachunternehmer). NU-Bestellungen stehen beim Nachunternehmer
+    (Reiter Bestellungen: Laufend / Unterschrift fehlt / Entwürfe / Beendet-storniert / Alle, „+ Nachunternehmer
+    beauftragen“, „n ohne Unterschrift drucken (PDF)“); Nachunternehmerliste mit „+ Nachunternehmer beauftragen“, „n ohne
+    Unterschrift drucken“, je Firma „n ohne Unterschrift“ und „+ beauftragen“. Material-Bestellungen beim Lieferanten
+    (Karte „Bestellungen“ mit „+ Material bestellen“). Sammel-Löschen der alten Liste entfällt (Entwurf: stornieren).
+  - **Abrechnung** (Reiter NU-Abrechnung · Eingangsrechnungen · Vorschüsse · Zahlungsliste · Wiederkehrende Zahlungen):
+    Eingangsrechnungen nur noch „Zu prüfen“ / „Freigegeben“ (bezahlte/abgelehnte über Link). Bei Freigegeben
+    ankreuzen → **„Zahlungsliste herunterladen (CSV)“** (Auswahl, sonst alle) oder **„Markierte als bezahlt“** (Datum,
+    Zahlart, Skonto). **Vorschüsse in der NU-Abrechnung:** offene Vorschüsse werden angezeigt, Betrag „jetzt verrechnen“
+    gilt für Gutschrift bzw. erfasste Rechnung (`offsetAdvance`, älteste zuerst, feste ID je Formular); die Gutschrift
+    nennt Vorschuss und Auszahlungsbetrag.
+  - **Vertretungen mehrere Tage auf einmal** (`/einsatzplanung/vertretungen`): je abwesender Person gruppiert, Tage
+    ankreuzen (Häkchen am Namen = alle), unten einmal Vertretung / Nachunternehmer / Ausfall wählen → „Markierte planen“
+    (`/einsatzplanung/vertretungen/planen`, belegte Tage werden gemeldet, die anderen gespeichert). Nachunternehmer-
+    Auswahl zeigt Bestellnr. · Firma · Leistung (Turnus) · Objekt bzw. Sammelbestellung; je Zeile Vorschläge (frei am
+    Objekt, NU am Objekt), „einzeln …“ für Umplanen.
+  - **Drag & Drop in der Planungstafel:** Einsatz auf einen anderen Mitarbeiter am selben Tag ziehen = Vertretung für
+    diesen Tag (gleiche Prüfungen wie „Vertretung einplanen“); offene Termine auf einen Mitarbeiter ziehen = an dem Tag
+    besetzt. Andere Tage nehmen nicht an (Serie über „Serie bearbeiten“), Einsätze mit erfasster Zeit/Ausfall sind fest.
+  - Tests: `nu-statement.db.test.ts` 5 (Gutschrift mit Vorschuss/Objekten, Vereinbarung); e2e nachunternehmer 33,
+    einkauf 21, rechte 48, menu grün. Schon vorher rot (nicht durch diese Runde): `e2e:planung` „Termin zeigt neue Zeit“,
+    `e2e:transfer` (Kontoauszug-Upload seit Runde 46 entfernt).

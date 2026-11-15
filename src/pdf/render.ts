@@ -844,7 +844,8 @@ export interface LetterPdfInput {
   buyer: BuyerSnapshot;
   intro: string;
   columns: { label: string; x: number; align?: 'left' | 'right' }[];
-  rows: string[][];
+  /** Zeilen; `{ group }` = Zwischenüberschrift (z. B. Objekt mit Adresse), `{ subtotal }` = Zwischensumme */
+  rows: (string[] | { group: string; sub?: string | null } | { subtotal: [string, string] })[];
   sums: [string, string][];
   /** letzte Summenzeile hervorgehoben (entfällt z. B. beim Arbeitsschein) */
   total?: [string, string] | null;
@@ -889,7 +890,7 @@ export async function renderLetterPdfClassic(p: LetterPdfInput): Promise<Uint8Ar
     w.y += 15.6;
   };
   if (p.columns.length) header();
-  for (const r of p.columns.length ? p.rows : []) {
+  for (const r of p.columns.length ? p.rows.filter(Array.isArray) : []) {
     w.ensure(LH + 16, () => {
       w.y += 15.5;
       header();

@@ -822,7 +822,7 @@ export const Dashboard: FC<{
                 Objektleitung zur Freigabe
               </>
             ),
-            href: '/bestellungen',
+            href: '/eingang',
           },
         ]
       : []),

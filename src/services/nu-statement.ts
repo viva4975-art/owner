@@ -5,7 +5,9 @@ import { MAILER_MISSING, resolveRecipients } from '../mail/mailer.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { formatEuro, type Cents } from '../domain/money/money.js';
+import { FormDoc } from '../pdf/form-doc.js';
 import { renderLetterPdf } from '../pdf/invoice-pdf.js';
+import { invoiceOffsets, offsetAdvance } from './advances.js';
 import { BusinessError } from './errors.js';
 import { billingTracking, isRecurringOrder, skipExpected } from './expected-invoices.js';
 import { getSupplier } from './inventory.js';
@@ -21,7 +23,7 @@ import {
   siteRevenueMonth,
   splitByWeights,
 } from './subcontract-sites.js';
-import { BILLING, FREQUENCY } from './subcontractors.js';
+import { attnLine, BILLING, FREQUENCY } from './subcontractors.js';
 import { filePath, storeFile } from './uploads.js';
 import type { Deps } from './workflow.js';
 
@@ -42,6 +44,9 @@ export interface StatementLine {
   number: string;
   /** Objekt bzw. „Sammelbestellung (n Objekte): …“ */
   where: string;
+  /** Objekt wie auf unserer Rechnung: „Name (Nr.)“ und Adresse; Sammelbestellung: Objektliste als Adresse */
+  objTitle: string;
+  objAddress: string | null;
   serviceKind: string;
   billing: string;
   frequency: string;
@@ -87,6 +92,7 @@ interface OrderRow {
   site_id: string;
   site_no: string;
   site_name: string;
+  site_address: string | null;
   service_kind: string;
   frequency: string;
   billing: string;
@@ -111,7 +117,9 @@ export async function nuStatements(
   const to = lastDay(month);
   const orders = await sql<OrderRow[]>`
     select sc.id, sc.number, sc.supplier_id, sp.name as supplier_name, sp.supplier_no,
-           sp.self_billing_since::text, sc.site_id, s.site_no, s.name as site_name, sc.service_kind, sc.frequency,
+           sp.self_billing_since::text, sc.site_id, s.site_no, s.name as site_name,
+           nullif(concat_ws(', ', s.street, nullif(concat_ws(' ', s.postal_code, s.city), '')), '') as site_address,
+           sc.service_kind, sc.frequency,
            sc.billing, sc.price_cents, sc.max_hours_month::text, sc.margin_bp, sc.work_days, sc.regie_rate_cents,
            sc.valid_from::text, sc.valid_to::text,
            coalesce((select p.price_cents from app.subcontract_prices p
@@ -218,6 +226,8 @@ export async function nuStatements(
       subcontractId: o.id,
       number: o.number,
       where,
+      objTitle: sum ? `Sammelbestellung (${sum.n} Objekte)` : `${o.site_name} (${o.site_no})`,
+      objAddress: sum ? sum.text : o.site_address,
       serviceKind: o.service_kind,
       billing: o.billing,
       frequency: o.frequency,
@@ -462,55 +472,107 @@ export async function selfBillingAgreementPdf(sql: Sql, supplierId: string, sinc
   const s = await getSupplier(sql, supplierId);
   if (!s) throw new BusinessError('Nachunternehmer nicht gefunden');
   const seller = await getSeller(sql);
-  const start = since ?? todayBerlin();
-  return renderLetterPdf({
-    title: 'Vereinbarung über die Abrechnung im Gutschriftverfahren',
-    date: todayBerlin(),
-    info: [['Lieferanten-Nr.', s.supplier_no]],
-    seller,
-    buyer: {
-      customerNo: s.supplier_no,
-      name: s.name,
-      name2: s.contact_name ? `z. Hd. ${s.contact_name}` : null,
-      street: s.street ?? '',
-      postalCode: s.postal_code ?? '',
-      city: s.city ?? '',
-      countryCode: 'DE',
-      vatId: null,
-      leitwegId: null,
-      supplierNo: null,
-      email: null,
-      contactName: null,
-      site: null,
-    },
-    intro:
-      `zwischen der ${seller.legalName} (Leistungsempfänger) und ${s.name} (Nachunternehmer) wird vereinbart, ` +
-      `dass Leistungen aus Aufträgen des Leistungsempfängers ab dem ${formatDateDe(start)} im Gutschriftverfahren ` +
-      `nach § 14 Abs. 2 Satz 2 UStG abgerechnet werden.`,
-    columns: [],
-    rows: [],
-    sums: [],
-    total: null,
-    paragraphs: [
-      '1. Der Leistungsempfänger rechnet die Leistungen monatlich bzw. nach Ausführung auf Grundlage der erteilten ' +
-        'Aufträge, der vereinbarten Preise und der bestätigten Stundennachweise durch eine Gutschrift ab. Die ' +
-        'Gutschrift gilt als Rechnung des Nachunternehmers und trägt die Bezeichnung „Gutschrift“.',
-      '2. Der Nachunternehmer stellt für diese Leistungen keine eigenen Rechnungen aus. Er teilt Änderungen seiner ' +
-        'Steuernummer bzw. USt-IdNr., seiner Anschrift, seiner Bankverbindung und seines umsatzsteuerlichen Status ' +
-        '(z. B. Kleinunternehmer) unverzüglich in Textform mit.',
-      `3. Umsatzsteuer: ${SELF_BILLING_VAT[s.self_billing_vat ?? '13b']}. Weist eine Gutschrift Umsatzsteuer falsch ` +
-        'aus, wird sie berichtigt.',
-      '4. Der Nachunternehmer prüft jede Gutschrift nach Erhalt. Einwände teilt er innerhalb von 14 Tagen in ' +
-        'Textform mit; der Widerspruch gegen eine Gutschrift ist jederzeit möglich und nimmt ihr die Wirkung als ' +
-        'Rechnung (§ 14 Abs. 2 Satz 3 UStG).',
-      '5. Die Gutschriften werden per E-Mail bzw. über das Upload-Portal übermittelt. Diese Vereinbarung kann von ' +
-        'beiden Seiten mit einer Frist von einem Monat zum Monatsende in Textform gekündigt werden.',
-      ' ',
-      '______________________________          ______________________________',
-      `Ort, Datum, ${seller.legalName}          Ort, Datum, ${s.name}`,
-    ],
-    signature: null,
+  const today = todayBerlin();
+  const start = since ? formatDateDe(since) : '______________';
+  const vat = s.self_billing_vat ?? '13b';
+  const d = await FormDoc.create({
+    title: `Vereinbarung Gutschriftverfahren – ${s.name}`,
+    sideRef: `Vereinbarung Gutschriftverfahren · ${s.supplier_no} · Stand ${formatDateDe(today)}`,
+    date: today,
+    author: seller.legalName,
   });
+  d.title('Vereinbarung über die Abrechnung im Gutschriftverfahren');
+  const ids = (taxNo: string | null | undefined, vatId: string | null | undefined) =>
+    [taxNo ? `Steuernummer: ${taxNo}` : null, vatId ? `USt-IdNr.: ${vatId}` : null].filter(
+      (x): x is string => !!x,
+    );
+  d.twoCols(
+    {
+      label: 'Auftraggeber (stellt die Gutschriften aus)',
+      lines: [
+        seller.legalName,
+        seller.street,
+        `${seller.postalCode} ${seller.city}`,
+        ...ids(seller.taxNumber, seller.vatId),
+      ],
+    },
+    {
+      label: 'Nachunternehmer (leistet)',
+      lines: [
+        s.name,
+        ...(s.street ? [s.street] : []),
+        ...([s.postal_code, s.city].filter(Boolean).length
+          ? [[s.postal_code, s.city].filter(Boolean).join(' ')]
+          : []),
+        ...(ids(s.tax_no, s.vat_id).length
+          ? ids(s.tax_no, s.vat_id)
+          : ['Steuernummer / USt-IdNr.: ______________']),
+        `Lieferanten-Nr.: ${s.supplier_no}`,
+      ],
+    },
+  );
+  d.y += 6;
+  const vatText: Record<string, string> = {
+    '13b':
+      'Die Leistungen sind Gebäudereinigungsleistungen (§ 13b Abs. 2 Nr. 8 UStG) an einen Auftraggeber, der selbst ' +
+      'solche Leistungen erbringt. Die Umsatzsteuer schuldet der Auftraggeber (§ 13b Abs. 5 UStG); ' +
+      'die Gutschriften werden ohne Umsatzsteuer und mit dem Hinweis „Steuerschuldnerschaft des Leistungsempfängers“ ' +
+      'ausgestellt.',
+    '19':
+      'Die Gutschriften weisen die Umsatzsteuer mit dem gesetzlichen Steuersatz (derzeit 19 %) gesondert aus. Der ' +
+      'Nachunternehmer schuldet die ausgewiesene Umsatzsteuer und führt sie ab.',
+    klein:
+      'Der Nachunternehmer ist Kleinunternehmer im Sinne von § 19 UStG. Die Gutschriften werden ohne Umsatzsteuer ' +
+      'ausgestellt. Entfällt die Kleinunternehmerregelung, teilt der Nachunternehmer dies unverzüglich mit.',
+  };
+  const paras: [string, string][] = [
+    [
+      '§ 1 Gegenstand',
+      `Ab dem ${start} rechnet der Auftraggeber die Leistungen des Nachunternehmers aus erteilten Bestellungen ` +
+        'durch Gutschriften ab (Abrechnung durch den Leistungsempfänger nach § 14 Abs. 2 Satz 2 UStG). Die Gutschrift ' +
+        'gilt als Rechnung des Nachunternehmers. Der Nachunternehmer stellt für diese Leistungen keine eigenen ' +
+        'Rechnungen aus; tut er es doch, gilt allein die Gutschrift.',
+    ],
+    [
+      '§ 2 Abrechnung',
+      'Abgerechnet wird monatlich bzw. nach Ausführung auf Grundlage der erteilten Bestellungen, der dort ' +
+        'vereinbarten Preise und der bestätigten Stunden- bzw. Leistungsnachweise. Jede Gutschrift enthält die ' +
+        'Pflichtangaben nach § 14 Abs. 4 UStG, insbesondere die Bezeichnung „Gutschrift“, eine fortlaufende Nummer, den ' +
+        'Leistungszeitraum, die Objekte und die Steuernummer bzw. USt-IdNr. des Nachunternehmers.',
+    ],
+    ['§ 3 Umsatzsteuer', vatText[vat] ?? vatText['13b']!],
+    [
+      '§ 4 Übermittlung, Prüfung und Widerspruch',
+      `Die Gutschriften werden per E-Mail${s.email ? ` an ${s.email}` : ''} als PDF übermittelt. Der Nachunternehmer ` +
+        'prüft jede Gutschrift unverzüglich und teilt Einwände innerhalb von 14 Tagen in Textform mit. Er kann einer ' +
+        'Gutschrift jederzeit widersprechen; mit dem Widerspruch verliert sie die Wirkung als Rechnung ' +
+        '(§ 14 Abs. 2 Satz 3 UStG). Der Auftraggeber stellt dann eine berichtigte Gutschrift aus.',
+    ],
+    [
+      '§ 5 Zahlung',
+      `Der Gutschriftbetrag wird innerhalb von ${s.payment_terms_days ?? 14} Tagen nach dem Datum der Gutschrift auf ` +
+        `das vom Nachunternehmer genannte Konto${s.iban ? ` (IBAN ${s.iban.replace(/(.{4})/g, '$1 ').trim()})` : ''} ` +
+        'überwiesen. Geleistete Vorschüsse und vereinbarte Abzüge werden verrechnet und auf der Gutschrift ausgewiesen. ' +
+        'Änderungen von Name, Anschrift, Steuernummer bzw. USt-IdNr., Bankverbindung und umsatzsteuerlichem Status ' +
+        'teilt der Nachunternehmer unverzüglich in Textform mit.',
+    ],
+    [
+      '§ 6 Laufzeit',
+      'Die Vereinbarung gilt auf unbestimmte Zeit. Sie kann von beiden Seiten mit einer Frist von einem Monat zum ' +
+        'Monatsende in Textform gekündigt werden. Die übrigen Vereinbarungen (Rahmenvertrag, Bestellungen) bleiben ' +
+        'unberührt.',
+    ],
+  ];
+  for (const [h, t] of paras) {
+    d.heading(h, 9);
+    d.y -= 5;
+    d.para(t, { size: 8.6 });
+  }
+  d.signatures(`Auftraggeber · ${seller.legalName}`, `Nachunternehmer · ${s.name}`, {
+    leftText: `${seller.city}, den ${formatDateDe(today)}`,
+    rightText: 'Ort, Datum',
+  });
+  return d.save();
 }
 
 /**
@@ -527,6 +589,8 @@ export async function createCreditNote(
     extras: ExtraLine[];
     date: string;
     note: string | null;
+    /** offene Vorschüsse verrechnen (Betrag, älteste zuerst); null/0 = keine */
+    advance?: bigint | null;
   },
   actor: string,
 ) {
@@ -555,12 +619,20 @@ export async function createCreditNote(
     ...p.picked.map((x) => {
       const l = st.lines.find((y) => y.key === x.key)!;
       return {
-        text: `${l.number} · ${l.serviceKind}${l.kind === 'regie' ? ' – Regie' : ''} · ${l.where}`,
+        text: `${l.serviceKind}${l.kind === 'regie' ? ' – Regie' : ''} (Bestellung ${l.number})`,
         calc: l.calc,
         amount: String(x.amount),
+        object: l.objTitle,
+        address: l.objAddress,
       };
     }),
-    ...p.extras.map((x) => ({ text: x.text, calc: '', amount: String(x.amount) })),
+    ...p.extras.map((x) => ({
+      text: x.text,
+      calc: '',
+      amount: String(x.amount),
+      object: null,
+      address: null,
+    })),
   ];
   await saveIncoming(
     sql,
@@ -590,6 +662,8 @@ export async function createCreditNote(
     insert into app.nu_credit_notes (incoming_invoice_id, number, supplier_id, period_month, vat_mode, lines, created_by)
     values (${p.id}, ${number}, ${p.supplierId}, ${`${p.month}-01`}, ${mode}, ${sql.json(lines)}, ${actor})
     on conflict do nothing`;
+  // Vorschüsse vor dem PDF verrechnen, damit die Gutschrift den Auszahlungsbetrag nennt (Ahmed 15.11.)
+  if (p.advance && p.advance > 0n) await offsetAdvance(sql, p.id, p.advance, actor, `gutschrift:${p.id}`);
   const pdf = await creditNotePdf(sql, p.id);
   const f = await storeFile(
     sql,
@@ -620,7 +694,13 @@ export async function getCreditNote(sql: Sql, incomingId: string) {
       supplier_id: string;
       period_month: string;
       vat_mode: string;
-      lines: { text: string; calc: string; amount: string }[];
+      lines: {
+        text: string;
+        calc: string;
+        amount: string;
+        object?: string | null;
+        address?: string | null;
+      }[];
       file_id: string | null;
       sent_at: Date | null;
       sent_to: string | null;
@@ -641,6 +721,7 @@ export async function creditNotePdf(sql: Sql, incomingId: string) {
   const month = c.period_month.slice(0, 7);
   const net = BigInt(inv.net_cents);
   const vat = BigInt(inv.vat_cents);
+  const adv = (await invoiceOffsets(sql, [incomingId])).get(incomingId) ?? 0n;
   return renderLetterPdf({
     title: `Gutschrift ${c.number}`,
     date: inv.invoice_date,
@@ -655,7 +736,7 @@ export async function creditNotePdf(sql: Sql, incomingId: string) {
     buyer: {
       customerNo: s.supplier_no,
       name: s.name,
-      name2: s.contact_name ? `z. Hd. ${s.contact_name}` : null,
+      name2: attnLine(s.contact_name),
       street: s.street ?? '',
       postalCode: s.postal_code ?? '',
       city: s.city ?? '',
@@ -675,11 +756,7 @@ export async function creditNotePdf(sql: Sql, incomingId: string) {
       { label: 'Leistung', x: 90, align: 'left' },
       { label: 'Betrag netto', x: 538.8 },
     ],
-    rows: c.lines.map((l, i) => [
-      String(i + 1),
-      l.calc ? `${l.text} – ${l.calc}` : l.text,
-      euro(BigInt(l.amount)),
-    ]),
+    rows: creditRows(c.lines),
     sums: [
       ['Summe netto', euro(net)],
       [c.vat_mode === '19' ? 'Umsatzsteuer 19 %' : 'Umsatzsteuer', euro(vat)],
@@ -694,14 +771,50 @@ export async function creditNotePdf(sql: Sql, incomingId: string) {
         : c.vat_mode === 'klein'
           ? ['Kein Ausweis der Umsatzsteuer: Kleinunternehmer nach § 19 UStG.']
           : []),
-      `Der Betrag wird bis ${formatDateDe(inv.due_date)} auf Ihr Konto ${s.iban ? s.iban.replace(/(.{4})/g, '$1 ').trim() : '(bitte Bankverbindung mitteilen)'} überwiesen; ` +
-        'bereits gezahlte Vorschüsse werden dabei verrechnet.',
+      ...(adv > 0n
+        ? [
+            `Verrechnet mit bereits gezahlten Vorschüssen: ${euro(adv)}. ` +
+              `Auszahlungsbetrag: ${euro(net + vat - adv)}.`,
+          ]
+        : []),
+      `Der ${adv > 0n ? 'Auszahlungsbetrag' : 'Betrag'} wird bis ${formatDateDe(inv.due_date)} auf Ihr Konto ${s.iban ? s.iban.replace(/(.{4})/g, '$1 ').trim() : '(bitte Bankverbindung mitteilen)'} überwiesen.`,
       'Bitte prüfen Sie die Gutschrift. Einwände teilen Sie uns bitte innerhalb von 14 Tagen in Textform mit.',
       'Mit freundlichen Grüßen',
     ],
     signature: null,
   });
 }
+
+/**
+ * Positionen der Gutschrift je Objekt gruppiert wie auf unserer Rechnung (Ahmed 15.11.): Überschrift „Objekt (Nr.)“
+ * mit Adresse, darunter die Positionen, ab zwei Positionen „Summe <Objekt>“. Ältere Gutschriften ohne Objekt-Angabe
+ * und Zusatzzeilen (Abzüge) stehen am Ende ohne Überschrift.
+ */
+export function creditRows(
+  lines: { text: string; calc: string; amount: string; object?: string | null; address?: string | null }[],
+) {
+  const groups = new Map<string, typeof lines>();
+  for (const l of lines) {
+    const k = l.object ?? '';
+    groups.set(k, [...(groups.get(k) ?? []), l]);
+  }
+  const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : 0));
+  const rows: LetterRow[] = [];
+  let n = 0;
+  for (const k of keys) {
+    const ls = groups.get(k)!;
+    if (k) rows.push({ group: `Objekt: ${k}`, sub: ls[0]!.address ?? null });
+    else if (keys.length > 1) rows.push({ group: 'Weitere Positionen' });
+    for (const l of ls)
+      rows.push([String(++n), l.calc ? `${l.text}\n${l.calc}` : l.text, euro(BigInt(l.amount))]);
+    if (k && ls.length > 1 && keys.length > 1)
+      rows.push({
+        subtotal: [`Summe ${k}`, euro(ls.reduce((a, l) => a + BigInt(l.amount), 0n))],
+      });
+  }
+  return rows;
+}
+type LetterRow = Parameters<typeof renderLetterPdf>[0]['rows'][number];
 
 export const statementLabel = (l: StatementLine) =>
   `${BILLING[l.billing] ?? l.billing} · ${FREQUENCY[l.frequency] ?? l.frequency}`;

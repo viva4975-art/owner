@@ -31,6 +31,7 @@ import {
   suggestSupplierNo,
 } from '../services/inventory.js';
 import { DEVICE_KINDS, DEVICE_STATUS } from '../services/device-tracking.js';
+import { PO_STATUS, listOrders } from '../services/purchasing.js';
 import { listSites } from '../services/masterdata.js';
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
@@ -80,6 +81,8 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
     if (s.kind === 'nachunternehmer') return c.redirect(`/lieferanten/${id}/nachweise`);
     const files = await listFiles(sql, { type: 'supplier', id });
     const articles = (await listArticles(sql)).filter((a) => a.supplier_id === id);
+    // Bestellungen je Lieferant (Ahmed 15.11.: keine eigene Bestellliste mehr)
+    const pos = await listOrders(sql, { supplierId: id });
     return page(
       c,
       s.name,
@@ -104,6 +107,50 @@ export function registerInventoryRoutes({ app, deps, page, back }: Ctx) {
                 category="Nachweis"
                 maxBytes={env.UPLOAD_MAX_BYTES}
               />
+            </div>
+            <div class="card" id="bestellungen">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h3 style="margin:0">Bestellungen</h3>
+                <a
+                  class="btn sm"
+                  style="margin-left:auto"
+                  href={`/bestellungen/${randomUUID()}/bearbeiten?lieferant=${id}`}
+                >
+                  + Material bestellen
+                </a>
+              </div>
+              {pos.length === 0 ? (
+                <div class="empty" style="margin-top:8px">
+                  Noch keine Bestellungen.
+                </div>
+              ) : (
+                <div class="tbl">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nr.</th>
+                        <th>Datum</th>
+                        <th>Lieferung an</th>
+                        <th class="r">Netto</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pos.map((o) => (
+                        <tr>
+                          <td>
+                            <a href={`/bestellungen/${o.id}`}>{o.number}</a>
+                          </td>
+                          <td>{dateDe(o.order_date)}</td>
+                          <td>{o.site_name ?? 'Lager / Büro'}</td>
+                          <td class="r">{euro(o.net_cents)}</td>
+                          <td>{PO_STATUS[o.status]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             {articles.length > 0 && (
               <div class="card">

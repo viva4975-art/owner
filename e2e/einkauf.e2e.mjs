@@ -48,6 +48,7 @@ await p.locator('#po-lines tbody tr [name=price]').first().fill('28,90');
 await p.click('button:has-text("Speichern")');
 await p.waitForLoadState();
 const poNo = (await p.locator('h1').innerText()).match(/BE-\d{4}-\d{4}/)?.[0];
+const poUrl = p.url().split('?')[0];
 check('Bestellnummer BE-JJJJ-NNNN', !!poNo, await p.locator('h1').innerText());
 await p.click('button:has-text("Als bestellt markieren")');
 await p.waitForLoadState();
@@ -60,8 +61,7 @@ const stockAfter = parseFloat((await p.locator('.kpi .v').first().innerText()).r
 check('Lager +10', stockAfter - stockBefore === 10, `${stockBefore} → ${stockAfter}`);
 
 console.log('2. Eingangsrechnung zur Bestellung');
-await p.goto(B + '/bestellungen?ansicht=alle');
-await p.click(`a:has-text("${poNo}")`);
+await p.goto(poUrl);
 await p.click('a:has-text("Rechnung erfassen")');
 const invNo = `RE-${Date.now().toString().slice(-6)}`;
 await p.fill('#invoice_no', invNo);

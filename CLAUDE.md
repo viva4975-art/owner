@@ -5601,3 +5601,8 @@ Testadresse.
   - **Objektleitungen nicht in der Einsatzplanung** (Tag „Objektleitung“ oder Benutzerkonto der Rolle Objektleitung,
     `isObjectLead` in `employees.ts`): nicht in Planungstafel und Terminserie wählbar, kein Hinweis „kein Einsatz“.
     Vorhandene Einsätze bleiben gespeichert (Soll/Zeiten), erscheinen aber nicht mehr in der Tafel.
+- 2026-11-15: **Objektseite wieder mit Infokarten links wie beim Kunden** (Ahmed: „Kopf unterstreicht alles, lieber die
+  Kacheln links wie beim Kunden“): `SiteShell` wird auch in der neuen Oberfläche mit `nui={false}` aufgerufen – links
+  Objektkarte (Nr., Status, Adresse, Objektleitung, Reinigungskräfte, Bearbeiten/Inaktiv) und Kundenkarte, rechts Reiter.
+  Der Profilkopf (`ent-head`) bleibt nur noch beim Mitarbeiter. Eingang: Pfeil der Gruppen im Kasten; Startseite:
+  Verlaufslinie der Umsatz-Kachel schrumpft statt über den Rand zu laufen; Menü-Pfeil in der Kopfzeile reagiert wieder.

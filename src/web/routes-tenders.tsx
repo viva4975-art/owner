@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parseEuro } from '../domain/money/money.js';
 import { BusinessError } from '../services/errors.js';
+import { assigneeOptions } from '../services/crm.js';
 import { listCustomers } from '../services/masterdata.js';
 import {
   ACTIVE,
@@ -8,8 +9,6 @@ import {
   getTender,
   listTenders,
   offerTarget,
-  PLATFORMS,
-  PROCEDURES,
   saveTender,
   setTenderStatus,
   TENDER_STATUS,
@@ -19,7 +18,7 @@ import {
 import { listFiles } from '../services/uploads.js';
 import { type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
-import { centsToInput, str } from './forms.js';
+import { str } from './forms.js';
 import { PageHead, dateDe, euro } from './layout.js';
 
 const STATUS_CLASS: Record<TenderStatus, string> = {
@@ -202,10 +201,34 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
   app.get(`/ausschreibungen/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const t = await getTender(sql, id);
-    const [customers, files] = await Promise.all([
+    const [customers, files, users] = await Promise.all([
       listCustomers(sql).then((l) => l.filter((x) => x.active)),
       t ? listFiles(sql, { type: 'tender', id }) : Promise.resolve([]),
+      assigneeOptions(sql),
     ]);
+    const visitMode = t?.site_visit_mode ?? (t?.site_visit_at ? 'fixed' : null);
+    const userSelect = (cur: string | null) => {
+      const names = users.map((u) => u.name);
+      const extra = cur && !names.some((n) => n.toLowerCase() === cur.toLowerCase()) ? [cur] : [];
+      return [
+        ...extra.map((n) => (
+          <option value={n} selected>
+            {n} (bisher)
+          </option>
+        )),
+        ...(['Büro', 'Objektleitung'] as const).map((g) => (
+          <optgroup label={g}>
+            {users
+              .filter((u) => u.group === g)
+              .map((u) => (
+                <option value={u.name} selected={!!cur && u.name.toLowerCase() === cur.toLowerCase()}>
+                  {u.name}
+                </option>
+              ))}
+          </optgroup>
+        )),
+      ];
+    };
     const statusButtons: [TenderStatus, string][] = t
       ? (
           [
@@ -287,7 +310,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
             data-version={String(t?.version ?? '')}
           >
             <input type="hidden" name="version" value={String(t?.version ?? '')} />
-            <div class="group-title">Ausschreibung</div>
+            <h3>Ausschreibung</h3>
             <div class="grid">
               <div style="grid-column:1/-1">
                 <label for="title">Titel / Leistung</label>
@@ -300,13 +323,9 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
-                <label for="authority">Vergabestelle / Auftraggeber</label>
-                <input id="authority" name="authority" value={t?.authority ?? ''} required />
-              </div>
-              <div>
-                <label for="customer">Kunde / Interessent (für das Angebot)</label>
-                <select id="customer" name="customer_id">
-                  <option value="">– noch keiner –</option>
+                <label for="customer">Auftraggeber</label>
+                <select id="customer" name="customer_id" data-tender-cust>
+                  <option value="">– kein Kunde: Vergabestelle eintragen –</option>
                   {customers.map((x) => (
                     <option value={x.id} selected={x.id === (t?.customer_id ?? c.req.query('kunde'))}>
                       {x.name} ({x.customer_no}){x.status === 'interessent' ? ' – Interessent' : ''}
@@ -314,34 +333,20 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                   ))}
                 </select>
               </div>
+              <div id="authority-box" hidden={!!(t?.customer_id ?? c.req.query('kunde'))}>
+                <label for="authority">Vergabestelle</label>
+                <input id="authority" name="authority" value={t?.customer_id ? '' : (t?.authority ?? '')} />
+              </div>
               <div>
                 <label for="reference_no">Vergabenummer</label>
                 <input id="reference_no" name="reference_no" value={t?.reference_no ?? ''} />
-              </div>
-              <div>
-                <label for="procedure">Verfahren</label>
-                <input id="procedure" name="procedure" list="procedures" value={t?.procedure ?? ''} />
-                <datalist id="procedures">
-                  {PROCEDURES.map((p) => (
-                    <option value={p} />
-                  ))}
-                </datalist>
-              </div>
-              <div>
-                <label for="platform">Plattform</label>
-                <input id="platform" name="platform" list="platforms" value={t?.platform ?? ''} />
-                <datalist id="platforms">
-                  {PLATFORMS.map((p) => (
-                    <option value={p} />
-                  ))}
-                </datalist>
               </div>
               <div>
                 <label for="url">Link zur Ausschreibung</label>
                 <input id="url" name="url" type="url" value={t?.url ?? ''} placeholder="https://" />
               </div>
             </div>
-            <div class="group-title">Termine</div>
+            <h3>Termine</h3>
             <div class="grid">
               <div>
                 <label for="deadline">Abgabefrist</label>
@@ -362,7 +367,29 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                 />
               </div>
               <div>
-                <label for="visit">Ortsbesichtigung</label>
+                <label for="binding">Bindefrist</label>
+                <input id="binding" name="binding_until" type="date" value={t?.binding_until ?? ''} />
+              </div>
+              <div>
+                <label for="start">Vertragsbeginn</label>
+                <input id="start" name="contract_start" type="date" value={t?.contract_start ?? ''} />
+              </div>
+              <div style="grid-column:1/-1">
+                <label for="visit_mode">Ortsbesichtigung</label>
+                <select id="visit_mode" name="site_visit_mode" data-visit-mode>
+                  <option value="none" selected={!visitMode || visitMode === 'none'}>
+                    nicht notwendig
+                  </option>
+                  <option value="fixed" selected={visitMode === 'fixed'}>
+                    Termin schon vereinbart
+                  </option>
+                  <option value="arrange" selected={visitMode === 'arrange'}>
+                    noch vereinbaren – jemanden beauftragen
+                  </option>
+                </select>
+              </div>
+              <div class="visit-fixed" hidden={visitMode !== 'fixed'}>
+                <label for="visit">Termin der Besichtigung</label>
                 <input
                   id="visit"
                   name="site_visit"
@@ -370,7 +397,7 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                   value={local(t?.site_visit_at ?? null)}
                 />
               </div>
-              <div class="chk" style="align-self:end;margin-bottom:10px">
+              <div class="chk visit-fixed" hidden={visitMode !== 'fixed'}>
                 <input
                   type="checkbox"
                   id="visit_req"
@@ -379,59 +406,43 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
                 />
                 <label for="visit_req">Besichtigung ist Pflicht</label>
               </div>
-              <div>
-                <label for="binding">Bindefrist</label>
-                <input id="binding" name="binding_until" type="date" value={t?.binding_until ?? ''} />
-              </div>
-              <div>
-                <label for="start">Vertragsbeginn</label>
-                <input id="start" name="contract_start" type="date" value={t?.contract_start ?? ''} />
+              <div class="visit-arrange" hidden={visitMode !== 'arrange'}>
+                <label for="visit_who">Wer vereinbart den Termin?</label>
+                <select id="visit_who" name="site_visit_assignee">
+                  <option value="">– bitte wählen –</option>
+                  {userSelect(t?.site_visit_assignee ?? null)}
+                </select>
+                <p class="small mut">Die Person bekommt eine Aufgabe „Ortsbesichtigung vereinbaren“.</p>
               </div>
             </div>
-            <div class="group-title">Umfang</div>
+            <h3>Zuständig und Notizen</h3>
             <div class="grid">
               <div>
-                <label for="location">Ort / Objekte</label>
-                <input id="location" name="location" value={t?.location ?? ''} />
+                <label for="resp">Zuständig</label>
+                <select id="resp" name="responsible">
+                  <option value="">– niemand –</option>
+                  {userSelect(t?.responsible ?? (t ? null : c.get('user').name))}
+                </select>
               </div>
-              <div>
-                <label for="term">Laufzeit</label>
-                <input
-                  id="term"
-                  name="contract_term"
-                  value={t?.contract_term ?? ''}
-                  placeholder="z. B. 2 Jahre + 2 × 1 Jahr"
-                />
+              <div style="grid-column:1/-1">
+                <label for="services">Leistungsbeschreibung (kurz)</label>
+                <textarea id="services" name="services" rows={3}>
+                  {t?.services ?? ''}
+                </textarea>
               </div>
-              <div>
-                <label for="est">geschätztes Volumen p. a. (netto €)</label>
-                <input
-                  id="est"
-                  name="estimated"
-                  inputmode="decimal"
-                  value={t?.estimated_cents != null ? centsToInput(t.estimated_cents) : ''}
-                />
-              </div>
-              <div>
-                <label for="resp">zuständig</label>
-                <input id="resp" name="responsible" value={t?.responsible ?? c.get('user').name} />
+              <div style="grid-column:1/-1">
+                <label for="notes">Notizen (Eignungsnachweise, Besonderheiten, Fragen)</label>
+                <textarea id="notes" name="notes" rows={3}>
+                  {t?.notes ?? ''}
+                </textarea>
               </div>
             </div>
-            <label for="services" style="margin-top:12px">
-              Leistungsbeschreibung (kurz)
-            </label>
-            <textarea id="services" name="services" rows={3}>
-              {t?.services ?? ''}
-            </textarea>
-            <label for="notes">Notizen (Eignungsnachweise, Besonderheiten, Fragen)</label>
-            <textarea id="notes" name="notes" rows={3}>
-              {t?.notes ?? ''}
-            </textarea>
+            <script dangerouslySetInnerHTML={{ __html: TENDER_FORM_JS }} />
             <div class="formfoot">
-              <a class="btn sec" href="/ausschreibungen">
-                Zurück
-              </a>
               <button class="btn">Speichern</button>
+              <a class="btn sec" href="/ausschreibungen">
+                Abbrechen
+              </a>
             </div>
           </form>
           <div>
@@ -488,18 +499,25 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
           authority: str(b, 'authority') ?? '',
           customerId: str(b, 'customer_id'),
           referenceNo: str(b, 'reference_no'),
-          platform: str(b, 'platform'),
+          platform: 'platform' in b ? str(b, 'platform') : undefined,
           url: str(b, 'url'),
-          procedure: str(b, 'procedure'),
-          location: str(b, 'location'),
+          procedure: 'procedure' in b ? str(b, 'procedure') : undefined,
+          location: 'location' in b ? str(b, 'location') : undefined,
           services: str(b, 'services'),
           contractStart: str(b, 'contract_start'),
-          contractTerm: str(b, 'contract_term'),
-          estimatedCents: est ? parseEuro(est) : null,
+          contractTerm: 'contract_term' in b ? str(b, 'contract_term') : undefined,
+          estimatedCents: 'estimated' in b ? (est ? parseEuro(est) : null) : undefined,
           deadline: str(b, 'deadline'),
           questionsUntil: str(b, 'questions_until'),
           siteVisit: str(b, 'site_visit'),
           siteVisitRequired: str(b, 'site_visit_required') === 'on',
+          siteVisitMode:
+            'site_visit_mode' in b
+              ? ((['none', 'fixed', 'arrange'].includes(str(b, 'site_visit_mode') ?? '')
+                  ? str(b, 'site_visit_mode')
+                  : 'none') as 'none' | 'fixed' | 'arrange')
+              : undefined,
+          siteVisitAssignee: str(b, 'site_visit_assignee'),
           bindingUntil: str(b, 'binding_until'),
           responsible: str(b, 'responsible'),
           notes: str(b, 'notes'),
@@ -547,3 +565,10 @@ export function registerTenderRoutes({ app, deps, page, back }: Ctx) {
     }
   });
 }
+
+const TENDER_FORM_JS = `(function(){var c=document.querySelector('[data-tender-cust]'),a=document.getElementById('authority-box'),m=document.querySelector('[data-visit-mode]');
+function up(){if(c&&a){a.hidden=!!c.value;var i=a.querySelector('input');if(i)i.required=!c.value;}
+if(m){document.querySelectorAll('.visit-fixed').forEach(function(e){e.hidden=m.value!=='fixed'});
+document.querySelectorAll('.visit-arrange').forEach(function(e){e.hidden=m.value!=='arrange'});
+var w=document.getElementById('visit_who');if(w)w.required=m.value==='arrange';var v=document.getElementById('visit');if(v)v.required=m.value==='fixed';}}
+if(c)c.addEventListener('change',up);if(m)m.addEventListener('change',up);up();})();`;

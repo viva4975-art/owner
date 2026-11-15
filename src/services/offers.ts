@@ -13,6 +13,7 @@ import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
 import { assertVersion } from './crm.js';
 import { BusinessError } from './errors.js';
 import { saveDraft } from './invoices.js';
+import { syncTenderFromOffer } from './tenders.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 
 export type OfferStatus =
@@ -316,6 +317,7 @@ export async function setOfferStatus(sql: Sql, id: string, status: OfferStatus, 
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'status', 'offer', ${id}, ${tx.json({ status })})`;
   });
+  await syncTenderFromOffer(sql, id, actor);
 }
 
 /** Status des Angebots aus seinen Losen: alle entschieden → Zuschlag, wenn mindestens ein Los gewonnen, sonst
@@ -374,6 +376,7 @@ export async function setLotStatus(
              values (${actor}, 'lot_status', 'offer', ${offerId}, ${tx.json({ lot: lotNo, status, before: lot.status })})`;
     await recomputeLotOffer(tx, offerId, actor);
   });
+  await syncTenderFromOffer(sql, offerId, actor);
 }
 
 /**

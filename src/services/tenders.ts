@@ -62,6 +62,8 @@ export interface Tender {
   questions_until: Date | null;
   site_visit_at: Date | null;
   site_visit_required: boolean;
+  site_visit_mode: 'none' | 'fixed' | 'arrange' | null;
+  site_visit_assignee: string | null;
   binding_until: string | null;
   status: TenderStatus;
   responsible: string | null;
@@ -116,18 +118,21 @@ export interface TenderInput {
   authority: string;
   customerId: string | null;
   referenceNo: string | null;
-  platform: string | null;
+  platform?: string | null | undefined;
   url: string | null;
-  procedure: string | null;
-  location: string | null;
+  procedure?: string | null | undefined;
+  location?: string | null | undefined;
   services: string | null;
   contractStart: string | null;
-  contractTerm: string | null;
-  estimatedCents: bigint | null;
+  contractTerm?: string | null | undefined;
+  estimatedCents?: bigint | null | undefined;
   deadline: string | null; // 'YYYY-MM-DDTHH:mm' Berliner Ortszeit
   questionsUntil: string | null;
   siteVisit: string | null;
   siteVisitRequired: boolean;
+  /** none = nicht nötig, fixed = Termin steht, arrange = jemand vereinbart ihn noch (Aufgabe). */
+  siteVisitMode?: 'none' | 'fixed' | 'arrange' | null | undefined;
+  siteVisitAssignee?: string | null;
   bindingUntil: string | null;
   responsible: string | null;
   notes: string | null;
@@ -138,8 +143,8 @@ const LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Feste ID der Aufgabe „Abgabefrist“ einer Ausschreibung. */
-export function tenderTaskId(id: string): string {
-  const h = createHash('md5').update(`tender-task:${id}`).digest('hex');
+export function tenderTaskId(id: string, kind = 'tender-task'): string {
+  const h = createHash('md5').update(`${kind}:${id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
@@ -168,11 +173,62 @@ async function syncTenderTask(tx: Sql, id: string, actor: string) {
     await tx`update app.tasks set status = 'done', done_at = now(), done_by = ${actor}
               where id = ${taskId} and status = 'open'`;
   }
+  // Aufgabe „Ortsbesichtigung vereinbaren“ für die gewählte Person
+  const visitId = tenderTaskId(id, 'tender-visit');
+  const [v] = await tx<{ mode: string | null; who: string | null; due: string | null }[]>`
+    select site_visit_mode as mode, site_visit_assignee as who,
+           coalesce((questions_until at time zone 'Europe/Berlin')::date,
+                    (deadline_at at time zone 'Europe/Berlin')::date - 7)::text as due
+      from app.tenders where id = ${id}`;
+  if (v?.mode === 'arrange' && v.who && ['neu', 'pruefen', 'bearbeitung'].includes(t.status)) {
+    const due = v.due && v.due > new Date().toISOString().slice(0, 10) ? v.due : null;
+    await tx`
+      insert into app.tasks (id, title, description, due_date, assignee, status, entity_type, entity_id, created_by)
+      values (${visitId}, ${`Ortsbesichtigung vereinbaren: ${t.title}`},
+              ${`${t.authority} – Besichtigungstermin bei der Vergabestelle beantragen und in der Ausschreibung eintragen.`},
+              ${due}, ${v.who}, 'open', 'tender', ${id}, ${actor})
+      on conflict (id) do update set title = excluded.title, description = excluded.description,
+                                     due_date = excluded.due_date, assignee = excluded.assignee,
+                                     status = 'open', done_at = null, done_by = null`;
+  } else {
+    await tx`update app.tasks set status = 'done', done_at = now(), done_by = ${actor}
+              where id = ${visitId} and status = 'open'`;
+  }
+}
+
+/** Angebotsstand → Ausschreibung: versendet = abgegeben, Zusage = gewonnen, Absage = verloren, aufgehoben. */
+export async function syncTenderFromOffer(tx: Sql, offerId: string, actor: string) {
+  const [o] = await tx<{ status: string }[]>`select status from app.offers where id = ${offerId}`;
+  if (!o) return;
+  const map: Record<string, TenderStatus> = {
+    entwurf: 'bearbeitung',
+    versendet: 'abgegeben',
+    angenommen: 'gewonnen',
+    abgelehnt: 'verloren',
+    aufgehoben: 'aufgehoben',
+  };
+  const next = map[o.status];
+  if (!next) return;
+  const rows = await tx<{ id: string }[]>`
+    update app.tenders set status = ${next},
+           submitted_at = case when ${next} in ('abgegeben', 'gewonnen', 'verloren') then coalesce(submitted_at, now()) else submitted_at end
+     where offer_id = ${offerId} and status <> ${next} and status <> 'verzichtet'
+    returning id`;
+  for (const r of rows) {
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'status', 'tender', ${r.id}, ${tx.json({ status: next, from_offer: offerId })})`;
+    await syncTenderTask(tx, r.id, actor);
+  }
 }
 
 export async function saveTender(sql: Sql, id: string, p: TenderInput, actor: string) {
   if (!p.title.trim()) throw new BusinessError('Bitte Titel angeben');
-  if (!p.authority.trim()) throw new BusinessError('Bitte Vergabestelle / Auftraggeber angeben');
+  if (!p.authority.trim() && !p.customerId)
+    throw new BusinessError('Bitte Kunde wählen oder Vergabestelle eintragen');
+  if (p.siteVisitMode === 'arrange' && !p.siteVisitAssignee?.trim())
+    throw new BusinessError('Ortsbesichtigung: bitte wählen, wer den Termin vereinbart');
+  if (p.siteVisitMode === 'fixed' && !p.siteVisit)
+    throw new BusinessError('Ortsbesichtigung: bitte Datum und Uhrzeit des vereinbarten Termins angeben');
   for (const [v, label] of [
     [p.deadline, 'Abgabefrist'],
     [p.questionsUntil, 'Bieterfragen bis'],
@@ -191,20 +247,34 @@ export async function saveTender(sql: Sql, id: string, p: TenderInput, actor: st
     const [cur] = await tx<Tender[]>`select * from app.tenders where id = ${id} for update`;
     assertVersion(cur?.version, p.version, 'Die Ausschreibung');
     const berlin = (v: string | null) => (v ? tx`(${v}::timestamp at time zone 'Europe/Berlin')` : tx`null`);
+    // Felder, die das Formular nicht mehr hat (undefined), behalten ihren Wert
+    const keep = <T>(v: T | undefined, old: T | null | undefined): T | null =>
+      v === undefined ? (old ?? null) : v;
+    let authority = p.authority.trim();
+    if (p.customerId) {
+      const [cu] = await tx<{ name: string }[]>`select name from app.customers where id = ${p.customerId}`;
+      if (cu) authority = cu.name;
+    }
+    const mode = p.siteVisitMode === undefined ? (cur?.site_visit_mode ?? null) : p.siteVisitMode;
     const row = {
       title: p.title.trim(),
-      authority: p.authority.trim(),
+      authority,
       customer_id: p.customerId,
       reference_no: p.referenceNo?.trim() || null,
-      platform: p.platform?.trim() || null,
+      platform: keep(p.platform === undefined ? undefined : p.platform?.trim() || null, cur?.platform),
       url: p.url?.trim() || null,
-      procedure: p.procedure?.trim() || null,
-      location: p.location?.trim() || null,
+      procedure: keep(p.procedure === undefined ? undefined : p.procedure?.trim() || null, cur?.procedure),
+      location: keep(p.location === undefined ? undefined : p.location?.trim() || null, cur?.location),
       services: p.services?.trim() || null,
       contract_start: p.contractStart,
-      contract_term: p.contractTerm?.trim() || null,
-      estimated_cents: p.estimatedCents,
+      contract_term: keep(
+        p.contractTerm === undefined ? undefined : p.contractTerm?.trim() || null,
+        cur?.contract_term,
+      ),
+      estimated_cents: keep(p.estimatedCents, cur?.estimated_cents),
       site_visit_required: p.siteVisitRequired,
+      site_visit_mode: mode,
+      site_visit_assignee: mode === 'arrange' ? p.siteVisitAssignee?.trim() || null : null,
       binding_until: p.bindingUntil,
       responsible: p.responsible?.trim() || null,
       notes: p.notes?.trim() || null,
@@ -212,7 +282,7 @@ export async function saveTender(sql: Sql, id: string, p: TenderInput, actor: st
     if (cur) await tx`update app.tenders set ${tx(row)} where id = ${id}`;
     else await tx`insert into app.tenders ${tx({ id, created_by: actor, ...row })}`;
     await tx`update app.tenders set deadline_at = ${berlin(p.deadline)}, questions_until = ${berlin(p.questionsUntil)},
-                    site_visit_at = ${berlin(p.siteVisit)} where id = ${id}`;
+                    site_visit_at = ${berlin(mode === 'fixed' || mode === null ? p.siteVisit : null)} where id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id)
              values (${actor}, ${cur ? 'update' : 'create'}, 'tender', ${id})`;
     await syncTenderTask(tx as unknown as Sql, id, actor);
@@ -261,6 +331,7 @@ export async function linkOffer(sql: Sql, tenderId: string, offerId: string) {
                   status = case when status in ('neu', 'pruefen') then 'bearbeitung' else status end
              where id = ${tenderId} and offer_id is null
                and exists (select 1 from app.offers where id = ${offerId})`;
+  await syncTenderFromOffer(sql, offerId, 'system');
 }
 
 export interface TenderEvent {

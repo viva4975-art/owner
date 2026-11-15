@@ -1792,7 +1792,6 @@ const NUI_TOP: NuiItem[] = [
   { label: 'Planung', href: '/einsatzplanung', icon: 'calendar' },
   { label: 'Zeiten & Freigabe', href: '/zeiterfassung', icon: 'clock' },
   { label: 'Arbeitsscheine', href: '/arbeitsscheine', icon: 'clipboard' },
-  { label: 'Formulare', href: '/formulare', icon: 'form' },
 ];
 const NUI_GROUPS: NuiGroup[] = [
   {
@@ -1884,7 +1883,6 @@ const NUI_OL_TOP: NuiItem[] = [
   { label: 'Zeiten', href: '/zeiterfassung', icon: 'clock' },
   { label: 'Arbeitsscheine', href: '/arbeitsscheine', icon: 'clipboard' },
   { label: 'Qualität', href: '/qualitaet', icon: 'check2' },
-  { label: 'Formulare', href: '/formulare', icon: 'form' },
 ];
 const NUI_OL_GROUPS: NuiGroup[] = [
   {
@@ -1933,7 +1931,7 @@ const NuiSide: FC<{
   user?: string | undefined;
   env: string;
   inbox?: number | undefined;
-}> = ({ role, path, user, env, inbox }) => {
+}> = ({ role, path, env, inbox }) => {
   const ol = role === 'objektleitung';
   const ok = (i: NuiItem) => !NUI_SOON.has(i.href) && canOpen(role, i.href);
   const top = (ol ? NUI_OL_TOP : NUI_TOP).filter(ok);
@@ -1944,59 +1942,93 @@ const NuiSide: FC<{
     path,
     [...top, ...groups.flatMap((g) => g.items)].map((i) => i.href),
   );
-  const ROLE: Record<string, string> = {
-    admin: 'Geschäftsführung · Admin',
-    buchhaltung: 'Buchhaltung',
-    personal: 'Personal',
-    objektleitung: 'Objektleitung',
-  };
   return (
-    <aside class="appside nside" aria-label="Navigation">
-      <a class="nlogo" href="/" aria-label="Viva-Deluxe – Übersicht">
-        <img src="/static/logo.png" alt="Viva-Deluxe Gebäudereinigung GmbH" width="179" height="36" />
-      </a>
-      {user && (
-        <a class="nrole" href="/konto">
-          <span>
-            {user}
-            <small>{ROLE[role] ?? role}</small>
-          </span>
-          <Icon name="chevron" size={14} />
-        </a>
-      )}
-      <nav class="nmenu" aria-label="Hauptmenü">
-        {top.map((i) => (
-          <a href={i.href} class={act === i.href ? 'on' : ''}>
-            <Icon name={i.icon ?? 'file'} size={18} />
-            <span>{i.label}</span>
-            {i.badge === 'eingang' && inbox ? <b class="nbadge">{inbox}</b> : null}
+    <>
+      <aside class="appside nside" aria-label="Navigation">
+        <div class="nhead">
+          <a class="nlogo" href="/" aria-label="Viva-Deluxe – Übersicht">
+            <img
+              src="/static/logo-hell.png"
+              alt="Viva-Deluxe Gebäudereinigung GmbH"
+              width="179"
+              height="36"
+            />
           </a>
-        ))}
-        {groups.map((g) => {
-          const open = g.items.some((i) => i.href === act);
-          return (
-            <details class="ngrp" open={open}>
-              <summary>
-                <span>{g.label}</span>
-                <Icon name="chevron" size={14} />
-              </summary>
-              {g.items.map((i) => (
-                <a href={i.href} class={act === i.href ? 'on' : ''}>
-                  <span>{i.label}</span>
-                </a>
-              ))}
-            </details>
-          );
-        })}
-      </nav>
-      {env !== 'live' && (
-        <div class="side-foot">
-          <span class="env">{env === 'test' ? 'Testbetrieb' : 'Lokal'}</span>
+          <button
+            type="button"
+            class="nhide"
+            data-nside-hide
+            title="Menü ausblenden"
+            aria-label="Menü ausblenden"
+          >
+            <Icon name="chevron" size={16} />
+          </button>
         </div>
-      )}
-    </aside>
+        <nav class="nmenu" aria-label="Hauptmenü">
+          {top.map((i) => (
+            <a href={i.href} class={act === i.href ? 'on' : ''}>
+              <Icon name={i.icon ?? 'file'} size={18} />
+              <span>{i.label}</span>
+              {i.badge === 'eingang' && inbox ? <b class="nbadge">{inbox}</b> : null}
+            </a>
+          ))}
+          {groups.map((g) => {
+            const open = g.items.some((i) => i.href === act);
+            return (
+              <details class="ngrp" open={open}>
+                <summary>
+                  <span>{g.label}</span>
+                  <Icon name="chevron" size={14} />
+                </summary>
+                {g.items.map((i) => (
+                  <a href={i.href} class={act === i.href ? 'on' : ''}>
+                    <span>{i.label}</span>
+                  </a>
+                ))}
+              </details>
+            );
+          })}
+        </nav>
+        {env !== 'live' && (
+          <div class="side-foot">
+            <span class="env">{env === 'test' ? 'Testbetrieb' : 'Lokal'}</span>
+          </div>
+        )}
+        <div class="nresize" data-nside-resize title="Breite ziehen (Doppelklick = Standard)" />
+      </aside>
+      <button
+        type="button"
+        class="nshow"
+        data-nside-show
+        title="Menü einblenden"
+        aria-label="Menü einblenden"
+      >
+        <Icon name="menu" size={18} />
+        <span>Menü</span>
+      </button>
+      <script dangerouslySetInnerHTML={{ __html: NSIDE_JS }} />
+    </>
   );
 };
+
+/** Menü links: gespeicherte Breite / ausgeblendet sofort beim Laden setzen (kein Springen). */
+const NSIDE_HEAD_JS = `(function(){try{var w=+localStorage.getItem('vd_nw');if(w>=200&&w<=420)document.documentElement.style.setProperty('--nw',w+'px');if(localStorage.getItem('vd_nhide')==='1')document.documentElement.classList.add('nside-off');}catch(e){}})();`;
+
+/** Menü links: ausblenden/einblenden, Breite ziehen, Scrollstelle merken und aktiven Punkt sichtbar halten. */
+const NSIDE_JS = `(function(){var d=document.documentElement,side=document.querySelector('.nside'),m=side&&side.querySelector('.nmenu');if(!side)return;
+function set(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}}
+var h=document.querySelector('[data-nside-hide]'),s=document.querySelector('[data-nside-show]');
+if(h)h.addEventListener('click',function(){d.classList.add('nside-off');set('vd_nhide','1')});
+if(s)s.addEventListener('click',function(){d.classList.remove('nside-off');set('vd_nhide',null)});
+var r=side.querySelector('[data-nside-resize]');if(r){r.addEventListener('pointerdown',function(e){e.preventDefault();r.setPointerCapture(e.pointerId);d.classList.add('nside-drag');
+function mv(ev){var w=Math.max(200,Math.min(420,ev.clientX));d.style.setProperty('--nw',w+'px')}
+function up(ev){r.removeEventListener('pointermove',mv);r.removeEventListener('pointerup',up);d.classList.remove('nside-drag');var w=Math.max(200,Math.min(420,ev.clientX));set('vd_nw',String(w))}
+r.addEventListener('pointermove',mv);r.addEventListener('pointerup',up)});
+r.addEventListener('dblclick',function(){d.style.removeProperty('--nw');set('vd_nw',null)})}
+if(m){var k='vd_nscroll';try{var y=sessionStorage.getItem(k);if(y!=null)m.scrollTop=+y}catch(e){}
+var on=m.querySelector('a.on');if(on){var a=on.getBoundingClientRect(),b=m.getBoundingClientRect();if(a.top<b.top+8||a.bottom>b.bottom-8)m.scrollTop+=a.top-b.top-b.height/3}
+var t;m.addEventListener('scroll',function(){clearTimeout(t);t=setTimeout(function(){try{sessionStorage.setItem(k,String(m.scrollTop))}catch(e){}},80)},{passive:true});
+m.addEventListener('click',function(){try{sessionStorage.setItem(k,String(m.scrollTop))}catch(e){}})}})();`;
 
 export function initials(name: string): string {
   return name
@@ -2083,6 +2115,7 @@ export const Layout: FC<{
           crossorigin="anonymous"
         />
         <script dangerouslySetInnerHTML={{ __html: GLASS_HEAD_JS }} />
+        <script dangerouslySetInnerHTML={{ __html: NSIDE_HEAD_JS }} />
         <style dangerouslySetInnerHTML={{ __html: CSS + GLASS_CSS + NUI_CSS }} />
       </head>
       {app ? (

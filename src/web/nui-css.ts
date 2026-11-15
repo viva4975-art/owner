@@ -301,4 +301,37 @@ html body.nui main form input::-webkit-date-and-time-value{text-align:left;margi
 html body.nui main form input::-webkit-datetime-edit{padding:0}
 html body.nui main form .grid>div{min-width:0}
 @media (max-width:760px){html body.nui main form input:not([type=checkbox]):not([type=radio]),html body.nui main form select,html body.nui main form textarea{font-size:16px}}
+
+/* Menü links in Bordeaux wie die Anmeldung (Ahmed 15.11.), ausblendbar, Breite ziehbar */
+html{--nw:248px}
+html body.nui .appside.nside,html.glas body.shell.nui .appside.nside{width:var(--nw);background:radial-gradient(140% 55% at 0% 0%,#7d1435 0%,transparent 70%),linear-gradient(180deg,#5c0e27 0%,#3d0a1c 55%,#25060f 100%)!important;border-right:0;color:#fff}
+body.nui .mainc{margin-left:var(--nw)}
+body.nui .nhead{display:flex;align-items:center;gap:6px}
+body.nui .nhead .nlogo{flex:1;min-width:0}
+body.nui .nlogo img{height:32px;max-width:100%;object-fit:contain;object-position:left}
+body.nui .nhide{flex:none;width:30px;height:30px;border-radius:8px;border:0;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);display:grid;place-items:center;cursor:pointer;margin-bottom:10px}
+body.nui .nhide .ic{transform:rotate(90deg)}
+body.nui .nhide:hover{background:rgba(255,255,255,.16);color:#fff}
+body.nui .nrole{border-color:rgba(255,255,255,.14);color:#fff;background:rgba(255,255,255,.05)}
+body.nui .nrole small{color:rgba(255,255,255,.62)}
+body.nui .nrole:hover{border-color:rgba(255,255,255,.3)}
+body.nui .nmenu a{color:rgba(255,255,255,.88)}
+body.nui .nmenu a .ic{color:rgba(255,255,255,.62)}
+body.nui .nmenu a:hover{background:rgba(255,255,255,.08);color:#fff}
+body.nui .nmenu a.on{background:rgba(255,255,255,.16);color:#fff}
+body.nui .nmenu a.on .ic{color:#fff}
+body.nui .nbadge{background:#fff;color:#7d1435}
+body.nui .ngrp>summary{color:rgba(255,255,255,.55)}
+body.nui .ngrp>summary:hover{color:#fff}
+body.nui .side-foot .env{color:rgba(255,255,255,.5)}
+body.nui .nmenu{scrollbar-color:rgba(255,255,255,.25) transparent}
+body.nui .nresize{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:2}
+body.nui .nresize:hover,html.nside-drag body.nui .nresize{background:rgba(255,255,255,.18)}
+html.nside-drag,html.nside-drag *{cursor:col-resize!important;user-select:none}
+body.nui .nshow{display:none}
+html.nside-off body.nui .appside.nside{display:none!important}
+html.nside-off body.nui .mainc{margin-left:0}
+html.nside-off body.nui .nshow{display:inline-flex;align-items:center;gap:6px;position:fixed;left:12px;bottom:14px;z-index:45;border:0;border-radius:999px;padding:9px 14px;background:linear-gradient(180deg,#5c0e27,#3d0a1c);color:#fff;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 8px 22px -8px rgba(0,0,0,.4)}
+@media (max-width:1024px){body.nui .nresize,body.nui .nhide{display:none}html.nside-off body.nui .nshow{display:none}html.nside-off body.nui .appside.nside{display:flex!important}body.nui .mainc{margin-left:0}}
+@media print{body.nui .nshow{display:none!important}}
 `;

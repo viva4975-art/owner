@@ -72,7 +72,7 @@ body.nui .ck-list .n{margin-left:auto;font-weight:650}
 .ib-list{padding:4px 18px!important}
 .ib-groups{display:flex;flex-direction:column;gap:10px}
 .ib-grp{padding:0!important;overflow:hidden}
-.ib-grp>summary{display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;list-style:none;font-size:15px}
+.ib-grp>summary{display:flex;align-items:center;gap:10px;padding:12px 18px!important;cursor:pointer;list-style:none;font-size:15px}
 .ib-grp>summary::-webkit-details-marker{display:none}
 .ib-grp>summary .ib-dot{width:28px;height:28px}
 .ib-grp>summary .ib-n{background:#F7EDF1;color:#811D40;border-radius:999px;padding:1px 9px;font-size:12.5px;font-weight:650}
@@ -367,4 +367,8 @@ html body.nui main form .chk>label{margin:0!important;padding:0!important;font-w
 .cl-fold>summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:10px}
 .cl-fold>.cl-card{box-shadow:none!important;border:0!important;padding:10px 0 0!important;margin:0!important}
 .cl-fold>.cl-card .cl-head{display:none}
+html body.nui .hx-k{min-width:0;overflow:hidden}
+html body.nui .hx-row{min-width:0}
+html body.nui .hx-row>:first-child{min-width:0}
+html body.nui .hx-spark{flex:0 1 96px!important;min-width:40px;max-width:40%;height:auto}
 `;

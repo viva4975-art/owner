@@ -1022,6 +1022,34 @@ export async function paymentRunItems(sql: Sql, id: string) {
     select * from app.payment_run_items where run_id = ${id} order by creditor_name`;
 }
 
+/**
+ * Aufstellung einer Sammelüberweisung (Ahmed 16.11.: Münchner Bank zeigt nur den Sammelumsatz): alle Einzelzahlungen
+ * des SEPA-Laufs – Eingangsrechnungen und wiederkehrende Zahlungen – mit Rechnungsnummer und Verwendungszweck.
+ */
+export async function paymentRunLines(sql: Sql, id: string) {
+  return sql<
+    {
+      kind: 'rechnung' | 'wiederkehrend';
+      ref_id: string;
+      creditor_name: string;
+      creditor_iban: string;
+      invoice_no: string | null;
+      invoice_date: string | null;
+      remittance: string;
+      skonto_cents: bigint;
+      amount_cents: bigint;
+    }[]
+  >`
+    select 'rechnung' as kind, i.incoming_invoice_id as ref_id, i.creditor_name, i.creditor_iban,
+           ii.invoice_no, ii.invoice_date::text, i.remittance, i.skonto_cents, i.amount_cents
+      from app.payment_run_items i left join app.incoming_invoices ii on ii.id = i.incoming_invoice_id
+     where i.run_id = ${id}
+    union all
+    select 'wiederkehrend', r.item_id, r.creditor_name, r.creditor_iban, null, null, r.remittance, 0::bigint, r.amount_cents
+      from app.payment_run_recurring r where r.run_id = ${id}
+     order by 3, 5 nulls last`;
+}
+
 export const newId = () => randomUUID();
 
 /**

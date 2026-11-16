@@ -434,9 +434,6 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Etiketten
 
-  // Firmenname kurz fürs Etikett („Viva-Deluxe Gebäudereinigung GmbH“ → „Viva-Deluxe GmbH“)
-  const shortCo = (n?: string | null) =>
-    n ? n.replace(/\s+Gebäudereinigung(?=\s+GmbH)/, '') : 'Viva-Deluxe';
   app.get('/geraete/etiketten', async (c) => {
     const picked = c.req.queries('id') ?? [];
     const fallback = (c.req.query('alle') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/.test(x));
@@ -513,7 +510,7 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
 .sheet{display:grid;box-sizing:border-box;width:210mm;break-after:page;align-content:start}
 .lab{display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;border:.2mm dashed #bbb;border-radius:2mm;overflow:hidden}
 .lab.empty{border-color:#eee}
-.top{display:flex;align-items:center;min-height:0;flex:1}.qr{flex:none}.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.5mm;min-width:0;flex:1}.logo{align-self:flex-start;max-width:100%;object-fit:contain;object-position:left}
+.top{display:flex;align-items:center;min-height:0;flex:1}.qr{flex:none}.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.5mm;min-width:0;flex:1;align-self:flex-start}.logo{margin-top:-.4mm}.logo{align-self:flex-start;max-width:100%;object-fit:contain;object-position:left}
 .k{text-transform:uppercase;letter-spacing:.05em;color:#7D1435;font-weight:700;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .nr{font-weight:800;letter-spacing:.02em}.t{color:#333}.own{color:#1a1a1a;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;border-top:.15mm solid #ccc;padding-top:.5mm}.ob{color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:14px}
@@ -588,9 +585,7 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
                           <div class="t">Mit dem Handy scannen: Standort oder Defekt melden</div>
                         </div>
                       </div>
-                      <div class="own">
-                        {co?.phone ? `Tel. ${co.phone} · ` : ''}Eigentum {shortCo(co?.name)}
-                      </div>
+                      <div class="own">Eigentum der {co?.name ?? 'Viva-Deluxe Gebäudereinigung GmbH'}</div>
                     </div>
                   ) : (
                     <div class="lab empty" />

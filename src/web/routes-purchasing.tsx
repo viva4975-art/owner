@@ -59,7 +59,7 @@ import {
   type PaidMethod,
   createPaymentRun,
   listPaymentRuns,
-  paymentRunItems,
+  paymentRunLines,
   paymentRunXml,
   receiveOrder,
   renderOrderPdf,
@@ -103,6 +103,7 @@ import {
 import { arr, centsToInput, milliToInput, str } from './forms.js';
 import { Icon } from './icons.js';
 import { sortListByRequest } from '../domain/export-sort.js';
+import { renderTablePdf } from '../pdf/table.js';
 import { PageHead, Pager, type Tab, Tabs, dateDe, euro, anz } from './layout.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
@@ -2904,6 +2905,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   </div>
                   <div class="side">
                     <span class="when">{euro(r.total_cents)}</span>
+                    <a class="btn ghost sm" href={`/zahlungslauf/${r.id}/aufstellung.pdf`} target="_blank">
+                      Aufstellung (PDF)
+                    </a>
                     <a class="btn ghost sm" href={`/zahlungslauf/${r.id}/sepa.xml`}>
                       XML
                     </a>
@@ -3092,37 +3096,48 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     });
   };
 
+  type RunHead = {
+    id: string;
+    number: string;
+    execution_date: string;
+    total_cents: bigint;
+    item_count: number;
+    debtor_iban: string;
+    created_by: string;
+    created_at: string;
+    xml_sha256: string | null;
+  };
+  const runHead = (where: { id?: string; nr?: string }) =>
+    sql<RunHead[]>`
+      select id, number, execution_date::text, total_cents, item_count, debtor_iban, created_by,
+             created_at::text, xml_sha256
+        from app.payment_runs where ${where.id ? sql`id = ${where.id}` : sql`number = ${where.nr ?? ''}`}`;
+  const ibanFmt = (x: string) =>
+    x
+      .replace(/\s/g, '')
+      .replace(/(.{4})/g, '$1 ')
+      .trim();
+
   app.get(`/zahlungslauf/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
-    const [[run], items] = await Promise.all([
-      sql<
-        {
-          number: string;
-          execution_date: string;
-          total_cents: bigint;
-          item_count: number;
-          debtor_iban: string;
-          created_by: string;
-          xml_sha256: string | null;
-        }[]
-      >`
-        select number, execution_date, total_cents, item_count, debtor_iban, created_by, xml_sha256 from app.payment_runs where id = ${id}`,
-      paymentRunItems(sql, id),
-    ]);
+    const [[run], items] = await Promise.all([runHead({ id }), paymentRunLines(sql, id)]);
     if (!run) return c.notFound();
     return page(
       c,
       `Zahlungslauf ${run.number}`,
       'lieferanten',
       <>
-        <PageHead title={`Zahlungslauf ${run.number}`} crumbs={[['Zahlungsliste', '/zahlungsliste']]} />
+        <PageHead title={`Sammelüberweisung ${run.number}`} crumbs={[['Zahlungsliste', '/zahlungsliste']]} />
         <div class="actions" style="margin-top:-8px">
-          <a class="btn" href={`/zahlungslauf/${id}/sepa.xml`}>
-            <Icon name="download" /> SEPA-Datei (pain.001)
+          <a class="btn" href={`/zahlungslauf/${id}/aufstellung.pdf`} target="_blank">
+            <Icon name="download" /> Aufstellung drucken (PDF)
+          </a>
+          <a class="btn sec" href={`/zahlungslauf/${id}/sepa.xml`}>
+            SEPA-Datei (pain.001)
           </a>
           <span class="small mut">
-            Ausführung {dateDe(run.execution_date)} · von {run.debtor_iban} · {run.item_count} Überweisungen ·{' '}
-            {euro(run.total_cents)} · SHA-256 {run.xml_sha256?.slice(0, 12)}…
+            Ausführung {dateDe(run.execution_date)} · von {ibanFmt(run.debtor_iban)} · {run.item_count}{' '}
+            Überweisungen · {euro(run.total_cents)}
           </span>
         </div>
         <div class="tbl">
@@ -3131,6 +3146,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               <tr>
                 <th>Empfänger</th>
                 <th>IBAN</th>
+                <th>Rechnung</th>
                 <th>Verwendungszweck</th>
                 <th class="r">Skonto</th>
                 <th class="r">Betrag</th>
@@ -3140,20 +3156,90 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
               {items.map((i) => (
                 <tr>
                   <td>
-                    <a href={`/rechnungseingang/${i.incoming_invoice_id}`}>{i.creditor_name}</a>
+                    {i.kind === 'rechnung' ? (
+                      <a href={`/rechnungseingang/${i.ref_id}`}>{i.creditor_name}</a>
+                    ) : (
+                      <>
+                        {i.creditor_name} <span class="tag">wiederkehrend</span>
+                      </>
+                    )}
                   </td>
-                  <td class="small">{i.creditor_iban.replace(/(.{4})/g, '$1 ')}</td>
+                  <td class="small">{ibanFmt(i.creditor_iban)}</td>
+                  <td class="small">
+                    {i.invoice_no
+                      ? `${i.invoice_no}${i.invoice_date ? ` vom ${dateDe(i.invoice_date)}` : ''}`
+                      : '–'}
+                  </td>
                   <td class="small">{i.remittance}</td>
                   <td class="r">{i.skonto_cents > 0n ? euro(i.skonto_cents) : '–'}</td>
                   <td class="r">{euro(i.amount_cents)}</td>
                 </tr>
               ))}
+              <tr class="sum">
+                <td colspan={5}>
+                  <b>Summe ({items.length})</b>
+                </td>
+                <td class="r">
+                  <b>{euro(run.total_cents)}</b>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </>,
     );
   });
+
+  // Aufstellung zum Ausdrucken (Bank zeigt nur den Sammelumsatz). Auch über die Nummer, z. B. aus den Kontoumsätzen.
+  const runPdf = async (c: Context<AppEnv>, run: RunHead | undefined) => {
+    if (!run) return c.notFound();
+    const items = await paymentRunLines(sql, run.id);
+    const skonto = items.reduce((t, i) => t + i.skonto_cents, 0n);
+    const pdf = await renderTablePdf({
+      title: `Aufstellung Sammelüberweisung ${run.number}`,
+      subtitle:
+        `Ausführung ${dateDe(run.execution_date)} · Auftraggeberkonto ${ibanFmt(run.debtor_iban)} · ` +
+        `${anz(items.length, 'Überweisung', 'Überweisungen')} · Summe ${euro(run.total_cents)} · ` +
+        `erstellt ${dateDe(run.created_at.slice(0, 10))} von ${run.created_by}`,
+      landscape: true,
+      fontSize: 8,
+      columns: [
+        { label: 'Nr.', width: 26, align: 'right' },
+        { label: 'Empfänger', width: 150, wrap: true },
+        { label: 'IBAN', width: 135 },
+        { label: 'Rechnung', width: 110, wrap: true },
+        { label: 'Verwendungszweck', width: 215, wrap: true },
+        { label: 'Skonto', width: 55, align: 'right' },
+        { label: 'Betrag', width: 70, align: 'right' },
+      ],
+      rows: items.map((i, n) => [
+        String(n + 1),
+        i.creditor_name,
+        ibanFmt(i.creditor_iban),
+        i.invoice_no
+          ? `${i.invoice_no}${i.invoice_date ? ` vom ${dateDe(i.invoice_date)}` : ''}`
+          : 'wiederkehrende Zahlung',
+        i.remittance,
+        i.skonto_cents > 0n ? euro(i.skonto_cents) : '',
+        euro(i.amount_cents),
+      ]),
+      totals: ['', 'Summe', '', '', '', skonto > 0n ? euro(skonto) : '', euro(run.total_cents)],
+      footnote:
+        'Die Bank bucht die Sammelüberweisung als einen Umsatz. Diese Aufstellung zeigt die Einzelzahlungen der ' +
+        'SEPA-Datei (pain.001), die in der App erstellt wurde.',
+    });
+    return c.body(pdf as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Aufstellung_${run.number}.pdf"`,
+      'Cache-Control': 'no-store',
+    });
+  };
+  app.get(`/zahlungslauf/:id{${UUID}}/aufstellung.pdf`, async (c) =>
+    runPdf(c, (await runHead({ id: c.req.param('id') }))[0]),
+  );
+  app.get('/zahlungslauf/aufstellung.pdf', async (c) =>
+    runPdf(c, (await runHead({ nr: c.req.query('nr') ?? '' }))[0]),
+  );
 
   app.get(`/zahlungslauf/:id{${UUID}}/sepa.xml`, async (c) => {
     const id = c.req.param('id');

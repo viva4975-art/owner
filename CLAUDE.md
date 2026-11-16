@@ -5681,3 +5681,13 @@ Testadresse.
     QR-Code kleiner (Avery 20,5 statt 25 mm), Logo etwa doppelt so groß, Nr. größer, unten über die ganze Breite eine Zeile
     „Tel. … · Eigentum Viva-Deluxe GmbH“ (alle drei Formate).
   - Browser-Test `e2e:planung` an die Vertretungen-Mehrfachauswahl (Runde 48) angepasst, 27 grün.
+- 2026-11-16: Nachtrag Etiketten (Ahmed): unten „Eigentum der Viva-Deluxe Gebäudereinigung GmbH“ (voller Name aus den
+  Firmendaten), **keine Telefonnummer** (neue Nummer kommt), Logo sitzt oben im Etikett.
+- 2026-11-16: **Aufstellung Sammelüberweisung** (Ahmed: Münchner Bank zeigt nur den Sammelumsatz): Zahlungslauf-Seite
+  (`/zahlungslauf/:id`, „Sammelüberweisung ZL-…“) zeigt jetzt auch wiederkehrende Zahlungen, Rechnungsnummer + Datum und
+  eine Summenzeile; Knopf **„Aufstellung drucken (PDF)“** (`/zahlungslauf/:id/aufstellung.pdf`, A4 quer: Nr., Empfänger,
+  IBAN, Rechnung, Verwendungszweck, Skonto, Betrag, Summe, Auftraggeberkonto, Ausführungstag; `paymentRunLines` in
+  `purchasing.ts`). Auch unter Zahlungsliste → SEPA-Dateien und in den Kontoumsätzen am zugeordneten Sammelumsatz
+  („Aufstellung der Sammelüberweisung (PDF)“, `/zahlungslauf/aufstellung.pdf?nr=ZL-…`). **Grenze:** nur für
+  Sammelüberweisungen aus einer SEPA-Datei der App; direkt im Online-Banking erfasste Sammelaufträge kennt die App nicht
+  (Aufstellung dann aus dem Online-Banking bzw. dem Auftragsprotokoll der Bank).

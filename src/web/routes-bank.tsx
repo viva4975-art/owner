@@ -568,7 +568,22 @@ export function registerBankRoutes({ app, deps, page, back }: Ctx) {
                 )}
                 <div>{dateDe(t.booking_date)}</div>
                 <div style="white-space:pre-wrap;word-break:break-word;font-size:13px">{t.purpose}</div>
-                {t.status !== 'offen' && t.note && <div class="small mut">→ {t.note}</div>}
+                {t.status !== 'offen' && t.note && (
+                  <div class="small mut">
+                    → {t.note}
+                    {/^Zahlungslauf ZL-/.test(t.note) && (
+                      <>
+                        {' · '}
+                        <a
+                          href={`/zahlungslauf/aufstellung.pdf?nr=${encodeURIComponent(t.note.replace(/^Zahlungslauf /, ''))}`}
+                          target="_blank"
+                        >
+                          Aufstellung der Sammelüberweisung (PDF)
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
               <div
                 style={`white-space:nowrap;font-weight:600;color:${t.amount_cents < 0n ? '#c0392b' : '#2e7d32'}`}

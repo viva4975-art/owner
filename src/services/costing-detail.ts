@@ -105,7 +105,10 @@ const KIND_LABEL: Record<string, string> = {
 
 const revenueItem = (r: RevenueLine): CostItem => ({
   date: r.issue_date,
-  label: r.legacy ? `Rechnung ${r.number}` : `${KIND_LABEL[r.kind] ?? 'Rechnung'} ${r.number}`,
+  label:
+    r.legacy && r.kind !== 'correction'
+      ? `Rechnung ${r.number}`
+      : `${r.legacy ? 'Gutschrift / Korrektur' : (KIND_LABEL[r.kind] ?? 'Rechnung')} ${r.number}`,
   ...(r.period ? { sub: `Leistungszeitraum ${r.period}${r.legacy ? ' · vor der Umstellung' : ''}` } : {}),
   href: `/rechnungen/${r.invoice_id}`,
   amount: r.net,

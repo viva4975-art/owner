@@ -138,4 +138,28 @@ describe.skipIf(!available)('Nachkalkulation aufschlüsseln', () => {
     const items = await customerRevenueItems(sql, two, { from: '2026-10', to: '2026-10' });
     expect(items.map((x) => x.label)).toEqual(['Rechnung 1039912']);
   });
+
+  it('Gutschrift/Korrektur ohne Zeitraum und Objekt zählt im Zeitraum und bei den Objekten der Originalrechnung', async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    await sql`insert into app.sites (id, customer_id, site_no, name)
+              values (${a}, ${DEMO.company}, '2990401', 'Sammel A'), (${b}, ${DEMO.company}, '2990402', 'Sammel B')`;
+    const inv = randomUUID();
+    const gu = randomUUID();
+    await sql`insert into app.legacy_invoices (id, number, issue_date, customer_id, net_cents, gross_cents, paid, ft_root_id)
+              values (${inv}, '1039921', '2026-08-31', ${DEMO.company}, 30000, 35700, true, 'r-1039921'),
+                     (${gu}, '1039922', '2026-10-10', ${DEMO.company}, -3001, -3571, true, 'r-1039921')`;
+    await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit, unit_price_cents,
+                                                   net_cents, period_start, period_end, site_id)
+              values (${randomUUID()}, ${inv}, 1, 'Reinigung A', 1000, 'pauschal', 20000, 20000, '2026-08-01', '2026-08-31', ${a}),
+                     (${randomUUID()}, ${inv}, 2, 'Reinigung B', 1000, 'pauschal', 10000, 10000, '2026-08-01', '2026-08-31', ${b}),
+                     (${randomUUID()}, ${gu}, 1, 'Minderung', -1000, 'pauschal', 3001, -3001, null, null, null)`;
+    const aug = await siteCosting(sql, { from: '2026-08', to: '2026-08' });
+    const okt = await siteCosting(sql, { from: '2026-10', to: '2026-10' });
+    const rev = (r: typeof aug, id: string) => r.rows.find((x) => x.site_id === id)?.revenue ?? 0n;
+    // 3.001 € im Verhältnis 2 : 1, Rest-Cent an das größere Objekt
+    expect(rev(aug, a)).toBe(20000n - 2001n);
+    expect(rev(aug, b)).toBe(10000n - 1000n);
+    expect(rev(okt, a) + rev(okt, b)).toBe(0n);
+  });
 });

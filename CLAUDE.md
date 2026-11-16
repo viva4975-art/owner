@@ -5734,3 +5734,12 @@ Testadresse.
   (Nach- und Plan-Kalkulation, `?ansicht=kunde|gruppe`) sortiert die Gruppen nach ihrer Summenzeile auf/ab, die Objekte
   darin nach derselben Spalte; „Gesamt“ bleibt oben, allgemeine Kostenstellen unten, „ohne Auftragsgruppe“ zuletzt.
   Gemerkt je Tab (`table[data-grp-sort]` in `client.ts`, Stunden-Spalte sortiert über `data-sort` = Ist-Minuten).
+- 2026-11-16: **Storno, Rechnungskorrektur und Gutschriften in der Nachkalkulation nach Leistungszeitraum** (Ahmed): sie
+  zählen (negativ) im Leistungszeitraum und bei den Objekten der **Originalrechnung**, nicht im Monat des Belegdatums bzw.
+  bei „Allgemein“. Eigene Belege über `original_invoice_id`/`original_legacy_invoice_id`, übernommene Gutschriften/
+  Korrekturen (negativer Betrag) über dieselbe Fortytools-Gruppe (`ft_root_id`) bzw. `parent_number`. Hat die Position
+  selbst Objekt und Zeitraum, gelten diese; fehlt eins davon (z. B. „Betrag mindern“ an einer Sammelrechnung,
+  Fortytools-Gutschrift ohne Zeitraum), wird sie anteilig nach den Positionen der Originalrechnung (Objekt + Zeitraum)
+  verteilt, Rest-Cent an die größte (`revenueLines` in `costing.ts`; gilt für Nachkalkulation, „Kosten aufschlüsseln“,
+  Ø Stundensätze, Plan-Kalkulation). Nebenbei: Rückfall-Objekt je Kunde als Join statt Unterabfrage je Zeile (sonst
+  startete Postgres JIT, 1,4 s statt 3 ms). Test in `costing-detail.db.test.ts`.

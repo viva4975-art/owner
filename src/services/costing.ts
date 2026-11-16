@@ -266,33 +266,74 @@ export interface RevenueLine {
  */
 export function revenueLines(sql: Sql, from: string, to: string) {
   return sql<RevenueLine[]>`
-    with src as (
-      select case when st.special_cleaning and sp.id is not null then sp.id
-                  else coalesce(ss.site_id, i.site_id,
-                 (select g.id from app.sites g where g.customer_id = i.customer_id
-                    and g.name in ('Allgemein', 'Allgemein (aus Fortytools)') order by g.active desc, g.site_no limit 1),
-                 (select min(g.id::text)::uuid from app.sites g where g.customer_id = i.customer_id having count(*) = 1)) end as site_id,
-             i.customer_id, i.id as invoice_id, false as legacy, i.number, i.kind::text as kind, i.issue_date,
-             l.net_cents,
+    -- Storno, Rechnungskorrektur und Gutschriften (Fortytools: negativer Betrag, gleiche Gruppe/Vorgänger) zählen im
+    -- Leistungszeitraum und beim Objekt der Originalrechnung (Ahmed 16.11.): fehlt der Position Objekt oder Zeitraum, wird
+    -- sie nach den Positionen der Originalrechnung (Objekt + Zeitraum) anteilig verteilt, Rest-Cent an die größte.
+    with lr as (
+      select c.id as cid, (array_agg(p.id order by p.issue_date, p.number))[1] as pid
+        from app.legacy_invoices c join app.legacy_invoices p
+          on p.gross_cents > 0 and p.customer_id is not distinct from c.customer_id
+         and ((c.ft_root_id is not null and p.ft_root_id = c.ft_root_id)
+           or (c.parent_number is not null and p.number = c.parent_number))
+       where c.gross_cents < 0
+       group by c.id
+    ), ln as (
+      select l.id as lid, i.id as invoice_id, false as legacy, i.number, i.kind::text as kind, i.issue_date, i.customer_id,
+             l.net_cents, coalesce(st.special_cleaning, false) as sc, coalesce(ss.site_id, i.site_id) as site0,
+             coalesce(l.period_start, i.period_start) as ps,
+             case when l.period_start is not null then coalesce(l.period_end, l.period_start)
+                  else coalesce(i.period_end, i.period_start) end as pe,
+             coalesce(i.original_invoice_id, i.original_legacy_invoice_id) as orig
+        from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
+        left join app.site_services ss on ss.id = l.source_service_id
+        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
+       where i.status = 'issued'
+      union all
+      select l.id, i.id, true, i.number, case when i.gross_cents < 0 then 'correction' else 'invoice' end, i.issue_date,
+             i.customer_id, l.net_cents, coalesce(st.special_cleaning, false), l.site_id,
+             l.period_start, coalesce(l.period_end, l.period_start),
+             lr.pid
+        from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
+        left join lr on lr.cid = i.id
+        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
+    ), ol as (
+      select i.id as orig, coalesce(ss.site_id, i.site_id) as site, l.net_cents as w,
              coalesce(l.period_start, i.period_start, i.issue_date) as s,
              case when l.period_start is not null then coalesce(l.period_end, l.period_start)
                   else coalesce(i.period_end, i.period_start, i.issue_date) end as e
         from app.invoices i join app.invoice_lines l on l.invoice_id = i.id
         left join app.site_services ss on ss.id = l.source_service_id
-        left join app.service_types st on st.id = coalesce(l.service_type_id, ss.service_type_id)
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
-       where i.status = 'issued'
+       where i.id in (select orig from ln where orig is not null) and l.net_cents > 0
       union all
-      select case when st.special_cleaning and sp.id is not null then sp.id
-                  else coalesce(l.site_id, (select g.id from app.sites g where g.customer_id = i.customer_id
-                    and g.name in ('Allgemein', 'Allgemein (aus Fortytools)') order by g.active desc, g.site_no limit 1),
-                 (select min(g.id::text)::uuid from app.sites g where g.customer_id = i.customer_id having count(*) = 1)) end,
-             i.customer_id, i.id, true, i.number, 'invoice', i.issue_date, l.net_cents,
-             coalesce(l.period_start, i.issue_date),
-             coalesce(l.period_end, l.period_start, i.issue_date)
+      select i.id, l.site_id, l.net_cents, coalesce(l.period_start, i.issue_date), coalesce(l.period_end, l.period_start, i.issue_date)
         from app.legacy_invoice_lines l join app.legacy_invoices i on i.id = l.invoice_id
-        left join app.service_types st on lower(st.name) = lower(trim(l.service_type))
-        left join app.sites sp on sp.id = ${SPECIAL_SITE_ID}
+       where i.id in (select orig from ln where orig is not null) and l.net_cents > 0
+    ), sp as (
+      select x.*, round(x.net_cents::numeric * x.w / sum(x.w) over (partition by x.lid))::bigint as r,
+             row_number() over (partition by x.lid order by x.w desc, x.s) as rn
+        from (select ln.*, ol.site, ol.w, ol.s, ol.e from ln join ol on ol.orig = ln.orig
+               where ln.site0 is null or ln.ps is null) x
+    ), parts as (
+      select lid, invoice_id, legacy, number, kind, issue_date, customer_id, sc, coalesce(site0, site) as site0,
+             r + case when rn = 1 then net_cents - sum(r) over (partition by lid) else 0 end as net_cents,
+             coalesce(ps, s) as s, case when ps is not null then pe else e end as e
+        from sp
+      union all
+      select lid, invoice_id, legacy, number, kind, issue_date, customer_id, sc, site0, net_cents,
+             coalesce(ps, issue_date), coalesce(pe, ps, issue_date)
+        from ln where not exists (select 1 from sp where sp.lid = ln.lid)
+    ), fb as (
+      -- Rückfall je Kunde: Objekt „Allgemein“, sonst das einzige Objekt
+      select g.customer_id,
+             (array_agg(g.id order by g.active desc, g.site_no)
+               filter (where g.name in ('Allgemein', 'Allgemein (aus Fortytools)')))[1] as allg,
+             case when count(*) = 1 then min(g.id::text)::uuid end as only_site
+        from app.sites g group by g.customer_id
+    ), src as (
+      select case when p.sc and sp0.id is not null then sp0.id else coalesce(p.site0, fb.allg, fb.only_site) end as site_id,
+             p.customer_id, p.invoice_id, p.legacy, p.number, p.kind, p.issue_date, p.net_cents, p.s, p.e
+        from parts p left join fb on fb.customer_id = p.customer_id
+        left join app.sites sp0 on sp0.id = ${SPECIAL_SITE_ID}
     ), norm as (
       select site_id, customer_id, invoice_id, legacy, number, kind, issue_date, net_cents, s, greatest(e, s) as e from src
        where s <= ${to}::date and greatest(e, s) >= ${from}::date
@@ -315,7 +356,9 @@ export function revenueLines(sql: Sql, from: string, to: string) {
 }
 
 /** Objektleitung (Alias e): Tag „Objektleitung“ oder Benutzer der Rolle Objektleitung. */
-export const LEAD_SQL = (sql: Sql) => sql`(exists (select 1 from unnest(e.tags) tg where lower(tg) like 'objektleit%')
+export const LEAD_SQL = (
+  sql: Sql,
+) => sql`(exists (select 1 from unnest(e.tags) tg where lower(tg) like 'objektleit%')
   or exists (select 1 from app.profiles pr where pr.employee_id = e.id and pr.role = 'objektleitung'))`;
 
 export async function siteCosting(

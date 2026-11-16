@@ -19,6 +19,21 @@ import { type Cents, parseEuro, parseQuantity } from '../domain/money/money.js';
 import { addDays } from '../domain/time/holidays.js';
 import { monthRange, siteCostDetails, siteCosting } from '../services/costing.js';
 import { laborFromPayroll } from '../services/costing-labor.js';
+import {
+  contractGroupOfSite,
+  deleteContractGroup,
+  listContractGroups,
+  saveContractGroup,
+} from '../services/contract-groups.js';
+import {
+  type CostGroup,
+  costView,
+  GROUP_CSS,
+  GROUP_JS,
+  groupCostRows,
+  viewHref,
+  ViewChips,
+} from './costing-groups.js';
 import { getPlanCostRates, planCosting, savePlanCostRates } from '../services/plan-costing.js';
 import { PAY_BAND_LABEL } from '../domain/hr/employer-cost.js';
 import {
@@ -3467,6 +3482,190 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
 
   // ================================================================== Plan-Kalkulation (Soll)
 
+  // ------------------------------------------------------------------ Auftragsgruppen (Ahmed 16.11.)
+  app.get('/auswertungen/auftragsgruppen', async (c) => {
+    const groups = await listContractGroups(sql);
+    const names = new Map(
+      (
+        await sql<{ id: string; site_no: string; name: string }[]>`
+          select id, site_no, name from app.sites where id = any(${groups.flatMap((g) => g.site_ids)}::uuid[])`
+      ).map((x) => [x.id, `${x.site_no} · ${x.name}`]),
+    );
+    const m = todayBerlin().slice(0, 7);
+    return page(
+      c,
+      'Auftragsgruppen',
+      'auswertungen',
+      <>
+        <PageHead title="Auftragsgruppen" crumbs={[['Nachkalkulation', '/auswertungen/nachkalkulation']]} />
+        <p class="small mut" style="margin-top:-6px;max-width:760px">
+          Mehrere Objekte als einen Auftrag bewerten – z. B. alle Lose einer Ausschreibung. In Nach- und
+          Plan-Kalkulation unter „Ansicht: je Auftragsgruppe“ steht je Gruppe eine Summenzeile mit
+          Deckungsbeitrag und Marge, die Objekte sind aufklappbar. Jedes Objekt ist höchstens in einer Gruppe.
+        </p>
+        <div class="actions">
+          <a class="btn" href={`/auswertungen/auftragsgruppen/${randomUUID()}`}>
+            + Auftragsgruppe anlegen
+          </a>
+          <a class="btn sec" href={`/auswertungen/nachkalkulation?von=${m}&bis=${m}&ansicht=gruppe`}>
+            Nachkalkulation je Gruppe
+          </a>
+          <a class="btn sec" href={`/auswertungen/plankalkulation?von=${m}&bis=${m}&ansicht=gruppe`}>
+            Plan-Kalkulation je Gruppe
+          </a>
+        </div>
+        {!groups.length ? (
+          <div class="empty">Noch keine Auftragsgruppe angelegt.</div>
+        ) : (
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Auftragsgruppe</th>
+                  <th>Ausschreibung</th>
+                  <th>Objekte</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => (
+                  <tr>
+                    <td>
+                      <a href={`/auswertungen/auftragsgruppen/${g.id}`}>
+                        <b>{g.name}</b>
+                      </a>
+                      {g.note && <div class="small mut">{g.note}</div>}
+                    </td>
+                    <td class="small">
+                      {g.tender_id ? <a href={`/ausschreibungen/${g.tender_id}`}>{g.tender_title}</a> : '–'}
+                    </td>
+                    <td class="small">
+                      {g.site_ids.length} ·{' '}
+                      {g.site_ids
+                        .slice(0, 4)
+                        .map((x) => names.get(x) ?? '')
+                        .join(', ')}
+                      {g.site_ids.length > 4 ? ` +${g.site_ids.length - 4}` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>,
+    );
+  });
+
+  app.get(`/auswertungen/auftragsgruppen/:id{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const [groups, sites, tenders] = await Promise.all([
+      listContractGroups(sql),
+      sql<{ site_id: string; site_no: string; site_name: string; group_id: string | null }[]>`
+        select s.id as site_id, s.site_no, s.name || ' – ' || cu.name as site_name, gs.group_id
+          from app.sites s join app.customers cu on cu.id = s.customer_id
+          left join app.contract_group_sites gs on gs.site_id = s.id
+         where (s.active or gs.group_id = ${id}) and not coalesce(cu.is_internal, false)
+         order by cu.name, s.site_no`,
+      sql<
+        { id: string; title: string }[]
+      >`select id, title from app.tenders order by created_at desc limit 300`,
+    ]);
+    const g = groups.find((x) => x.id === id);
+    const m = todayBerlin().slice(0, 7);
+    // Objekte anderer Gruppen nicht anbieten
+    const free = sites.filter((x) => !x.group_id || x.group_id === id);
+    return page(
+      c,
+      g ? g.name : 'Auftragsgruppe anlegen',
+      'auswertungen',
+      <>
+        <PageHead
+          title={g ? g.name : 'Auftragsgruppe anlegen'}
+          crumbs={[['Auftragsgruppen', '/auswertungen/auftragsgruppen']]}
+        />
+        {g && (
+          <div class="actions" style="margin-top:-8px">
+            <a class="btn sec" href={`/auswertungen/nachkalkulation?von=${m}&bis=${m}&ansicht=gruppe`}>
+              Nachkalkulation
+            </a>
+            <a class="btn sec" href={`/auswertungen/plankalkulation?von=${m}&bis=${m}&ansicht=gruppe`}>
+              Plan-Kalkulation
+            </a>
+          </div>
+        )}
+        <form method="post" action={`/auswertungen/auftragsgruppen/${id}`} class="card">
+          <div class="grid">
+            <label for="cg-name">Name</label>
+            <input
+              id="cg-name"
+              name="name"
+              required
+              value={g?.name ?? ''}
+              placeholder="z. B. Ausschreibung Gemeinde 2026"
+            />
+            <label for="cg-tender">Ausschreibung (optional)</label>
+            <select id="cg-tender" name="tender_id">
+              <option value="">– keine –</option>
+              {tenders.map((t) => (
+                <option value={t.id} selected={t.id === g?.tender_id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+            <label for="cg-note">Notiz</label>
+            <textarea id="cg-note" name="note" rows={2}>
+              {g?.note ?? ''}
+            </textarea>
+          </div>
+          <h3>Objekte</h3>
+          <SiteMulti sites={free} chosen={g?.site_ids ?? []} />
+          <p class="small mut">Objekte, die schon in einer anderen Auftragsgruppe sind, stehen hier nicht.</p>
+          <div class="form-foot">
+            <button class="btn">Speichern</button>
+            <a class="btn sec" href="/auswertungen/auftragsgruppen">
+              Abbrechen
+            </a>
+          </div>
+        </form>
+        {g && (
+          <form
+            method="post"
+            action={`/auswertungen/auftragsgruppen/${id}/loeschen`}
+            data-confirm="Auftragsgruppe löschen? Die Objekte bleiben unverändert."
+            style="margin-top:12px"
+          >
+            <button class="btn danger sm">Auftragsgruppe löschen</button>
+          </form>
+        )}
+      </>,
+    );
+  });
+
+  app.post(`/auswertungen/auftragsgruppen/:id{${UUID}}`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const raw = b['objekt'];
+    const siteIds = (Array.isArray(raw) ? raw : raw ? [raw] : [])
+      .map(String)
+      .filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    try {
+      await saveContractGroup(
+        sql,
+        { id, name: str(b, 'name') ?? '', note: str(b, 'note'), tenderId: str(b, 'tender_id'), siteIds },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (!(e instanceof BusinessError)) throw e;
+      return back(c, `/auswertungen/auftragsgruppen/${id}`, { fehler: e.message });
+    }
+    return back(c, '/auswertungen/auftragsgruppen', { ok: 'Auftragsgruppe gespeichert.' });
+  });
+
+  app.post(`/auswertungen/auftragsgruppen/:id{${UUID}}/loeschen`, async (c) => {
+    await deleteContractGroup(sql, c.req.param('id'), c.get('actor'));
+    return back(c, '/auswertungen/auftragsgruppen', { ok: 'Auftragsgruppe gelöscht.' });
+  });
+
   app.get('/auswertungen/plankalkulation', async (c) => {
     const curM = todayBerlin().slice(0, 7);
     const nextM = addDays(`${addDays(`${curM}-01`, 32).slice(0, 7)}-01`, 0).slice(0, 7);
@@ -3478,6 +3677,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const fObjekte = (c.req.queries('objekt') ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
     const fOl = c.req.query('ol') ?? '';
     const fVerlust = c.req.query('verlust') === '1';
+    const view = costView(c.req.query('ansicht'));
+    const groupOf =
+      view === 'gruppe' ? await contractGroupOfSite(sql) : new Map<string, { id: string; name: string }>();
     const [plan, acct] = await Promise.all([
       planCosting(sql, { from: von, to: bis }),
       getAccountingSettings(sql),
@@ -3530,6 +3732,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       ...fObjekte.map((o) => `objekt=${o}`),
       fOl && `ol=${fOl}`,
       fVerlust && 'verlust=1',
+      view !== 'objekt' && `ansicht=${view}`,
     ]
       .filter(Boolean)
       .join('&');
@@ -3578,6 +3781,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <form method="get" action="/auswertungen/plankalkulation" class="actions" style="margin-top:0">
           <input type="hidden" name="von" value={von} />
           <input type="hidden" name="bis" value={bis} />
+          {view !== 'objekt' && <input type="hidden" name="ansicht" value={view} />}
           <span style="flex:0 0 200px;max-width:200px">
             <MonthSelect name="monat" value={von === bis ? von : ''} label="Monat" autosubmit future />
           </span>
@@ -3633,11 +3837,19 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             <div class="s">{rev !== 0n ? pct(Number((margin * 10000n) / rev)) : '–'} vom Erlös</div>
           </div>
         </div>
+        <style dangerouslySetInnerHTML={{ __html: GROUP_CSS }} />
+        <ViewChips view={view} href={(v) => viewHref(c.req.url, v, von, bis)} />
         <div class="tbl">
-          <table>
+          <table data-nosort={view !== 'objekt' ? '' : undefined}>
             <thead>
               <tr>
-                <th>Objekt</th>
+                <th>
+                  {view === 'kunde'
+                    ? 'Kunde / Objekt'
+                    : view === 'gruppe'
+                      ? 'Auftragsgruppe / Objekt'
+                      : 'Objekt'}
+                </th>
                 <th class="r">Erlös (Plan)</th>
                 <th class="r">Std. (Plan)</th>
                 <th class="r">Lohn brutto</th>
@@ -3689,54 +3901,115 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   </td>
                 </tr>
               )}
-              {rows.map((r) => (
-                <tr>
-                  <td>
-                    <a href={`/objekte/${r.site_id}`}>
-                      {r.site_no} · {r.site_name}
-                    </a>
-                    <div class="small mut">{r.customer_name}</div>
-                    <a
-                      class="small"
-                      href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
-                    >
-                      ▸ Kosten aufschlüsseln
-                    </a>
-                    {r.revenue === 0n && r.labor + r.subcontractor + r.material > 0n && (
-                      <div class="cost-flag">Kosten ohne Erlös</div>
-                    )}
-                    {r.revenue > 0n && r.minutes === 0 && r.subcontractor === 0n && (
-                      <div class="cost-flag">keine Einsätze geplant</div>
-                    )}
-                  </td>
-                  <td class="r">{eur(r.revenue)}</td>
-                  <td class="r">{hm(r.minutes)}</td>
-                  <td class="r">{eur(r.gross)}</td>
-                  <td class="r">{eur(r.employer)}</td>
-                  <td class="r">{eur(r.subcontractor)}</td>
-                  <td class="r">{eur(r.material)}</td>
-                  <td class={r.margin < 0n ? 'r neg' : 'r'}>
-                    <b>{eur(r.margin)}</b>
-                  </td>
-                  <td class="r">
-                    {r.margin_bp === null ? (
-                      <span class="mut">–</span>
-                    ) : (
-                      <span
-                        class={`badge ${r.margin_bp < 0 ? 'err' : r.margin_bp < acct.target_margin_bp ? 'warn' : 'ok'}`}
+              {(view === 'objekt'
+                ? rows.map((r) => ({
+                    r,
+                    child: undefined as string | undefined,
+                    head: null as null | CostGroup<(typeof rows)[number]>,
+                  }))
+                : groupCostRows(rows, view, groupOf).flatMap((g) => [
+                    { r: g.rows[0]!, child: undefined, head: g },
+                    ...g.rows.map((r) => ({ r, child: g.key, head: null })),
+                  ])
+              ).map(({ r, child, head }) =>
+                head ? (
+                  (() => {
+                    const gs = (f: (x: (typeof rows)[number]) => bigint) =>
+                      head.rows.reduce((a, x) => a + f(x), 0n);
+                    const gRev = gs((x) => x.revenue);
+                    const gMargin = gs((x) => x.margin);
+                    const gBp = gRev > 0n ? Number((gMargin * 10000n) / gRev) : null;
+                    const gMin = head.rows.reduce((a, x) => a + x.minutes, 0);
+                    return (
+                      <tr class="grp-head nosort" data-grp-head={head.key}>
+                        <td>
+                          <b>{head.name}</b>{' '}
+                          <span class="small mut">
+                            · {anz(head.rows.length, 'Objekt', 'Objekte')}
+                            {head.href && (
+                              <>
+                                {' · '}
+                                <a href={head.href}>öffnen</a>
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td class="r">
+                          <b>{eur(gRev)}</b>
+                        </td>
+                        <td class="r">{hm(gMin)}</td>
+                        <td class="r">{eur(gs((x) => x.gross))}</td>
+                        <td class="r">{eur(gs((x) => x.employer))}</td>
+                        <td class="r">{eur(gs((x) => x.subcontractor))}</td>
+                        <td class="r">{eur(gs((x) => x.material))}</td>
+                        <td class={gMargin < 0n ? 'r neg' : 'r'}>
+                          <b>{eur(gMargin)}</b>
+                        </td>
+                        <td class="r">
+                          {gBp === null ? (
+                            <span class="mut">–</span>
+                          ) : (
+                            <span
+                              class={`badge ${gBp < 0 ? 'err' : gBp < acct.target_margin_bp ? 'warn' : 'ok'}`}
+                            >
+                              {pct(gBp)}
+                            </span>
+                          )}
+                        </td>
+                        <td class="r">{gMin > 0 && gRev > 0n ? eur((gRev * 60n) / BigInt(gMin)) : '–'}</td>
+                      </tr>
+                    );
+                  })()
+                ) : (
+                  <tr class={child ? 'grp-child' : undefined} data-grp={child} hidden={!!child}>
+                    <td>
+                      <a href={`/objekte/${r.site_id}`}>
+                        {r.site_no} · {r.site_name}
+                      </a>
+                      <div class="small mut">{r.customer_name}</div>
+                      <a
+                        class="small"
+                        href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${von}&bis=${bis}`}
                       >
-                        {pct(r.margin_bp)}
-                      </span>
-                    )}
-                  </td>
-                  <td class="r">
-                    {r.minutes > 0 && r.revenue > 0n ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}
-                  </td>
-                </tr>
-              ))}
+                        ▸ Kosten aufschlüsseln
+                      </a>
+                      {r.revenue === 0n && r.labor + r.subcontractor + r.material > 0n && (
+                        <div class="cost-flag">Kosten ohne Erlös</div>
+                      )}
+                      {r.revenue > 0n && r.minutes === 0 && r.subcontractor === 0n && (
+                        <div class="cost-flag">keine Einsätze geplant</div>
+                      )}
+                    </td>
+                    <td class="r">{eur(r.revenue)}</td>
+                    <td class="r">{hm(r.minutes)}</td>
+                    <td class="r">{eur(r.gross)}</td>
+                    <td class="r">{eur(r.employer)}</td>
+                    <td class="r">{eur(r.subcontractor)}</td>
+                    <td class="r">{eur(r.material)}</td>
+                    <td class={r.margin < 0n ? 'r neg' : 'r'}>
+                      <b>{eur(r.margin)}</b>
+                    </td>
+                    <td class="r">
+                      {r.margin_bp === null ? (
+                        <span class="mut">–</span>
+                      ) : (
+                        <span
+                          class={`badge ${r.margin_bp < 0 ? 'err' : r.margin_bp < acct.target_margin_bp ? 'warn' : 'ok'}`}
+                        >
+                          {pct(r.margin_bp)}
+                        </span>
+                      )}
+                    </td>
+                    <td class="r">
+                      {r.minutes > 0 && r.revenue > 0n ? eur((r.revenue * 60n) / BigInt(r.minutes)) : '–'}
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>
+        {view !== 'objekt' && <script dangerouslySetInnerHTML={{ __html: GROUP_JS }} />}
         <details class="card" style="margin-top:14px">
           <summary>
             <b>Mitarbeitende im Plan ({employees.length})</b> – Entgelt je Person und Monat, Einstufung
@@ -4176,6 +4449,9 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
     const fObjekt = fObjekte.length === 1 ? fObjekte[0]! : '';
     const fOl = c.req.query('ol') ?? '';
     const fVerlust = c.req.query('verlust') === '1';
+    const view = costView(c.req.query('ansicht'));
+    const groupOf =
+      view === 'gruppe' ? await contractGroupOfSite(sql) : new Map<string, { id: string; name: string }>();
     const filtered = !!(fKunde || fObjekte.length || fOl);
     const withData = rows.filter(
       (r) =>
@@ -4230,8 +4506,8 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       const [a, b] = [von, bis].map((x) => Number(x.slice(0, 4)) * 12 + Number(x.slice(5, 7)));
       return b! - a! + 1;
     })();
-    const siteRow = (r: (typeof rows)[number]) => (
-      <tr>
+    const siteRow = (r: (typeof rows)[number], child?: string) => (
+      <tr class={child ? 'grp-child' : undefined} data-grp={child} hidden={!!child}>
         <td>
           <a href={r.customer_only ? `/kunden/${r.site_id}` : `/objekte/${r.site_id}`}>
             {r.site_no} · {r.site_name}
@@ -4352,6 +4628,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             ...fObjekte.map((o) => `objekt=${o}`),
             fOl && `ol=${fOl}`,
             fVerlust && 'verlust=1',
+            view !== 'objekt' && `ansicht=${view}`,
           ]
             .filter(Boolean)
             .join('&');
@@ -4385,6 +4662,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <form method="get" action="/auswertungen/nachkalkulation" class="actions" style="margin-top:0">
           <input type="hidden" name="von" value={von} />
           <input type="hidden" name="bis" value={bis} />
+          {view !== 'objekt' && <input type="hidden" name="ansicht" value={view} />}
           <span style="flex:0 0 200px;max-width:200px">
             <MonthSelect
               name="monat"
@@ -4479,11 +4757,19 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </div>
           </div>
         </div>
+        <style dangerouslySetInnerHTML={{ __html: GROUP_CSS }} />
+        <ViewChips view={view} href={(v) => viewHref(c.req.url, v, von, bis)} />
         <div class="tbl">
-          <table>
+          <table data-nosort={view !== 'objekt' ? '' : undefined}>
             <thead>
               <tr>
-                <th>Kostenstelle / Objekt</th>
+                <th>
+                  {view === 'kunde'
+                    ? 'Kunde / Objekt'
+                    : view === 'gruppe'
+                      ? 'Auftragsgruppe / Objekt'
+                      : 'Kostenstelle / Objekt'}
+                </th>
                 <th class="r">Erlös</th>
                 <th class="r">Stunden Plan / Ist</th>
                 <th class="r">Lohn</th>
@@ -4535,7 +4821,63 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                   </td>
                 </tr>
               )}
-              {active.map(siteRow)}
+              {view === 'objekt'
+                ? active.map((r) => siteRow(r))
+                : groupCostRows(active, view, groupOf).flatMap((g) => {
+                    const gs = (f: (r: (typeof rows)[number]) => bigint) =>
+                      g.rows.reduce((a, r) => a + f(r), 0n);
+                    const gRev = gs((r) => r.revenue);
+                    const gMargin = gs((r) => r.margin);
+                    const gBp = gRev > 0n ? Number((gMargin * 10000n) / gRev) : null;
+                    const gIst = g.rows.reduce((a, r) => a + r.actual_minutes, 0);
+                    return [
+                      <tr class="grp-head nosort" data-grp-head={g.key}>
+                        <td>
+                          <b>{g.name}</b>{' '}
+                          <span class="small mut">
+                            · {anz(g.rows.length, 'Objekt', 'Objekte')}
+                            {g.href && (
+                              <>
+                                {' · '}
+                                <a href={g.href}>öffnen</a>
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td class="r">
+                          <b>{euro(gRev)}</b>
+                        </td>
+                        <td class="r">
+                          <span class="hh">
+                            <span class="hh-l">Plan</span>{' '}
+                            {hm(g.rows.reduce((a, r) => a + r.planned_minutes, 0))}
+                          </span>
+                          <span class="hh hh-ist">
+                            <span class="hh-l">Ist</span> {hm(gIst)}
+                          </span>
+                        </td>
+                        <td class="r">{euro(gs((r) => r.labor))}</td>
+                        <td class="r">{euro(gs((r) => r.material))}</td>
+                        <td class="r">{euro(gs((r) => r.equipment))}</td>
+                        <td class="r">{euro(gs((r) => r.subcontractor))}</td>
+                        <td class="r">{euro(gs((r) => r.other))}</td>
+                        <td class={gMargin < 0n ? 'r neg' : 'r'}>
+                          <b>{euro(gMargin)}</b>
+                        </td>
+                        <td class="r">
+                          {gBp === null ? (
+                            <span class="mut">–</span>
+                          ) : (
+                            <span class={`badge ${gBp < 0 ? 'err' : gBp < targetBp ? 'warn' : 'ok'}`}>
+                              {pct(gBp)}
+                            </span>
+                          )}
+                        </td>
+                        <td class="r">{gIst > 0 && gRev > 0n ? euro((gRev * 60n) / BigInt(gIst)) : '–'}</td>
+                      </tr>,
+                      ...g.rows.map((r) => siteRow(r, g.key)),
+                    ];
+                  })}
               {general.length > 0 && (
                 <tr>
                   <td colspan={11} class="small mut" style="background:var(--head)">
@@ -4596,6 +4938,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             </tbody>
           </table>
         </div>
+        {view !== 'objekt' && <script dangerouslySetInnerHTML={{ __html: GROUP_JS }} />}
         {fObjekt && (
           <div class="card" id="kosten">
             <h3>Eingangsrechnungen dieses Objekts im Zeitraum</h3>

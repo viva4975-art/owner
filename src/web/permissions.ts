@@ -226,6 +226,7 @@ export const PERM_GROUPS: { label: string; areas: PermArea[] }[] = [
           '/auswertungen/kostenstellen',
           '/auswertungen/stundensaetze',
           '/auswertungen/objektleitung',
+          '/auswertungen/auftragsgruppen',
         ],
       },
       {

@@ -5722,3 +5722,11 @@ Testadresse.
   Monatspauschale zählt nicht doppelt. „Kosten aufschlüsseln“ listet die Rechnungen. Test in `plan-costing.db.test.ts`.
 - 2026-11-16: Nachkalkulation: auch **Ist- und Plan-Stunden** von Objektleitungen zählen an Kunden-Objekten nicht mehr (Lohn
   war schon raus; gilt für alle Monate, weil immer neu gerechnet wird; `LEAD_SQL` in `costing.ts`).
+- 2026-11-16: **Nach- und Plan-Kalkulation: drei Ansichten + Auftragsgruppen** (Ahmed: „ist der Gesamtauftrag einer
+  Ausschreibung bei einem guten Deckungsbeitrag?“): über der Tabelle „Ansicht: je Objekt / je Kunde / je
+  Auftragsgruppe“ (`?ansicht=`, Filter und Zeitraum bleiben). Je Kunde bzw. Gruppe eine Summenzeile (Erlös, Stunden,
+  Kosten, Deckungsbeitrag, Marge, Erlös/Std.), Objekte darunter per Klick aufklappbar, „Alle aufklappen“
+  (`src/web/costing-groups.tsx`). **Auftragsgruppen** (Nachkalkulation → „Auftragsgruppen verwalten“,
+  `/auswertungen/auftragsgruppen`, Recht wie Nachkalkulation): Name, optional Ausschreibung, Notiz, Objekte; jedes Objekt
+  höchstens in einer Gruppe, Objekte ohne Gruppe unter „ohne Auftragsgruppe“. Tabellen `app.contract_groups`,
+  `app.contract_group_sites` (Migration `20270127000001`), `src/services/contract-groups.ts`. PDF-Export bleibt je Objekt.

@@ -8,7 +8,13 @@ import {
 } from '../domain/hr/employer-cost.js';
 import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
-import { monthRange, revenueLines, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
+import {
+  afterExecutionEstimates,
+  monthRange,
+  revenueLines,
+  SPECIAL_SITE_ID,
+  subcontractEstimates,
+} from './costing.js';
 import { BusinessError } from './errors.js';
 import { laborFromPayroll } from './costing-labor.js';
 
@@ -405,17 +411,9 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     for (const e of await subcontractEstimates(sql, start, end, undefined, { plan: true }))
       nuEst.set(`${e.site_id}|${m}`, (nuEst.get(`${e.site_id}|${m}`) ?? 0n) + BigInt(e.cost));
   }
-  for (const o of await sql<{ site_id: string; mon: string; cost: bigint }[]>`
-    select s.site_id, to_char(coalesce(s.valid_to, s.valid_from), 'YYYY-MM') as mon,
-           coalesce((select p.price_cents from app.subcontract_prices p where p.subcontract_id = s.id
-                      order by p.valid_from_month desc limit 1), s.price_cents)::bigint as cost
-      from app.subcontracts s
-     where s.status in ('erteilt', 'beendet') and s.site_id is not null and s.price_cents is not null
-       and s.frequency not in ('monatlich', 'woechentlich')
-       and s.billing in ('pauschale_einsatz', 'pauschale_monat')
-       and not exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
-       and coalesce(s.valid_to, s.valid_from) between ${from} and ${to}`)
-    nuEst.set(`${o.site_id}|${o.mon}`, (nuEst.get(`${o.site_id}|${o.mon}`) ?? 0n) + BigInt(o.cost));
+  // Bestellungen nach Ausführung (einmalig, quartalsweise …), auch Sammelbestellungen (Ahmed 16.11.)
+  for (const [k, v] of await afterExecutionEstimates(sql, months, { plan: true }))
+    nuEst.set(k, (nuEst.get(k) ?? 0n) + v);
   const invRows = await sql<
     { id: string; invoice_no: string; supplier: string; site_id: string; mon: string; net: bigint }[]
   >`

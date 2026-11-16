@@ -5743,3 +5743,11 @@ Testadresse.
   verteilt, Rest-Cent an die größte (`revenueLines` in `costing.ts`; gilt für Nachkalkulation, „Kosten aufschlüsseln“,
   Ø Stundensätze, Plan-Kalkulation). Nebenbei: Rückfall-Objekt je Kunde als Join statt Unterabfrage je Zeile (sonst
   startete Postgres JIT, 1,4 s statt 3 ms). Test in `costing-detail.db.test.ts`.
+- 2026-11-16: **NU-Bestellungen nach Ausführung in Plan- und Nachkalkulation, auch Sammelbestellungen** (Ahmed, Stadt
+  Garching/Planegg: „Kosten vom Sub werden nicht berechnet, Rechnung kommt noch“): `afterExecutionEstimates` in `costing.ts`
+  schätzt Bestellungen einmalig/quartalsweise/halbjährlich/jährlich (Pauschale je Einsatz, Pauschale, je m²) wie das
+  Abrechnungsblatt: einmalige im Monat des Endes (sonst des Beginns), Turnus im letzten Monat jedes Zeitraums ab Beginn
+  bzw. im Monat des Endes; **Sammelbestellungen mit dem Preis je Objekt** (`sammelMonthCost`) – die fehlten bisher ganz.
+  Plan-Kalkulation: immer laut Bestellung, höhere eingegangene Rechnung geht vor. Nachkalkulation (Ist): Schätzung nur,
+  solange zur Bestellung für diesen Zeitraum keine Eingangsrechnung erfasst ist und am Objekt im Monat keine NU-Rechnung
+  gebucht ist (sonst zählt die Rechnung). Test in `plan-costing.db.test.ts`.

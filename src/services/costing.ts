@@ -177,7 +177,6 @@ export async function subcontractEstimates(
        and exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
        and (s.billing in ('pauschale_monat', 'umsatz') or (s.billing = 'qm' and s.frequency = 'monatlich'))
        and ${siteId ? sql`exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id and x.site_id = ${siteId})` : sql`true`}`;
-  if (!sammel.length) return base;
   const booked = new Set(
     opts.plan
       ? []
@@ -207,7 +206,116 @@ export async function subcontractEstimates(
       e.months.add(r.mon);
       acc.set(x.site_id, e);
     }
+  // Ist: Bestellungen nach Ausführung ohne erfasste Rechnung (Ahmed 16.11.), nicht im Plan-Aufruf (dort eigener Aufruf)
+  if (!opts.plan) {
+    const months: string[] = [];
+    for (let m = from.slice(0, 7); m <= to.slice(0, 7);) {
+      months.push(m);
+      const t = Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7));
+      m = `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+    }
+    for (const [k, v] of await afterExecutionEstimates(sql, months, siteId ? { siteId } : {})) {
+      const [site, mon] = k.split('|') as [string, string];
+      if (booked.has(k) || (siteId && site !== siteId)) continue;
+      const e = acc.get(site) ?? { cost: 0n, months: new Set<string>() };
+      e.cost += v;
+      e.months.add(mon);
+      acc.set(site, e);
+    }
+  }
   return [...acc].map(([site_id, e]) => ({ site_id, cost: e.cost, months: e.months.size }));
+}
+
+/**
+ * Geschätzte NU-Kosten von Bestellungen nach Ausführung (einmalig, quartalsweise, halbjährlich, jährlich) je Objekt und
+ * Monat, wie im Abrechnungsblatt: einmalige im Monat des Endes (sonst des Beginns), Turnus im letzten Monat jedes
+ * Zeitraums ab Beginn bzw. im Monat des Endes. Sammelbestellungen mit dem Betrag je Objekt (Ahmed 16.11.: „Sub hat
+ * noch keine Rechnung gestellt, aber das kommt noch“). Ist (plan = false): entfällt, sobald zur Bestellung eine
+ * Eingangsrechnung für diesen Zeitraum erfasst ist (dann zählt die Rechnung). Schlüssel `${site_id}|JJJJ-MM`.
+ */
+export async function afterExecutionEstimates(
+  sql: Sql,
+  months: string[],
+  opts: { plan?: boolean; siteId?: string } = {},
+): Promise<Map<string, bigint>> {
+  const out = new Map<string, bigint>();
+  if (!months.length) return out;
+  const from = `${months[0]}-01`;
+  const to = monthRange(months[months.length - 1]!).to;
+  const STEP: Record<string, number> = { einmalig: 0, quartalsweise: 3, halbjaehrlich: 6, jaehrlich: 12 };
+  const orders = await sql<
+    {
+      id: string;
+      site_id: string | null;
+      billing: string;
+      frequency: string;
+      margin_bp: number | null;
+      valid_from: string;
+      valid_to: string | null;
+      price_cents: bigint;
+      sammel: boolean;
+    }[]
+  >`
+    select s.id, s.site_id, s.billing, s.frequency, s.margin_bp, s.valid_from::text, s.valid_to::text, s.price_cents,
+           exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id) as sammel
+      from app.subcontracts s
+     where s.status in ('erteilt', 'beendet') and s.frequency not in ('monatlich', 'woechentlich')
+       and s.valid_from <= ${to}::date and (s.valid_to is null or s.valid_to >= ${from}::date)
+       and s.billing in ('pauschale_einsatz', 'pauschale_monat', 'qm')
+       and ${opts.siteId ? sql`(s.site_id = ${opts.siteId} or exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id and x.site_id = ${opts.siteId}))` : sql`true`}`;
+  // Ist: erfasste Eingangsrechnungen je Bestellung (Leistungsmonat bzw. Monat der Zuordnung)
+  const billed = opts.plan
+    ? []
+    : await sql<{ id: string; mon: string }[]>`
+        select x.subcontract_id as id, to_char(coalesce(x.period_month, i.service_month, i.invoice_date), 'YYYY-MM') as mon
+          from app.incoming_invoice_subcontracts x join app.incoming_invoices i on i.id = x.incoming_invoice_id
+         where i.status in ('erfasst', 'freigegeben', 'bezahlt')
+        union
+        select i.subcontract_id, to_char(coalesce(i.service_month, i.invoice_date), 'YYYY-MM')
+          from app.incoming_invoices i
+         where i.subcontract_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')`;
+  const addM = (m: string, n: number) => {
+    const t = Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1 + n;
+    return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+  };
+  for (const o of orders) {
+    // Sammel-Pauschalen je Monat zählt subcontractEstimates schon jeden Monat; einzelne je m² ohne Fläche nicht
+    if (o.sammel && o.billing === 'pauschale_monat') continue;
+    if (!o.sammel && (o.billing === 'qm' || !o.site_id)) continue;
+    const step = STEP[o.frequency] ?? 0;
+    const startM = o.valid_from.slice(0, 7);
+    const endMonth = (o.valid_to ?? o.valid_from).slice(0, 7);
+    const mine = billed.filter((b) => b.id === o.id).map((b) => b.mon);
+    for (const m of months) {
+      if (m < startM || (o.valid_to && m > endMonth)) continue;
+      const diff =
+        (Number(m.slice(0, 4)) - Number(startM.slice(0, 4))) * 12 +
+        Number(m.slice(5, 7)) -
+        Number(startM.slice(5, 7));
+      const due = step === 0 ? endMonth === m : (diff + 1) % step === 0 || (!!o.valid_to && endMonth === m);
+      if (!due) continue;
+      // Zeitraum dieser Ausführung: einmalig = ganze Laufzeit, Turnus = die letzten step Monate
+      const winFrom = step === 0 ? startM : addM(m, -(step - 1));
+      if (mine.some((b) => b >= winFrom && b <= addM(m, 2))) continue;
+      const [p] = await sql<{ price: bigint }[]>`
+        select coalesce((select p.price_cents from app.subcontract_prices p
+                          where p.subcontract_id = ${o.id} and p.valid_from_month <= ${m + '-01'}::date
+                          order by p.valid_from_month desc limit 1), ${o.price_cents}::bigint)::bigint as price`;
+      const price = BigInt(p?.price ?? o.price_cents ?? 0n);
+      const parts = o.sammel
+        ? await sammelMonthCost(
+            sql,
+            { id: o.id, billing: o.billing, price_cents: price, margin_bp: o.margin_bp },
+            m,
+          )
+        : [{ site_id: o.site_id!, cost: price }];
+      for (const x of parts) {
+        if (!x.cost || (opts.siteId && x.site_id !== opts.siteId)) continue;
+        out.set(`${x.site_id}|${m}`, (out.get(`${x.site_id}|${m}`) ?? 0n) + BigInt(x.cost));
+      }
+    }
+  }
+  return out;
 }
 
 /** Internes Objekt „Sonderreinigung“ (Migration 20261124000002) – Erlös der Leistungsarten „Sonderreinigung“. */

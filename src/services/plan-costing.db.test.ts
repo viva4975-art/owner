@@ -135,6 +135,40 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     expect(c.rows.find((x) => x.site_id === s4)).toBeUndefined();
   });
 
+  it('Sammelbestellung je Einsatz: Preis je Objekt im Plan und im Ist, bis die Rechnung da ist', async () => {
+    const a1 = randomUUID();
+    const a2 = randomUUID();
+    const sup = randomUUID();
+    const sc = randomUUID();
+    await sql`insert into app.sites (id, customer_id, site_no, name)
+              values (${a1}, ${DEMO.company}, '2990281', 'Sammel 1'), (${a2}, ${DEMO.company}, '2990282', 'Sammel 2')`;
+    await sql`insert into app.suppliers (id, supplier_no, name, kind) values (${sup}, '79892', 'Glas Sub GmbH', 'nachunternehmer')`;
+    await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents,
+                valid_from, status, created_by)
+              values (${sc}, 'BE-2026-0992', ${sup}, ${a1}, 'Glasreinigung', 'einmalig', 'pauschale_einsatz', 0,
+                      '2026-11-03', 'erteilt', 't')`;
+    await sql`insert into app.subcontract_sites (subcontract_id, site_id, share_cents, created_by)
+              values (${sc}, ${a1}, 60000, 't'), (${sc}, ${a2}, 100000, 't')`;
+    const p = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(p.rows.find((x) => x.site_id === a1)!.subcontractor).toBe(60000n);
+    expect(p.rows.find((x) => x.site_id === a2)!.subcontractor).toBe(100000n);
+    const { siteCosting } = await import('./costing.js');
+    const ist = await siteCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(ist.rows.find((x) => x.site_id === a2)!.subcontractor).toBe(100000n);
+    // Rechnung zur Bestellung erfasst → Ist zählt die Rechnung statt der Schätzung
+    const inv = randomUUID();
+    await sql`insert into app.incoming_invoices (id, supplier_id, invoice_no, invoice_date, due_date, net_cents, vat_cents,
+                gross_cents, category, status, subcontract_id, service_month, created_by)
+              values (${inv}, ${sup}, 'G-1', '2026-11-25', '2026-12-09', 150000, 0, 150000, 'nachunternehmer', 'erfasst',
+                      ${sc}, '2026-11-01', 't')`;
+    await sql`delete from app.cost_allocations where incoming_invoice_id = ${inv}`;
+    await sql`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
+              values (${randomUUID()}, ${inv}, ${a2}, '2026-11-01', 150000, true, 't')`;
+    const ist2 = await siteCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(ist2.rows.find((x) => x.site_id === a2)!.subcontractor).toBe(150000n);
+    expect(ist2.rows.find((x) => x.site_id === a1)?.subcontractor ?? 0n).toBe(0n);
+  });
+
   it('geschriebene Rechnung mit Leistungszeitraum zählt als Erlös (höherer Wert, Pauschale nicht doppelt)', async () => {
     const s5 = randomUUID();
     const inv = randomUUID();

@@ -1,3 +1,4 @@
+import { BILLING, FREQUENCY } from '../services/subcontractors.js';
 import { PAY_BAND_LABEL } from '../domain/hr/employer-cost.js';
 import { monthRange, siteCosting } from '../services/costing.js';
 import {
@@ -476,17 +477,38 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
                       {o.number} · {o.supplier}
                     </a>{' '}
                     <span class="mut">
-                      · {o.frequency} · {o.billing}
+                      · {FREQUENCY[o.frequency] ?? o.frequency} · {BILLING[o.billing] ?? o.billing}
                       {o.price !== null ? ` · ${euro(o.price)}` : ''}
                     </span>
                   </li>
                 ))}
               </ul>
-              <p class="small mut">
-                Betrag laut Bestellung je Monat (Preisnachträge, je Tag/Stunde/m² und Sammelbestellungen wie
-                in der Nachkalkulation).
-              </p>
             </>
+          )}
+          {!!d.nuInvoices?.length && (
+            <>
+              <div class="small" style="margin-top:8px">
+                <b>Eingegangene Rechnungen</b>
+              </div>
+              <ul class="small">
+                {d.nuInvoices.map((v) => (
+                  <li>
+                    <a href={`/rechnungseingang/${v.id}`}>
+                      {v.invoice_no} · {v.supplier}
+                    </a>{' '}
+                    <span class="mut">
+                      · Leistungsmonat {v.month.slice(5)}/{v.month.slice(0, 4)} · {euro(v.net)} netto
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {(orders.length > 0 || !!d.nuInvoices?.length) && (
+            <p class="small mut">
+              Je Monat zählt der Betrag laut Bestellung (einmalige im Monat der Ausführung); ist eine höhere
+              Rechnung eingegangen, zählt die Rechnung.
+            </p>
           )}
         </div>
         <div class="card" id="material">

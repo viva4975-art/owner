@@ -111,6 +111,33 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     await sql`update app.sites set manager_user_id = null where id = ${site}`;
   });
 
+  it('Nachunternehmer: einmalige Bestellung im Monat der Ausführung, höhere eingegangene Rechnung zählt', async () => {
+    const s4 = randomUUID();
+    const sup = randomUUID();
+    await sql`insert into app.sites (id, customer_id, site_no, name) values (${s4}, ${DEMO.company}, '2990297', 'NU-Objekt')`;
+    await sql`insert into app.suppliers (id, supplier_no, name, kind) values (${sup}, '79891', 'Plan Sub GmbH', 'nachunternehmer')`;
+    await sql`insert into app.subcontracts (id, number, supplier_id, site_id, service_kind, frequency, billing, price_cents,
+                valid_from, status, created_by)
+              values (${randomUUID()}, 'BE-2026-0991', ${sup}, ${s4}, 'Grundreinigung', 'einmalig', 'pauschale_einsatz', 20000,
+                      '2026-11-12', 'erteilt', 't')`;
+    const a = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(a.rows.find((x) => x.site_id === s4)!.subcontractor).toBe(20000n);
+    const inv = randomUUID();
+    await sql`insert into app.incoming_invoices (id, supplier_id, invoice_no, invoice_date, due_date, net_cents, vat_cents,
+                gross_cents, category, status, site_id, service_month, created_by)
+              values (${inv}, ${sup}, 'R-77', '2026-11-20', '2026-12-04', 25000, 0, 25000, 'nachunternehmer', 'erfasst',
+                      ${s4}, '2026-11-01', 't')`;
+    await sql`delete from app.cost_allocations where incoming_invoice_id = ${inv}`;
+    await sql`insert into app.cost_allocations (id, incoming_invoice_id, site_id, month, net_cents, auto, created_by)
+              values (${randomUUID()}, ${inv}, ${s4}, '2026-11-01', 25000, true, 't')`;
+    const b = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(b.rows.find((x) => x.site_id === s4)!.subcontractor).toBe(25000n);
+    expect(b.details.get(s4)!.nuInvoices!.map((v) => v.invoice_no)).toEqual(['R-77']);
+    // Dezember: weder Bestellung noch Rechnung
+    const c = await planCosting(sql, { from: '2026-12', to: '2026-12' });
+    expect(c.rows.find((x) => x.site_id === s4)).toBeUndefined();
+  });
+
   it('inaktiver Kunde setzt Objekte und Leistungen inaktiv', async () => {
     const cust = randomUUID();
     const s2 = randomUUID();

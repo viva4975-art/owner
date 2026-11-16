@@ -94,6 +94,8 @@ export interface PlanSiteDetail {
     wage_cents: bigint;
     wage_assumed: boolean;
   }[];
+  /** eingegangene NU-Rechnungen im Zeitraum (zählen, wenn höher als laut Bestellung) */
+  nuInvoices?: { id: string; invoice_no: string; supplier: string; month: string; net: bigint }[];
 }
 
 export interface PlanEmployeeRow {
@@ -145,7 +147,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
   const rates = await getPlanCostRates(sql);
-  const [sites, services, nu, emps] = await Promise.all([
+  const [sites, services, emps] = await Promise.all([
     sql<
       {
         id: string;
@@ -185,7 +187,6 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
          -- Nachkalkulation, wenn sie abgerechnet sind (Leistungszeitraum im Monat)
          and ss.kind = 'monthly_flat'
          and ss.valid_from <= ${to} and (ss.valid_to is null or ss.valid_to >= ${from})`,
-    subcontractEstimates(sql, from, to, undefined, { plan: true }),
     sql<
       {
         id: string;
@@ -360,7 +361,58 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
       empAcc.set(empId, ea);
     }
   }
-  for (const n of nu) if (siteMap.has(n.site_id)) row(n.site_id).subcontractor += BigInt(n.cost);
+  // Nachunternehmer je Objekt und Monat (Ahmed 16.11.: „er hat Rechnung gestellt, muss rein“): laut Bestellung
+  // (regelmäßige wie bisher, einmalige/nach Ausführung im Monat des Endes bzw. Beginns) – ist im Monat eine höhere
+  // NU-Rechnung eingegangen (Kostenstelle, Leistungsmonat), zählt die Rechnung. So nichts doppelt.
+  const nuEst = new Map<string, bigint>();
+  for (const m of months) {
+    const { start, end } = monthBounds(m);
+    for (const e of await subcontractEstimates(sql, start, end, undefined, { plan: true }))
+      nuEst.set(`${e.site_id}|${m}`, (nuEst.get(`${e.site_id}|${m}`) ?? 0n) + BigInt(e.cost));
+  }
+  for (const o of await sql<{ site_id: string; mon: string; cost: bigint }[]>`
+    select s.site_id, to_char(coalesce(s.valid_to, s.valid_from), 'YYYY-MM') as mon,
+           coalesce((select p.price_cents from app.subcontract_prices p where p.subcontract_id = s.id
+                      order by p.valid_from_month desc limit 1), s.price_cents)::bigint as cost
+      from app.subcontracts s
+     where s.status in ('erteilt', 'beendet') and s.site_id is not null and s.price_cents is not null
+       and s.frequency not in ('monatlich', 'woechentlich')
+       and s.billing in ('pauschale_einsatz', 'pauschale_monat')
+       and not exists (select 1 from app.subcontract_sites x where x.subcontract_id = s.id)
+       and coalesce(s.valid_to, s.valid_from) between ${from} and ${to}`)
+    nuEst.set(`${o.site_id}|${o.mon}`, (nuEst.get(`${o.site_id}|${o.mon}`) ?? 0n) + BigInt(o.cost));
+  const invRows = await sql<
+    { id: string; invoice_no: string; supplier: string; site_id: string; mon: string; net: bigint }[]
+  >`
+    select i.id, i.invoice_no, su.name as supplier, l.site_id, to_char(l.month, 'YYYY-MM') as mon,
+           sum(l.net_cents)::bigint as net
+      from app.incoming_cost_lines l join app.incoming_invoices i on i.id = l.incoming_invoice_id
+      join app.suppliers su on su.id = i.supplier_id
+     where i.category = 'nachunternehmer' and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+       and l.site_id is not null and l.month between ${from} and ${to}
+     group by i.id, i.invoice_no, su.name, l.site_id, l.month
+     order by l.month, i.invoice_no`;
+  const nuInv = new Map<string, bigint>();
+  for (const v of invRows) {
+    nuInv.set(`${v.site_id}|${v.mon}`, (nuInv.get(`${v.site_id}|${v.mon}`) ?? 0n) + BigInt(v.net));
+    if (siteMap.has(v.site_id)) {
+      const d = detail(v.site_id);
+      (d.nuInvoices ??= []).push({
+        id: v.id,
+        invoice_no: v.invoice_no,
+        supplier: v.supplier,
+        month: v.mon,
+        net: BigInt(v.net),
+      });
+    }
+  }
+  for (const k of new Set([...nuEst.keys(), ...nuInv.keys()])) {
+    const site = k.split('|')[0]!;
+    if (!siteMap.has(site)) continue;
+    const est = nuEst.get(k) ?? 0n;
+    const inv = nuInv.get(k) ?? 0n;
+    row(site).subcontractor += inv > est ? inv : est;
+  }
   // Material pauschal: Erlös × Satz, kaufmännisch auf Cent
   for (const r of acc.values())
     if (r.revenue > 0n) r.material = (r.revenue * BigInt(rates.material_bp) + 5000n) / 10000n;

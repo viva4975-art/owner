@@ -5698,3 +5698,9 @@ Testadresse.
   auf die aktiven Objekte verteilt, deren Objektleitung sie ist (Benutzer ↔ Mitarbeiter verknüpft), sonst „ohne Objekt“.
   Objekte mit nur Lohnkosten erscheinen jetzt in der Liste. `laborFromPayroll(..., { salaryOnly })`; die Nachkalkulation
   (Ist) bleibt wie bisher. Test in `plan-costing.db.test.ts`.
+- 2026-11-16: **Plan-Kalkulation: Nachunternehmer mit eingegangenen Rechnungen** (Ahmed: BE-2026-0067 einmalig je Einsatz,
+  Rechnung da, Plan zeigte 0 €): je Objekt und Monat zählt der Betrag laut Bestellung – jetzt auch einmalige/nach
+  Ausführung (Pauschale je Einsatz bzw. Pauschale) im Monat des Endes, sonst des Beginns – und ist im Monat eine höhere
+  NU-Rechnung eingegangen (Kostenstelle + Leistungsmonat, erfasst/freigegeben/bezahlt), zählt die Rechnung (größerer
+  Wert, nichts doppelt). „Kosten aufschlüsseln“ listet die eingegangenen Rechnungen; Häufigkeit/Abrechnung lesbar statt
+  „pauschale_einsatz“. Test in `plan-costing.db.test.ts`.

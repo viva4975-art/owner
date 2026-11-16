@@ -17,7 +17,8 @@ import type { Child, FC } from 'hono/jsx';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { type Cents, parseEuro, parseQuantity } from '../domain/money/money.js';
 import { addDays } from '../domain/time/holidays.js';
-import { siteCostDetails, siteCosting } from '../services/costing.js';
+import { monthRange, siteCostDetails, siteCosting } from '../services/costing.js';
+import { laborFromPayroll } from '../services/costing-labor.js';
 import { getPlanCostRates, planCosting, savePlanCostRates } from '../services/plan-costing.js';
 import { PAY_BAND_LABEL } from '../domain/hr/employer-cost.js';
 import {
@@ -3898,6 +3899,254 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
   });
 
   // ================================================================== Nachkalkulation
+
+  // Objektleitung in % vom Umsatz (Ahmed 16.11.): Kosten der Objektleitungen stecken in den Bürokosten und zählen in
+  // Nach-/Plan-Kalkulation nicht bei den Objekten. Hier: Lohn laut Lohnarten + Lohnzuschlag je Objektleitung im
+  // Zeitraum gegen den Netto-Umsatz ihrer Objekte (Leistungszeitraum). Richtwert 5 %.
+  app.get('/auswertungen/objektleitung', async (c) => {
+    const curM = todayBerlin().slice(0, 7);
+    const last = addDays(`${curM}-01`, -1).slice(0, 7);
+    const atLeast = (m: string) => (m < COSTING_FROM ? COSTING_FROM : m);
+    const qm = c.req.query('monat');
+    const von = atLeast(
+      isMonth(qm)
+        ? qm!
+        : isMonth(c.req.query('von'))
+          ? c.req.query('von')!
+          : last < COSTING_FROM
+            ? curM
+            : last,
+    );
+    const bisQ = atLeast(isMonth(qm) ? qm! : isMonth(c.req.query('bis')) ? c.req.query('bis')! : von);
+    const bis = bisQ < von ? von : bisQ;
+    const TARGET_BP = 500;
+    const [{ rows }, labor, links] = await Promise.all([
+      siteCosting(sql, { from: von, to: bis }),
+      laborFromPayroll(sql, monthRange(von).from, monthRange(bis).to, { leads: 'only' }),
+      sql<{ user_id: string; employee_id: string | null; name: string }[]>`
+        select p.user_id, coalesce(p.employee_id,
+                 (select min(e.id::text)::uuid from app.employees e where e.status = 'aktiv'
+                    and lower(e.first_name || ' ' || e.last_name) = lower(p.display_name) having count(*) = 1)) as employee_id,
+               p.display_name as name
+          from app.profiles p
+         where p.role = 'objektleitung' or exists (select 1 from app.sites s where s.manager_user_id = p.user_id)`,
+    ]);
+    const costOf = new Map<
+      string,
+      { cost: bigint; gross: bigint; minutes: number; name: string; no: string }
+    >();
+    for (const l of labor) {
+      const x = costOf.get(l.employee_id) ?? {
+        cost: 0n,
+        gross: 0n,
+        minutes: 0,
+        name: l.name,
+        no: l.personnel_no,
+      };
+      x.cost += l.cost;
+      x.gross += l.gross;
+      x.minutes += l.minutes;
+      costOf.set(l.employee_id, x);
+    }
+    type LeadRow = {
+      key: string;
+      name: string;
+      user_id: string | null;
+      employee_id: string | null;
+      sites: number;
+      revenue: bigint;
+      gross: bigint;
+      cost: bigint;
+    };
+    const out: LeadRow[] = [];
+    const usedEmp = new Set<string>();
+    for (const u of links) {
+      const mine = rows.filter((r) => r.manager_user_id === u.user_id && !r.internal && !r.customer_only);
+      const k = u.employee_id ? costOf.get(u.employee_id) : undefined;
+      if (u.employee_id) usedEmp.add(u.employee_id);
+      if (!mine.length && !k) continue;
+      out.push({
+        key: u.user_id,
+        name: u.name,
+        user_id: u.user_id,
+        employee_id: u.employee_id,
+        sites: mine.length,
+        revenue: mine.reduce((a, r) => a + r.revenue, 0n),
+        gross: k?.gross ?? 0n,
+        cost: k?.cost ?? 0n,
+      });
+    }
+    // Objektleitungen (Tag) ohne Benutzerkonto bzw. ohne Verknüpfung: Kosten ohne zuordenbaren Umsatz
+    for (const [id, k] of costOf)
+      if (!usedEmp.has(id))
+        out.push({
+          key: id,
+          name: `${k.name} (${k.no})`,
+          user_id: null,
+          employee_id: id,
+          sites: 0,
+          revenue: 0n,
+          gross: k.gross,
+          cost: k.cost,
+        });
+    out.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const bpOf = (cost: bigint, rev: bigint) => (rev > 0n ? Number((cost * 10000n) / rev) : null);
+    const tRev = out.reduce((a, r) => a + r.revenue, 0n);
+    const tCost = out.reduce((a, r) => a + r.cost, 0n);
+    const tBp = bpOf(tCost, tRev);
+    const pct = (bp: number | null) =>
+      bp === null
+        ? '–'
+        : `${(bp / 100).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+    const tone = (bp: number | null) =>
+      bp === null ? '' : bp <= TARGET_BP ? 'ok' : bp <= TARGET_BP + 100 ? 'warn' : 'bad';
+    const y = Number(curM.slice(0, 4));
+    const quick = (
+      [
+        ['Dieser Monat', curM, curM],
+        ['Letzter Monat', last, last],
+        [String(y), `${y}-01` < COSTING_FROM ? COSTING_FROM : `${y}-01`, curM],
+      ] as [string, string, string][]
+    ).filter(([, , b]) => b >= COSTING_FROM);
+    const label =
+      von === bis
+        ? `${MONTHS_DE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)}`
+        : `${MONTHS_DE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)} – ${MONTHS_DE[Number(bis.slice(5, 7)) - 1]} ${bis.slice(0, 4)}`;
+    return page(
+      c,
+      'Objektleitung (% vom Umsatz)',
+      'auswertungen',
+      <>
+        <PageHead title="Objektleitung (% vom Umsatz)" crumbs={[['Auswertungen', '/auswertungen']]} />
+        <div class="chips" style="margin-bottom:10px;align-items:center">
+          {quick.map(([l, a, b]) => (
+            <a
+              href={`/auswertungen/objektleitung?von=${a}&bis=${b}`}
+              class={von === a && bis === b ? 'on' : ''}
+            >
+              {l}
+            </a>
+          ))}
+          <span class="small mut" style="margin-left:8px">
+            Zeitraum: <b>{label}</b>
+          </span>
+        </div>
+        <form method="get" action="/auswertungen/objektleitung" class="actions" style="margin-top:0">
+          <span style="flex:0 0 200px;max-width:200px">
+            <MonthSelect
+              name="monat"
+              value={von === bis ? von : ''}
+              label="Monat"
+              autosubmit
+              min={COSTING_FROM}
+            />
+          </span>
+        </form>
+        <div class="kpis" style="margin-bottom:14px">
+          <div class="kpi">
+            <div class="k">Umsatz der Objekte</div>
+            <div class="v">{euro(tRev)}</div>
+          </div>
+          <div class="kpi">
+            <div class="k">Kosten Objektleitung</div>
+            <div class="v">{euro(tCost)}</div>
+          </div>
+          <div class="kpi accent">
+            <div class="k">Anteil vom Umsatz (Ziel ≤ 5 %)</div>
+            <div class={`v ${tone(tBp)}`}>{pct(tBp)}</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="tbl">
+            <table>
+              <thead>
+                <tr>
+                  <th>Objektleitung</th>
+                  <th class="r">Objekte</th>
+                  <th class="r">Umsatz netto</th>
+                  <th class="r">Lohn</th>
+                  <th class="r">Kosten inkl. Zuschlag</th>
+                  <th class="r">Anteil</th>
+                </tr>
+              </thead>
+              <tbody>
+                {out.map((r) => {
+                  const bp = bpOf(r.cost, r.revenue);
+                  return (
+                    <tr>
+                      <td>
+                        {r.employee_id ? <a href={`/personal/${r.employee_id}`}>{r.name}</a> : r.name}
+                        {!r.employee_id && (
+                          <div class="small" style="color:var(--warn)">
+                            Benutzer nicht mit Mitarbeiter verknüpft – Kosten unbekannt (Einstellungen →
+                            Benutzer)
+                          </div>
+                        )}
+                        {!r.user_id && (
+                          <div class="small mut">
+                            kein Benutzerkonto mit Objekten – Umsatz nicht zuordenbar
+                          </div>
+                        )}
+                      </td>
+                      <td class="r">
+                        {r.user_id && r.sites ? (
+                          <a href={`/auswertungen/nachkalkulation?von=${von}&bis=${bis}&ol=${r.user_id}`}>
+                            {r.sites}
+                          </a>
+                        ) : (
+                          r.sites
+                        )}
+                      </td>
+                      <td class="r">{euro(r.revenue)}</td>
+                      <td class="r">{euro(r.gross)}</td>
+                      <td class="r">{euro(r.cost)}</td>
+                      <td class="r">
+                        <span class={`tag ${tone(bp)}`}>{pct(bp)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!out.length && (
+                  <tr>
+                    <td colspan={6} class="mut">
+                      Keine Objektleitung mit Objekten oder Lohn im Zeitraum.
+                    </td>
+                  </tr>
+                )}
+                <tr style="background:var(--tint-2)">
+                  <td>
+                    <b>Gesamt</b>
+                  </td>
+                  <td class="r">
+                    <b>{out.reduce((a, r) => a + r.sites, 0)}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(tRev)}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(out.reduce((a, r) => a + r.gross, 0n))}</b>
+                  </td>
+                  <td class="r">
+                    <b>{euro(tCost)}</b>
+                  </td>
+                  <td class="r">
+                    <b>{pct(tBp)}</b>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small mut">
+            Kosten = Lohn laut Stundenliste &amp; Lohnarten (Festgehalt bzw. Stunden, Urlaub, Krank,
+            Zuschläge) plus Lohnzuschlag für Arbeitgeberanteile. Umsatz = Netto-Umsatz der Objekte, deren
+            Objektleitung die Person ist (Leistungszeitraum, wie Nachkalkulation). Die Kosten der
+            Objektleitungen zählen in Nach- und Plan-Kalkulation nicht bei den Objekten (stecken in den
+            Bürokosten). Grün bis 5 %, gelb bis 6 %, rot darüber.
+          </p>
+        </div>
+      </>,
+    );
+  });
 
   app.get('/auswertungen/nachkalkulation', async (c) => {
     const curM = todayBerlin().slice(0, 7);

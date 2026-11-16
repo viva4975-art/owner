@@ -28,7 +28,16 @@ export interface LaborShare {
   gross: bigint;
   /** Lohn + Lohnzuschlag */
   cost: bigint;
+  /** Objektleitung (Tag „Objektleitung“ oder Benutzer der Rolle Objektleitung) */
+  lead: boolean;
 }
+
+/**
+ * Objektleitungen (Ahmed 16.11.): ihre Kosten stecken in den Bürokosten – in Nach-/Plan-Kalkulation nicht noch einmal
+ * auf die Kunden-Objekte. Standard: Anteile von Objektleitungen nur an internen Objekten (Büro …). „only“ = nur die
+ * Objektleitungen (Seite „Objektleitung“: Kosten in % vom Umsatz ihrer Objekte).
+ */
+type LeadMode = 'exclude' | 'only';
 
 const months = (from: string, to: string) => {
   const out: string[] = [];
@@ -64,7 +73,26 @@ export function laborFromPayroll(
   sql: Sql,
   from: string,
   to: string,
-  opts: { cached?: boolean; salaryOnly?: boolean } = {},
+  opts: { cached?: boolean; salaryOnly?: boolean; leads?: LeadMode } = {},
+): Promise<LaborShare[]> {
+  return rawLabor(sql, from, to, opts).then(async (rows) => {
+    if (opts.leads === 'only') return rows.filter((r) => r.lead);
+    if (!rows.some((r) => r.lead)) return rows;
+    const internal = new Set(
+      (
+        await sql<{ id: string }[]>`
+          select s.id from app.sites s join app.customers c on c.id = s.customer_id where c.is_internal`
+      ).map((x) => x.id),
+    );
+    return rows.filter((r) => !r.lead || internal.has(r.site_id));
+  });
+}
+
+function rawLabor(
+  sql: Sql,
+  from: string,
+  to: string,
+  opts: { cached?: boolean; salaryOnly?: boolean },
 ): Promise<LaborShare[]> {
   if (!opts.cached) return computeLabor(sql, from, to, !!opts.salaryOnly);
   const cache = caches.get(sql) ?? new Map<string, { at: number; rows: Promise<LaborShare[]> }>();
@@ -79,22 +107,9 @@ export function laborFromPayroll(
   return rows;
 }
 
-/**
- * salaryOnly (Plan-Kalkulation, Ahmed 16.11.): Festgehalt zählt nur als Gehalt – keine Zuschläge/Mehrarbeit auf die
- * Stunden. Ohne Zeit an einem Objekt wird das Gehalt einer Objektleitung gleichmäßig auf ihre aktiven Objekte verteilt
- * (sonst fiele es als „ohne Objekt“ weg; Objektleitungen werden seit Runde 47 nicht eingeplant).
- */
+/** salaryOnly (Plan-Kalkulation, Ahmed 16.11.): Festgehalt zählt nur als Gehalt – keine Zuschläge/Mehrarbeit. */
 async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = false): Promise<LaborShare[]> {
   const settings = await getAccountingSettings(sql);
-  const managed = new Map<string, string[]>();
-  if (salaryOnly)
-    for (const r of await sql<{ employee_id: string; site_id: string }[]>`
-      select p.employee_id, s.id as site_id from app.profiles p join app.sites s on s.manager_user_id = p.user_id
-       where p.employee_id is not null and s.active order by s.site_no`) {
-      const l = managed.get(r.employee_id) ?? [];
-      l.push(r.site_id);
-      managed.set(r.employee_id, l);
-    }
   const [emps, [co], [mw]] = await Promise.all([
     sql<
       {
@@ -103,9 +118,13 @@ async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = fal
         employment_type: string | null;
         weekly_hours: number | null;
         tags: string[] | null;
+        lead: boolean;
       }[]
-    >`select id, first_name || ' ' || last_name as full_name, employment_type::text, weekly_hours::float as weekly_hours, tags
-        from app.employees`,
+    >`select e.id, e.first_name || ' ' || e.last_name as full_name, e.employment_type::text,
+             e.weekly_hours::float as weekly_hours, e.tags,
+             (exists (select 1 from unnest(e.tags) t where lower(t) like 'objektleit%')
+               or exists (select 1 from app.profiles pr where pr.employee_id = e.id and pr.role = 'objektleitung')) as lead
+        from app.employees e`,
     sql<{ md: string | null }[]>`select managing_director as md from app.company limit 1`,
     sql<{ w: bigint | null }[]>`select min(hourly_wage_cents)::bigint as w from app.wage_levels where active`,
   ]);
@@ -138,8 +157,6 @@ async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = fal
       const bp = overheadOf(r.employee_id);
       const cost = (gross * BigInt(10000 + bp) * 2n + 10000n) / 20000n;
       const weights = Object.entries(r.siteMinutes).filter(([, v]) => v > 0);
-      const own = salaryOnly && r.salary ? managed.get(r.employee_id) : undefined;
-      if (!weights.length && own?.length) for (const s of own) weights.push([s, 1]);
       if (!weights.length) weights.push(['', 1]);
       const g = split(gross, weights);
       const c = split(cost, weights);
@@ -156,6 +173,7 @@ async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = fal
           overhead_bp: bp,
           gross: 0n,
           cost: 0n,
+          lead: !!empOf.get(r.employee_id)?.lead,
         };
         // Festgehalt (Plan): Stunden zählen nicht als Plan-Stunden des Objekts
         x.minutes += r.siteMinutes[site] && !(salaryOnly && r.salary) ? min : 0;

@@ -83,32 +83,29 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     expect(x.gross).toBe(3000n);
   });
 
-  it('Festgehalt: nur das Gehalt, keine Stunden/Zuschläge; Objektleitung ohne Einsatz auf ihre Objekte', async () => {
+  it('Objektleitung zählt nicht bei den Objekten; Festgehalt nur als Gehalt (keine Stunden/Zuschläge)', async () => {
     const ol = randomUUID();
     const user = randomUUID();
+    const fest = randomUUID();
     const s3 = randomUUID();
     await sql`insert into app.sites (id, customer_id, site_no, name) values (${s3}, ${DEMO.company}, '2990298', 'OL-Objekt')`;
     await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, employment_type, weekly_hours,
                 pay_model, monthly_salary_cents, tags)
-              values (${ol}, '9885', 'Olga', 'Plan', '2025-01-01', 'vollzeit', 40, 'festgehalt', 300000, ${['Objektleitung']})`;
+              values (${ol}, '9885', 'Olga', 'Plan', '2025-01-01', 'vollzeit', 40, 'festgehalt', 300000, ${['Objektleitung']}),
+                     (${fest}, '9886', 'Fest', 'Plan', '2025-01-01', 'vollzeit', 40, 'festgehalt', 280000, ${['Vorarbeiter']})`;
     await sql`insert into auth.users (id) values (${user})`;
     await sql`insert into app.profiles (user_id, display_name, role, employee_id) values (${user}, 'Olga Plan', 'objektleitung', ${ol})`;
-    await sql`update app.sites set manager_user_id = ${user} where id in (${site}, ${s3})`;
+    await sql`update app.sites set manager_user_id = ${user} where id = ${s3}`;
+    // beide mit Sonntags-Nachteinsatz (Zuschläge) am Objekt
+    for (const e of [ol, fest])
+      await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, holiday_work)
+                values (${randomUUID()}, ${e}, ${s3}, 7, '22:00', '23:30', 0, '2026-01-01', true)`;
     const { rows, employees } = await planCosting(sql, { from: '2026-11', to: '2026-11' });
-    const o = employees.find((e) => e.employee_id === ol)!;
-    // 3.000 € Gehalt, keine Stunden; je Objekt die Hälfte
-    expect(o.gross).toBe(300000n);
-    expect(o.minutes).toBe(0);
-    expect(rows.find((x) => x.site_id === s3)!.gross).toBe(150000n);
-    // Sonntags-Einsatz mit Zuschlag: zählt trotzdem nur das Gehalt
-    await sql`insert into app.shift_plans (id, employee_id, site_id, weekday, start_time, end_time, break_minutes, valid_from, holiday_work)
-              values (${randomUUID()}, ${ol}, ${s3}, 7, '22:00', '23:30', 0, '2026-01-01', true)`;
-    const b = await planCosting(sql, { from: '2026-11', to: '2026-11' });
-    const o2 = b.employees.find((e) => e.employee_id === ol)!;
-    expect(o2.gross).toBe(300000n);
-    expect(o2.minutes).toBe(0);
-    expect(b.rows.find((x) => x.site_id === s3)!.gross).toBe(300000n);
-    await sql`update app.sites set manager_user_id = null where id = ${site}`;
+    expect(employees.find((e) => e.employee_id === ol)).toBeUndefined();
+    const f = employees.find((e) => e.employee_id === fest)!;
+    expect(f.gross).toBe(280000n);
+    expect(f.minutes).toBe(0);
+    expect(rows.find((x) => x.site_id === s3)!.gross).toBe(280000n);
   });
 
   it('Nachunternehmer: einmalige Bestellung im Monat der Ausführung, höhere eingegangene Rechnung zählt', async () => {

@@ -5704,3 +5704,14 @@ Testadresse.
   NU-Rechnung eingegangen (Kostenstelle + Leistungsmonat, erfasst/freigegeben/bezahlt), zählt die Rechnung (größerer
   Wert, nichts doppelt). „Kosten aufschlüsseln“ listet die eingegangenen Rechnungen; Häufigkeit/Abrechnung lesbar statt
   „pauschale_einsatz“. Test in `plan-costing.db.test.ts`.
+- 2026-11-16: **Objektleitungen nicht mehr bei den Objekten, eigene Seite „Objektleitung (% vom Umsatz)“** (Ahmed: Kosten
+  stecken schon in den Bürokosten → sonst doppelt; Richtwert 5 %):
+  - Nach- und Plan-Kalkulation (auch „Kosten aufschlüsseln“, Ø Stundensätze, Startseiten-Ampel) rechnen Lohn von
+    Objektleitungen (Tag „Objektleitung“ oder Benutzer der Rolle Objektleitung, mit Mitarbeiter verknüpft) nicht mehr den
+    Kunden-Objekten zu; nur an internen Objekten (Büro …) bleiben sie. `laborFromPayroll(..., { leads })` in
+    `costing-labor.ts`. Die Verteilung des Festgehalts von Objektleitungen auf ihre Objekte (vom selben Tag) entfällt.
+  - Auswertungen → Nachkalkulation → Reiter **„Objektleitung (% vom Umsatz)“** (`/auswertungen/objektleitung`, Recht wie
+    Nachkalkulation): je Objektleitung Anzahl Objekte, Netto-Umsatz ihrer Objekte (Leistungszeitraum wie
+    Nachkalkulation), Lohn laut Lohnarten, Kosten inkl. Lohnzuschlag, Anteil in % (grün ≤ 5 %, gelb ≤ 6 %, rot darüber),
+    Gesamt; Monat/Schnellwahl ab 10/2026. Benutzer ohne verknüpften Mitarbeiter: Hinweis „Kosten unbekannt“.
+  - `e2e:auswertung`: 3 Prüfungen rot schon vorher (Dienste-Liste seit Runde 46 entfernt).

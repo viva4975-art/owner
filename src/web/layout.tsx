@@ -1760,6 +1760,7 @@ export const SECTION_TABS: { label: string; href: string; also?: string[] }[][] 
   [
     { label: 'Nachkalkulation & Kostenstellen', href: '/auswertungen/nachkalkulation' },
     { label: 'Plan-Kalkulation (Soll)', href: '/auswertungen/plankalkulation' },
+    { label: 'Objektleitung (% vom Umsatz)', href: '/auswertungen/objektleitung' },
     { label: 'Ø Stundensätze', href: '/auswertungen/stundensaetze' },
   ],
   [

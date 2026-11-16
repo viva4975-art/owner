@@ -5691,3 +5691,10 @@ Testadresse.
   („Aufstellung der Sammelüberweisung (PDF)“, `/zahlungslauf/aufstellung.pdf?nr=ZL-…`). **Grenze:** nur für
   Sammelüberweisungen aus einer SEPA-Datei der App; direkt im Online-Banking erfasste Sammelaufträge kennt die App nicht
   (Aufstellung dann aus dem Online-Banking bzw. dem Auftragsprotokoll der Bank).
+- 2026-11-16: **Plan-Kalkulation: Festgehalt nur als Gehalt** (Ahmed: „z. B. Objektleiter“): Bei Vergütung Festgehalt zählt
+  nur das Monatsgehalt (abzgl. Abzug unbezahlt) – keine Nacht-/Sonn-/Feiertags- und Mehrarbeitszuschläge, und die Stunden
+  zählen nicht als Plan-Stunden des Objekts (Erlös je Stunde bleibt richtig). Verteilung auf Objekte nach den Stunden
+  dort; hat die Person keine Zeit an einem Objekt (Objektleitungen werden nicht eingeplant), wird das Gehalt gleichmäßig
+  auf die aktiven Objekte verteilt, deren Objektleitung sie ist (Benutzer ↔ Mitarbeiter verknüpft), sonst „ohne Objekt“.
+  Objekte mit nur Lohnkosten erscheinen jetzt in der Liste. `laborFromPayroll(..., { salaryOnly })`; die Nachkalkulation
+  (Ist) bleibt wie bisher. Test in `plan-costing.db.test.ts`.

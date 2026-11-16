@@ -282,7 +282,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   for (const m of months) {
     const { start, end } = monthBounds(m);
     const byEmp = new Map<string, { site: string; minutes: number; gross: bigint }[]>();
-    for (const sh of await laborFromPayroll(sql, start, end)) {
+    for (const sh of await laborFromPayroll(sql, start, end, { salaryOnly: true })) {
       const l = byEmp.get(sh.employee_id) ?? [];
       l.push({ site: sh.site_id, minutes: sh.minutes, gross: sh.gross });
       byEmp.set(sh.employee_id, l);
@@ -365,7 +365,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   for (const r of acc.values())
     if (r.revenue > 0n) r.material = (r.revenue * BigInt(rates.material_bp) + 5000n) / 10000n;
   const rows: PlanSiteRow[] = [...acc.values()]
-    .filter((r) => r.revenue || r.minutes || r.subcontractor || r.material)
+    .filter((r) => r.revenue || r.minutes || r.gross || r.subcontractor || r.material)
     .map((r) => {
       const labor = r.gross + r.employer;
       const margin = r.revenue - labor - r.subcontractor - r.material;

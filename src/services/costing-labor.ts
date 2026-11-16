@@ -64,23 +64,37 @@ export function laborFromPayroll(
   sql: Sql,
   from: string,
   to: string,
-  opts: { cached?: boolean } = {},
+  opts: { cached?: boolean; salaryOnly?: boolean } = {},
 ): Promise<LaborShare[]> {
-  if (!opts.cached) return computeLabor(sql, from, to);
+  if (!opts.cached) return computeLabor(sql, from, to, !!opts.salaryOnly);
   const cache = caches.get(sql) ?? new Map<string, { at: number; rows: Promise<LaborShare[]> }>();
   caches.set(sql, cache);
-  const key = `${from}|${to}`;
+  const key = `${from}|${to}|${opts.salaryOnly ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
-  const rows = computeLabor(sql, from, to);
+  const rows = computeLabor(sql, from, to, !!opts.salaryOnly);
   cache.set(key, { at: Date.now(), rows });
   rows.catch(() => cache.delete(key));
   for (const [k, v] of cache) if (Date.now() - v.at >= CACHE_MS) cache.delete(k);
   return rows;
 }
 
-async function computeLabor(sql: Sql, from: string, to: string): Promise<LaborShare[]> {
+/**
+ * salaryOnly (Plan-Kalkulation, Ahmed 16.11.): Festgehalt zählt nur als Gehalt – keine Zuschläge/Mehrarbeit auf die
+ * Stunden. Ohne Zeit an einem Objekt wird das Gehalt einer Objektleitung gleichmäßig auf ihre aktiven Objekte verteilt
+ * (sonst fiele es als „ohne Objekt“ weg; Objektleitungen werden seit Runde 47 nicht eingeplant).
+ */
+async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = false): Promise<LaborShare[]> {
   const settings = await getAccountingSettings(sql);
+  const managed = new Map<string, string[]>();
+  if (salaryOnly)
+    for (const r of await sql<{ employee_id: string; site_id: string }[]>`
+      select p.employee_id, s.id as site_id from app.profiles p join app.sites s on s.manager_user_id = p.user_id
+       where p.employee_id is not null and s.active order by s.site_no`) {
+      const l = managed.get(r.employee_id) ?? [];
+      l.push(r.site_id);
+      managed.set(r.employee_id, l);
+    }
   const [emps, [co], [mw]] = await Promise.all([
     sql<
       {
@@ -116,12 +130,16 @@ async function computeLabor(sql: Sql, from: string, to: string): Promise<LaborSh
         gross = (BigInt(paid) * wage * 2n + 60n) / 120n;
       }
       // Zuschläge wie im Lohnexport; ohne hinterlegten Lohn mit dem angenommenen Tariflohn
-      for (const k of SURCHARGES)
-        gross += r.wage_cents ? r.surchargeCents[k] : surchargeCents(m[k], wage, r.bp[k]);
-      gross += r.wage_cents ? r.overtimeCents : 0n;
+      if (!(salaryOnly && r.salary)) {
+        for (const k of SURCHARGES)
+          gross += r.wage_cents ? r.surchargeCents[k] : surchargeCents(m[k], wage, r.bp[k]);
+        gross += r.wage_cents ? r.overtimeCents : 0n;
+      }
       const bp = overheadOf(r.employee_id);
       const cost = (gross * BigInt(10000 + bp) * 2n + 10000n) / 20000n;
       const weights = Object.entries(r.siteMinutes).filter(([, v]) => v > 0);
+      const own = salaryOnly && r.salary ? managed.get(r.employee_id) : undefined;
+      if (!weights.length && own?.length) for (const s of own) weights.push([s, 1]);
       if (!weights.length) weights.push(['', 1]);
       const g = split(gross, weights);
       const c = split(cost, weights);
@@ -139,7 +157,8 @@ async function computeLabor(sql: Sql, from: string, to: string): Promise<LaborSh
           gross: 0n,
           cost: 0n,
         };
-        x.minutes += r.siteMinutes[site] ? min : 0;
+        // Festgehalt (Plan): Stunden zählen nicht als Plan-Stunden des Objekts
+        x.minutes += r.siteMinutes[site] && !(salaryOnly && r.salary) ? min : 0;
         x.gross += g.get(site) ?? 0n;
         x.cost += c.get(site) ?? 0n;
         acc.set(key, x);

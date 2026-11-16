@@ -5730,3 +5730,7 @@ Testadresse.
   `/auswertungen/auftragsgruppen`, Recht wie Nachkalkulation): Name, optional Ausschreibung, Notiz, Objekte; jedes Objekt
   höchstens in einer Gruppe, Objekte ohne Gruppe unter „ohne Auftragsgruppe“. Tabellen `app.contract_groups`,
   `app.contract_group_sites` (Migration `20270127000001`), `src/services/contract-groups.ts`. PDF-Export bleibt je Objekt.
+- 2026-11-16: **Sortieren in den Ansichten je Kunde / je Auftragsgruppe** (Ahmed): Klick auf eine Spaltenüberschrift
+  (Nach- und Plan-Kalkulation, `?ansicht=kunde|gruppe`) sortiert die Gruppen nach ihrer Summenzeile auf/ab, die Objekte
+  darin nach derselben Spalte; „Gesamt“ bleibt oben, allgemeine Kostenstellen unten, „ohne Auftragsgruppe“ zuletzt.
+  Gemerkt je Tab (`table[data-grp-sort]` in `client.ts`, Stunden-Spalte sortiert über `data-sort` = Ist-Minuten).

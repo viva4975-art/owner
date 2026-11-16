@@ -683,6 +683,7 @@ export const CLIENT_JS = String.raw`
   // Gilt für alle Listen mit Kopfzeile; Summenzeilen bleiben unten. Exporte (Links mit data-export und alle CSV-Links) bekommen die
   // Sortierung mit (?sort=<Spalte>&dir=asc|desc). Zahlen, Beträge (1.234,56 €), Datum (TT.MM.JJJJ) und Zeiten richtig.
   function sortKey(td) {
+    if (td && td.hasAttribute('data-sort')) return [0, Number(td.getAttribute('data-sort'))];
     var t = (td ? td.innerText || td.textContent || '' : '').trim();
     var d = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(t);
     if (d) return [0, Number(d[3] + d[2] + d[1])];
@@ -773,6 +774,56 @@ export const CLIENT_JS = String.raw`
     try { var saved = ss && JSON.parse(ss.getItem(key) || 'null'); if (saved && saved[0] < cols) { apply(saved[0], saved[1]); head.cells[saved[0]].setAttribute('aria-sort', saved[1] > 0 ? 'ascending' : 'descending'); } } catch (e) {}
   }
   Array.prototype.forEach.call(document.querySelectorAll('table'), sortable);
+
+  // ---- Gruppierte Tabellen (Nach-/Plan-Kalkulation je Kunde / Auftragsgruppe, data-grp-sort): Klick auf die Überschrift
+  // sortiert die Gruppen nach ihrer Summenzeile und die Objekte darin nach derselben Spalte. Zeilen vor der ersten Gruppe
+  // (Gesamt) und danach (allgemeine Kostenstellen) bleiben stehen, „ohne Auftragsgruppe“ bleibt zuletzt (Ahmed 16.11.).
+  Array.prototype.forEach.call(document.querySelectorAll('table[data-grp-sort]'), function (table, ti) {
+    if (!table.tHead || !table.tBodies.length) return;
+    var body = table.tBodies[0];
+    var head = table.tHead.rows[table.tHead.rows.length - 1];
+    var key = 'vd-grpsort:' + location.pathname + ':' + location.search.replace(/[?&](sort|dir)=[^&]*/g, '') + ':' + ti;
+    function apply(i, dir) {
+      var rows = Array.prototype.slice.call(body.rows);
+      var pre = [], blocks = [], post = [], cur = null;
+      rows.forEach(function (r) {
+        var hk = r.getAttribute('data-grp-head');
+        if (hk !== null) { cur = { head: r, key: hk, kids: [] }; blocks.push(cur); return; }
+        var ck = r.getAttribute('data-grp');
+        if (ck !== null && cur && ck === cur.key) { cur.kids.push(r); return; }
+        (blocks.length ? post : pre).push(r);
+      });
+      function by(a, b) { return cmp(sortKey(a.cells[i]), sortKey(b.cells[i])) * dir; }
+      blocks.sort(function (a, b) {
+        if (a.key === '~ohne' || b.key === '~ohne') return a.key === b.key ? 0 : a.key === '~ohne' ? 1 : -1;
+        return by(a.head, b.head);
+      });
+      blocks.forEach(function (b) { b.kids.sort(by); });
+      pre.forEach(function (r) { body.appendChild(r); });
+      blocks.forEach(function (b) { body.appendChild(b.head); b.kids.forEach(function (r) { body.appendChild(r); }); });
+      post.forEach(function (r) { body.appendChild(r); });
+      Array.prototype.forEach.call(head.cells, function (c, j) {
+        c.classList.remove('asc', 'desc');
+        c.setAttribute('aria-sort', j === i ? (dir > 0 ? 'ascending' : 'descending') : 'none');
+        if (j === i) c.classList.add(dir > 0 ? 'asc' : 'desc');
+      });
+    }
+    Array.prototype.forEach.call(head.cells, function (th, i) {
+      if (!th.textContent.trim()) return;
+      th.classList.add('sortable');
+      th.title = 'Sortieren';
+      th.tabIndex = 0;
+      th.setAttribute('aria-sort', 'none');
+      function go() {
+        var dir = th.classList.contains('asc') ? -1 : 1;
+        apply(i, dir);
+        try { ss && ss.setItem(key, JSON.stringify([i, dir])); } catch (e) {}
+      }
+      th.addEventListener('click', go);
+      th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    try { var saved = ss && JSON.parse(ss.getItem(key) || 'null'); if (saved && saved[0] < head.cells.length) apply(saved[0], saved[1]); } catch (e) {}
+  });
 
   // ---- Listen filtern: <input data-filter-list="CSS-Selektor"> blendet nicht passende Einträge aus ----
   document.querySelectorAll('[data-filter-list]').forEach(function (inp) {

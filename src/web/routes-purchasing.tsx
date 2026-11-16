@@ -3840,7 +3840,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <style dangerouslySetInnerHTML={{ __html: GROUP_CSS }} />
         <ViewChips view={view} href={(v) => viewHref(c.req.url, v, von, bis)} />
         <div class="tbl">
-          <table data-nosort={view !== 'objekt' ? '' : undefined}>
+          <table
+            data-nosort={view !== 'objekt' ? '' : undefined}
+            data-grp-sort={view !== 'objekt' ? '' : undefined}
+          >
             <thead>
               <tr>
                 <th>
@@ -4531,7 +4534,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
             {euro(r.revenue)}
           </a>
         </td>
-        <td class="r">
+        <td class="r" data-sort={String(r.actual_minutes)}>
           <span class="hh">
             <span class="hh-l">Plan</span> {hm(r.planned_minutes)}
           </span>
@@ -4760,7 +4763,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         <style dangerouslySetInnerHTML={{ __html: GROUP_CSS }} />
         <ViewChips view={view} href={(v) => viewHref(c.req.url, v, von, bis)} />
         <div class="tbl">
-          <table data-nosort={view !== 'objekt' ? '' : undefined}>
+          <table
+            data-nosort={view !== 'objekt' ? '' : undefined}
+            data-grp-sort={view !== 'objekt' ? '' : undefined}
+          >
             <thead>
               <tr>
                 <th>
@@ -4847,7 +4853,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                         <td class="r">
                           <b>{euro(gRev)}</b>
                         </td>
-                        <td class="r">
+                        <td class="r" data-sort={String(gIst)}>
                           <span class="hh">
                             <span class="hh-l">Plan</span>{' '}
                             {hm(g.rows.reduce((a, r) => a + r.planned_minutes, 0))}

@@ -135,6 +135,29 @@ describe.skipIf(!available)('Plan-Kalkulation (Soll)', () => {
     expect(c.rows.find((x) => x.site_id === s4)).toBeUndefined();
   });
 
+  it('geschriebene Rechnung mit Leistungszeitraum zählt als Erlös (höherer Wert, Pauschale nicht doppelt)', async () => {
+    const s5 = randomUUID();
+    const inv = randomUUID();
+    await sql`insert into app.sites (id, customer_id, site_no, name) values (${s5}, ${DEMO.company}, '2990296', 'Rechnung-Objekt')`;
+    await sql`insert into app.legacy_invoices (id, number, issue_date, due_date, customer_id, net_cents, gross_cents, paid)
+              values (${inv}, '9900001', '2026-11-20', '2026-12-04', ${DEMO.company}, 80000, 95200, false)`;
+    await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit_price_cents, net_cents,
+                period_start, period_end, site_id)
+              values (${randomUUID()}, ${inv}, 1, 'Bauendreinigung', 1000, 80000, 80000, '2026-11-01', '2026-11-30', ${s5})`;
+    const a = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(a.rows.find((x) => x.site_id === s5)!.revenue).toBe(80000n);
+    expect(a.details.get(s5)!.invoices!.map((v) => v.number)).toEqual(['9900001']);
+    // Objekt mit Pauschale 2.000 €: Rechnung über 1.500 € im selben Monat → bleibt 2.000 € (nicht 3.500 €)
+    const inv2 = randomUUID();
+    await sql`insert into app.legacy_invoices (id, number, issue_date, due_date, customer_id, net_cents, gross_cents, paid)
+              values (${inv2}, '9900002', '2026-11-30', '2026-12-14', ${DEMO.company}, 150000, 178500, false)`;
+    await sql`insert into app.legacy_invoice_lines (id, invoice_id, position, title, quantity_milli, unit_price_cents, net_cents,
+                period_start, period_end, site_id)
+              values (${randomUUID()}, ${inv2}, 1, 'Unterhaltsreinigung', 1000, 150000, 150000, '2026-11-01', '2026-11-30', ${site})`;
+    const b = await planCosting(sql, { from: '2026-11', to: '2026-11' });
+    expect(b.rows.find((x) => x.site_id === site)!.revenue).toBe(200000n);
+  });
+
   it('inaktiver Kunde setzt Objekte und Leistungen inaktiv', async () => {
     const cust = randomUUID();
     const s2 = randomUUID();

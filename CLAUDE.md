@@ -5715,3 +5715,10 @@ Testadresse.
     Nachkalkulation), Lohn laut Lohnarten, Kosten inkl. Lohnzuschlag, Anteil in % (grün ≤ 5 %, gelb ≤ 6 %, rot darüber),
     Gesamt; Monat/Schnellwahl ab 10/2026. Benutzer ohne verknüpften Mitarbeiter: Hinweis „Kosten unbekannt“.
   - `e2e:auswertung`: 3 Prüfungen rot schon vorher (Dienste-Liste seit Runde 46 entfernt).
+- 2026-11-16: **Plan-Kalkulation mit geschriebenen Rechnungen** (Ahmed: Grundschule Martinsried 2002218, BV Am Mittelfeld
+  20200002 „ohne Erlöse“, obwohl Rechnungen mit Leistungszeitraum November da sind): Erlös je Objekt und Monat = der
+  höhere Wert aus laufenden Pauschalen und den ausgestellten Rechnungen (eigene + übernommene) mit Leistungszeitraum im
+  Monat (`revenueLines` wie Nachkalkulation, tageweise verteilt). Sonder-/Einzelleistungen kommen so dazu, die
+  Monatspauschale zählt nicht doppelt. „Kosten aufschlüsseln“ listet die Rechnungen. Test in `plan-costing.db.test.ts`.
+- 2026-11-16: Nachkalkulation: auch **Ist- und Plan-Stunden** von Objektleitungen zählen an Kunden-Objekten nicht mehr (Lohn
+  war schon raus; gilt für alle Monate, weil immer neu gerechnet wird; `LEAD_SQL` in `costing.ts`).

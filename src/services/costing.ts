@@ -314,6 +314,10 @@ export function revenueLines(sql: Sql, from: string, to: string) {
       from part group by 1, 2, 3, 4, 5, 6, 7`;
 }
 
+/** Objektleitung (Alias e): Tag „Objektleitung“ oder Benutzer der Rolle Objektleitung. */
+export const LEAD_SQL = (sql: Sql) => sql`(exists (select 1 from unnest(e.tags) tg where lower(tg) like 'objektleit%')
+  or exists (select 1 from app.profiles pr where pr.employee_id = e.id and pr.role = 'objektleitung'))`;
+
 export async function siteCosting(
   sql: Sql,
   period: string | { from: string; to: string },
@@ -357,10 +361,13 @@ export async function siteCosting(
        }
        order by s.site_no`,
     // Ist-Stunden (Anzeige); der Lohn kommt aus den Lohnarten (laborFromPayroll, unten)
+    // ohne Objektleitungen an Kunden-Objekten (Ahmed 16.11.: Kosten stecken in den Bürokosten)
     sql<{ site_id: string; minutes: number }[]>`
       select t.site_id, sum(extract(epoch from (t.end_at - t.start_at)) / 60 - t.break_minutes)::int as minutes
-        from app.time_entries t
+        from app.time_entries t join app.employees e on e.id = t.employee_id
+        join app.sites st on st.id = t.site_id join app.customers cu on cu.id = st.customer_id
        where t.status in ('erfasst', 'freigegeben') and t.work_date between ${from} and ${to}
+         and (cu.is_internal or not ${LEAD_SQL(sql)})
        group by t.site_id`,
     sql<{ site_id: string; cost: bigint }[]>`
       select site_id, coalesce(sum(cost), 0)::bigint as cost from (
@@ -393,6 +400,9 @@ export async function siteCosting(
              and a.month between ${from} and ${to}
            group by 1, 2, 3, 4 order by cc.number`,
   ]);
+  const leadIds = new Set(
+    (await sql<{ id: string }[]>`select e.id from app.employees e where ${LEAD_SQL(sql)}`).map((x) => x.id),
+  );
   const revBySite = new Map<string, bigint>();
   const revByCustomer = new Map<string, bigint>();
   for (const r of revenue) {
@@ -430,7 +440,10 @@ export async function siteCosting(
       manager_user_id: s.manager_user_id,
       revenue: rev,
       planned_minutes: shifts
-        .filter((x) => x.plan.site_id === s.id && !x.absence)
+        .filter(
+          (x) =>
+            x.plan.site_id === s.id && !x.absence && (s.internal || !leadIds.has(x.plan.employee_id ?? '')),
+        )
         .reduce((a, x) => a + x.minutes, 0),
       actual_minutes: l?.minutes ?? 0,
       labor: laborCents,

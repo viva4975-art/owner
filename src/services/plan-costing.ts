@@ -8,7 +8,7 @@ import {
 } from '../domain/hr/employer-cost.js';
 import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
-import { monthRange, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
+import { monthRange, revenueLines, SPECIAL_SITE_ID, subcontractEstimates } from './costing.js';
 import { BusinessError } from './errors.js';
 import { laborFromPayroll } from './costing-labor.js';
 
@@ -93,6 +93,15 @@ export interface PlanSiteDetail {
     fixed: boolean;
     wage_cents: bigint;
     wage_assumed: boolean;
+  }[];
+  /** ausgestellte Rechnungen mit Leistungszeitraum im Zeitraum (zählen, wenn höher als die Pauschalen) */
+  invoices?: {
+    id: string;
+    legacy: boolean;
+    number: string;
+    month: string;
+    period: string | null;
+    net: bigint;
   }[];
   /** eingegangene NU-Rechnungen im Zeitraum (zählen, wenn höher als laut Bestellung) */
   nuInvoices?: { id: string; invoice_no: string; supplier: string; month: string; net: bigint }[];
@@ -248,6 +257,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
     sql,
     services.map((s) => s.site_id),
   );
+  const planRev = new Map<string, bigint>();
   for (const m of months) {
     const { start, end } = monthBounds(m);
     for (const sv of services) {
@@ -267,6 +277,7 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
       const cm = BigInt(CYCLE_MONTHS[sv.billing_cycle] ?? 1);
       const share = (net + cm / 2n) / cm;
       row(sv.site_id).revenue += share;
+      planRev.set(`${sv.site_id}|${m}`, (planRev.get(`${sv.site_id}|${m}`) ?? 0n) + share);
       const d = detail(sv.site_id).revenue;
       const it = d.find((x) => x.service_id === sv.id);
       if (it) {
@@ -274,6 +285,30 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
         it.months += 1;
       } else
         d.push({ service_id: sv.id, title: sv.title, cycle: sv.billing_cycle, months: 1, amount: share });
+    }
+  }
+  // Geschriebene Rechnungen (Ahmed 16.11.: „Rechnung schon geschrieben, Plan zeigt ohne Erlöse“): je Objekt und Monat
+  // zählt der höhere Wert aus laufenden Pauschalen und den ausgestellten Rechnungen mit Leistungszeitraum im Monat
+  // (eigene und übernommene, wie Nachkalkulation) – Sonder-/Einzelleistungen kommen so dazu, Pauschalen nicht doppelt.
+  for (const m of months) {
+    const { start, end } = monthBounds(m);
+    const inv = new Map<string, bigint>();
+    for (const l of await revenueLines(sql, start, end)) {
+      if (!l.site_id || !siteMap.has(l.site_id)) continue;
+      inv.set(l.site_id, (inv.get(l.site_id) ?? 0n) + l.net);
+      const d = detail(l.site_id);
+      (d.invoices ??= []).push({
+        id: l.invoice_id,
+        legacy: l.legacy,
+        number: l.number,
+        month: m,
+        period: l.period,
+        net: l.net,
+      });
+    }
+    for (const [site, net] of inv) {
+      const plan = planRev.get(`${site}|${m}`) ?? 0n;
+      if (net > plan) row(site).revenue += net - plan;
     }
   }
   // Lohn wie Lohnarten / Nachkalkulation (Ahmed 30.10.): je Einsatz Ist, sonst Plan; Zeiten ohne Einsatz zählen mit,

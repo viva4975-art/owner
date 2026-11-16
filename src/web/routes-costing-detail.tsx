@@ -393,6 +393,26 @@ export function registerCostingDetailRoutes(ctx: Ctx) {
               </table>
             </div>
           )}
+          {!!d.invoices?.length && (
+            <>
+              <div class="small" style="margin-top:8px">
+                <b>Geschriebene Rechnungen (Leistungszeitraum im Zeitraum)</b>
+              </div>
+              <ul class="small">
+                {d.invoices.map((v) => (
+                  <li>
+                    <a href={`/rechnungen/${v.id}`}>Rechnung {v.number}</a>{' '}
+                    <span class="mut">
+                      · {v.period ?? `${v.month.slice(5)}/${v.month.slice(0, 4)}`} · {euro(v.net)} netto
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p class="small mut">
+                Je Monat zählt der höhere Wert: laufende Pauschalen oder die geschriebenen Rechnungen.
+              </p>
+            </>
+          )}
         </div>
         <div class="card" id="lohn">
           <h3>

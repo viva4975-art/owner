@@ -726,6 +726,16 @@ a.bs-tr:hover{text-decoration:none;background:var(--head)}
 .tp-foot{display:flex;justify-content:flex-end;align-items:center;gap:10px;background:#eef1f8;margin:8px 0 -8px;padding:14px 22px;border-radius:0 0 12px 12px}
 .tp-foot .small{margin-right:auto}
 @media (max-width:700px){.tp-row{grid-template-columns:1fr}.tp-ic{display:none}}
+.tp-grid{display:grid;grid-template-columns:170px 130px 130px 110px 100px minmax(170px,210px);gap:10px 14px;align-items:end;max-width:900px}
+.tp-f{display:flex;flex-direction:column;gap:4px;min-width:0;margin:0;font-weight:400}
+.tp-f>span:first-child{font-size:12.5px;color:var(--mut);font-weight:500}
+.tp-f input{width:100%!important;max-width:100%!important;margin:0}
+.tp-f .chk{display:flex;align-items:center;gap:6px;min-height:20px}.tp-f .chk label{margin:0;font-size:12.5px;color:var(--mut);font-weight:500}
+.tp-grid .tp-dur{display:flex;align-items:center;height:42px;box-sizing:border-box;padding:0 10px;white-space:nowrap}
+.tp-warn{background:#fff4e5;border:1px solid #f0c27a;border-left:3px solid #d98b00;color:#7a4a00;border-radius:8px;padding:8px 12px;font-size:13.5px}
+.tp-cols .chk{display:flex;gap:8px;align-items:flex-start}.tp-cols .chk input{margin-top:2px;flex:0 0 auto}.emp-row{flex-wrap:wrap}.emp-hint{flex-basis:100%;margin:-2px 0 2px 2px}.emp-hint:empty{display:none}.emp-hint.bad{color:#b3261e;font-weight:600}
+@media (max-width:1100px){.tp-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){.tp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ===================================================================================================
    Modernes Erscheinungsbild (Ahmed 06.10.2026, Runde 6: „moderner“, Vorbild: altes Viva-Portal):

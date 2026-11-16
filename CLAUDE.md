@@ -5669,3 +5669,15 @@ Testadresse.
   - Tests: `nu-statement.db.test.ts` 5 (Gutschrift mit Vorschuss/Objekten, Vereinbarung); e2e nachunternehmer 33,
     einkauf 21, rechte 48, menu grün. Schon vorher rot (nicht durch diese Runde): `e2e:planung` „Termin zeigt neue Zeit“,
     `e2e:transfer` (Kontoauszug-Upload seit Runde 46 entfernt).
+- 2026-11-16: Ahmed (3 Punkte):
+  - **„Termin oder Terminserie planen“: Beginn (Eintritt) sichtbar + Warnung:** unter jedem gewählten Mitarbeiter „Beginn
+    (Eintritt): TT.MM.JJJJ“, in der Auswahl bei künftigem Eintritt „– Beginn …“. Liegt das Datum „ab“ davor, sofort rote
+    Zeile am Mitarbeiter und gelber Hinweis unter den Zeitfeldern (Browser, `entry()` in `FORM_JS`); der Hinweis nach dem
+    Speichern bleibt. Vor dem Eintritt werden weiter keine Einsätze geplant.
+  - **Formular gerade:** Zeitangaben als beschriftete Felder in einer Zeile (ab/Datum · Beginn · Ende · Pause · Dauer ·
+    Enddatum, `.tp-grid`), Wiederholung darunter; Tablet 3, Handy 2 Spalten. Vorher machte die neue Formularregel
+    (Datum/Uhrzeit volle Breite) die Felder riesig und untereinander.
+  - **Geräte-Etiketten lesbarer:** Name (schwarz) entfernt – nur bei Art „Sonstiges“ steht der Name statt der Art;
+    QR-Code kleiner (Avery 20,5 statt 25 mm), Logo etwa doppelt so groß, Nr. größer, unten über die ganze Breite eine Zeile
+    „Tel. … · Eigentum Viva-Deluxe GmbH“ (alle drei Formate).
+  - Browser-Test `e2e:planung` an die Vertretungen-Mehrfachauswahl (Runde 48) angepasst, 27 grün.

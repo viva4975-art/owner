@@ -167,7 +167,7 @@ check(
 );
 const sel = p.locator('select[name=sub]').first();
 if ((await sel.count()) > 0) {
-  await p.locator('button:has-text("Übernehmen")').first().click();
+  await p.locator('button:has-text("Markierte planen")').first().click();
   check('ohne Auswahl kein Absenden (Pflichtfeld)', p.url().includes('/vertretungen'));
 }
 await p.screenshot({ path: `${out}/pl3-vertretungen.png`, fullPage: true });

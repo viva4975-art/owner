@@ -434,6 +434,9 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
 
   // ------------------------------------------------------------------ Etiketten
 
+  // Firmenname kurz fürs Etikett („Viva-Deluxe Gebäudereinigung GmbH“ → „Viva-Deluxe GmbH“)
+  const shortCo = (n?: string | null) =>
+    n ? n.replace(/\s+Gebäudereinigung(?=\s+GmbH)/, '') : 'Viva-Deluxe';
   app.get('/geraete/etiketten', async (c) => {
     const picked = c.req.queries('id') ?? [];
     const fallback = (c.req.query('alle') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/.test(x));
@@ -475,13 +478,13 @@ export function registerDeviceRoutes({ app, deps, page, back }: Ctx) {
         ? // A4: 3 × 63,5 mm + 2 × 2,5 mm Abstand = 195,5 → Rand 7,25 mm; 9 × 29,6 mm = 266,4 → oben 15,3 mm
           `.sheet{grid-template-columns:repeat(3,63.5mm);grid-auto-rows:29.6mm;column-gap:2.5mm;height:297mm;
 padding:calc(15.3mm + var(--dy,0mm)) 0 0 calc(7.25mm + var(--dx,0mm))}
-.lab{padding:1.6mm 2mm;gap:2mm}.qr{width:25mm;height:25mm;flex:none}.nm{font-size:8pt}.k{font-size:5.6pt}
-.nr{font-size:9.5pt}.ob{font-size:6pt}.own{font-size:5pt}.logo{height:3.2mm}.t{display:none}`
+.lab{padding:1.3mm 2.2mm 1mm}.top{gap:2.2mm}.qr{width:20.5mm;height:20.5mm}.k{font-size:6.6pt}
+.nr{font-size:11pt}.ob{font-size:6.2pt}.own{font-size:6.2pt;margin-top:.7mm}.logo{height:6.2mm}.t{display:none}`
         : fmt === 'klein'
           ? `.sheet{grid-template-columns:repeat(3,63.5mm);grid-auto-rows:33.9mm;column-gap:2.5mm;padding:13mm 7mm}
-.lab{padding:2.5mm;gap:2.5mm}.qr{width:28mm;height:28mm}.nm{font-size:9.5pt}.k{font-size:6.5pt}.nr{font-size:11pt}.t,.own,.ob{font-size:5.8pt}.logo{height:4.5mm}`
+.lab{padding:2mm 2.5mm 1.4mm}.top{gap:2.5mm}.qr{width:24mm;height:24mm}.k{font-size:7pt}.nr{font-size:12pt}.t,.ob{font-size:6pt}.own{font-size:7pt;margin-top:1mm}.logo{height:7mm}`
           : `.sheet{grid-template-columns:repeat(2,95mm);grid-auto-rows:54mm;column-gap:4mm;padding:10mm 8mm}
-.lab{padding:4mm;gap:4mm}.qr{width:44mm;height:44mm}.nm{font-size:12pt}.k{font-size:7.5pt}.nr{font-size:16pt}.t,.ob{font-size:7.5pt}.own{font-size:6.5pt}.logo{height:7mm}`;
+.lab{padding:3.5mm 4mm 2.5mm}.top{gap:4mm}.qr{width:38mm;height:38mm}.k{font-size:8.5pt}.nr{font-size:17pt}.t,.ob{font-size:7.5pt}.own{font-size:9pt;margin-top:1.5mm}.logo{height:11mm}`;
     const fmtText =
       fmt === 'avery'
         ? 'Avery Zweckform Sicherheits-Etiketten 63,5 × 29,6 mm (27 je Bogen)'
@@ -508,11 +511,11 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
               dangerouslySetInnerHTML={{
                 __html: `@page{size:A4;margin:0}body{margin:0;font-family:Inter,system-ui,sans-serif;color:#1a1a1a}
 .sheet{display:grid;box-sizing:border-box;width:210mm;break-after:page;align-content:start}
-.lab{display:flex;align-items:center;box-sizing:border-box;border:.2mm dashed #bbb;border-radius:2mm;overflow:hidden}
+.lab{display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;border:.2mm dashed #bbb;border-radius:2mm;overflow:hidden}
 .lab.empty{border-color:#eee}
-.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.6mm;min-width:0}
-.k{text-transform:uppercase;letter-spacing:.06em;color:#7D1435;font-weight:700}.nm{font-weight:700;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.nr{font-weight:800;letter-spacing:.02em}.t{color:#333}.own{color:#666}.ob{color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top{display:flex;align-items:center;min-height:0;flex:1}.qr{flex:none}.qr svg{width:100%;height:100%;display:block}.info{display:flex;flex-direction:column;gap:.5mm;min-width:0;flex:1}.logo{align-self:flex-start;max-width:100%;object-fit:contain;object-position:left}
+.k{text-transform:uppercase;letter-spacing:.05em;color:#7D1435;font-weight:700;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.nr{font-weight:800;letter-spacing:.02em}.t{color:#333}.own{color:#1a1a1a;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;border-top:.15mm solid #ccc;padding-top:.5mm}.ob{color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:14px}
 .bar input{width:60px}
 @media print{.bar{display:none}.lab{border-color:transparent}}${css}`,
@@ -569,25 +572,24 @@ document.addEventListener('DOMContentLoaded',function(){ap();['dx','dy'].forEach
                 {chunk.map((cell) =>
                   cell ? (
                     <div class="lab">
-                      <div class="qr" dangerouslySetInnerHTML={{ __html: cell.svg }} />
-                      <div class="info">
-                        <img
-                          class="logo"
-                          src="/static/logo-transparent.png"
-                          alt="Viva-Deluxe"
-                          style="align-self:flex-start"
-                        />
-                        <div class="k">{kindLabel(cell.d.kind)}</div>
-                        <div class="nm">{cell.d.name}</div>
-                        <div class="nr">Nr. {cell.d.inventory_no}</div>
-                        <div class="ob">
-                          {cell.d.site_id ? `${cell.d.site_no} · ${cell.d.site_name}` : 'Lager / Büro'}
+                      <div class="top">
+                        <div class="qr" dangerouslySetInnerHTML={{ __html: cell.svg }} />
+                        <div class="info">
+                          <img class="logo" src="/static/logo-transparent.png" alt="Viva-Deluxe" />
+                          <div class="k">
+                            {cell.d.kind === 'sonstiges' || !cell.d.kind
+                              ? cell.d.name
+                              : kindLabel(cell.d.kind)}
+                          </div>
+                          <div class="nr">Nr. {cell.d.inventory_no}</div>
+                          <div class="ob">
+                            {cell.d.site_id ? `${cell.d.site_no} · ${cell.d.site_name}` : 'Lager / Büro'}
+                          </div>
+                          <div class="t">Mit dem Handy scannen: Standort oder Defekt melden</div>
                         </div>
-                        <div class="t">Mit dem Handy scannen: Standort oder Defekt melden</div>
-                        <div class="own">
-                          Eigentum {co?.name ?? 'Viva-Deluxe'}
-                          {co?.phone ? ` · ${co.phone}` : ''}
-                        </div>
+                      </div>
+                      <div class="own">
+                        {co?.phone ? `Tel. ${co.phone} · ` : ''}Eigentum {shortCo(co?.name)}
                       </div>
                     </div>
                   ) : (

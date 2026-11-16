@@ -592,8 +592,9 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
       <select name="employee_id">
         <option value="">offen</option>
         {emps.map((e) => (
-          <option value={e.id} selected={e.id === sel}>
+          <option value={e.id} selected={e.id === sel} data-entry={e.entry_date}>
             {e.last_name}, {e.first_name} ({e.personnel_no})
+            {e.entry_date > todayBerlin() ? ` – Beginn ${dateDe(e.entry_date)}` : ''}
             {e.exit_date ? ` – Austritt ${dateDe(e.exit_date)}, planbar bis dahin` : ''}
           </option>
         ))}
@@ -656,39 +657,51 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                     </label>
                   ))}
                 </span>
-                <span class="tp-time">
-                  <span class="mut">ab</span>
+              </div>
+              <div class="tp-grid">
+                <label class="tp-f">
+                  <span id="from-lbl">{v.recurrence === 'einmalig' ? 'Datum' : 'ab'}</span>
                   <input type="date" name="valid_from" value={v.validFrom} required />
+                </label>
+                <label class="tp-f">
+                  <span>Beginn</span>
                   <input type="time" name="start" value={v.startTime} required />
-                  <span>–</span>
+                </label>
+                <label class="tp-f">
+                  <span>Ende</span>
                   <input type="time" name="end" value={v.endTime} required />
+                </label>
+                <label class="tp-f">
+                  <span>Pause (Std.)</span>
+                  <input name="break_h" value={hours} inputmode="decimal" />
+                </label>
+                <div class="tp-f">
+                  <span>Dauer</span>
                   <span class="tp-dur" id="tp-dur">
                     –
                   </span>
-                </span>
+                </div>
+                <div class="tp-f" data-only="woechentlich monatlich">
+                  <span class="chk">
+                    <input
+                      type="checkbox"
+                      id="has-end"
+                      data-reveal="#end-box"
+                      checked={!!v.validUntil && v.recurrence !== 'einmalig'}
+                    />
+                    <label for="has-end">Enddatum</label>
+                  </span>
+                  <span id="end-box" hidden={!v.validUntil || v.recurrence === 'einmalig'}>
+                    <input
+                      type="date"
+                      name="valid_until"
+                      value={v.recurrence === 'einmalig' ? '' : (v.validUntil ?? '')}
+                      aria-label="Enddatum"
+                    />
+                  </span>
+                </div>
               </div>
-              <div class="tp-line">
-                <span class="chk">
-                  <input
-                    type="checkbox"
-                    id="has-end"
-                    data-reveal="#end-box"
-                    checked={!!v.validUntil && v.recurrence !== 'einmalig'}
-                  />
-                  <label for="has-end">Enddatum festlegen</label>
-                </span>
-                <span id="end-box" hidden={!v.validUntil || v.recurrence === 'einmalig'}>
-                  <input
-                    type="date"
-                    name="valid_until"
-                    value={v.recurrence === 'einmalig' ? '' : (v.validUntil ?? '')}
-                  />
-                </span>
-                <span class="tp-time">
-                  <span class="mut">Enthaltene Pause</span>
-                  <input name="break_h" value={hours} style="width:70px" inputmode="decimal" /> <span>h</span>
-                </span>
-              </div>
+              <div class="tp-warn" id="entry-warn" hidden></div>
               <div class="tp-line" data-only="woechentlich monatlich">
                 <select name="every" style="width:auto" data-nosearch>
                   {[1, 2, 3, 4, 6].map((n) => (
@@ -816,6 +829,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                       <button type="button" class="btn sec sm emp-del" title="entfernen">
                         ✕
                       </button>
+                      <div class="emp-hint small mut"></div>
                     </div>
                   ))}
                 </div>
@@ -825,6 +839,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
                     <button type="button" class="btn sec sm emp-del" title="entfernen">
                       ✕
                     </button>
+                    <div class="emp-hint small mut"></div>
                   </div>
                 </template>
                 <button type="button" class="btn sec sm" id="emp-add" style="width:100%;margin-top:6px">
@@ -1064,10 +1079,29 @@ const FORM_JS = `
     var d=document.getElementById('tp-dur');
     if(s&&e){var m=(+e.slice(0,2)*60+ +e.slice(3))-(+s.slice(0,2)*60+ +s.slice(3))-p*60; d.textContent=m>0?(m/60).toFixed(2).replace('.',',')+' h':'Ende vor Beginn';}
     f.querySelectorAll('tr[data-day]').forEach(function(tr){var c=f.querySelector('input[name=weekday][value="'+tr.getAttribute('data-day')+'"]'); tr.hidden=!(c&&c.checked);});
+    var fl=document.getElementById('from-lbl'); if(fl) fl.textContent=r==='einmalig'?'Datum':'ab';
+    entry();
+  }
+  function de(x){return x.slice(8,10)+'.'+x.slice(5,7)+'.'+x.slice(0,4);}
+  // Beginn (Eintritt) je Mitarbeiter anzeigen, Warnung, wenn das Datum davor liegt
+  function entry(){
+    var from=(f.querySelector('[name=valid_from]')||{}).value||'', bad=[];
+    f.querySelectorAll('#emp-list .emp-row').forEach(function(row){
+      var sel=row.querySelector('select'), h=row.querySelector('.emp-hint'); if(!sel||!h) return;
+      var o=sel.options[sel.selectedIndex], en=o&&o.getAttribute('data-entry');
+      if(!en){h.textContent='';h.className='emp-hint small mut';return;}
+      var early=from&&from<en;
+      h.textContent=(early?'⚠ ':'')+'Beginn (Eintritt): '+de(en)+(early?' – liegt nach dem gewählten Datum':'');
+      h.className='emp-hint small '+(early?'bad':'mut');
+      if(early) bad.push(o.textContent.split('(')[0].trim()+' ab '+de(en));
+    });
+    var w=document.getElementById('entry-warn'); if(!w) return;
+    w.hidden=!bad.length;
+    w.textContent=bad.length?'Achtung: Das Datum liegt vor dem Beginn von '+bad.join(', ')+'. Vor dem Eintritt werden keine Einsätze geplant.':'';
   }
   f.addEventListener('change',sync); f.addEventListener('input',sync); sync();
   var list=document.getElementById('emp-list'), tpl=document.getElementById('emp-tpl');
-  document.getElementById('emp-add').addEventListener('click',function(){list.appendChild(tpl.content.firstElementChild.cloneNode(true));});
+  document.getElementById('emp-add').addEventListener('click',function(){list.appendChild(tpl.content.firstElementChild.cloneNode(true));entry();});
   list.addEventListener('click',function(ev){var b=ev.target.closest('.emp-del'); if(!b) return;
     if(list.querySelectorAll('.emp-row').length>1) b.parentNode.remove(); else b.parentNode.querySelector('select').value='';});
 })();`;

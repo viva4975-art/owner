@@ -5751,3 +5751,9 @@ Testadresse.
   Plan-Kalkulation: immer laut Bestellung, höhere eingegangene Rechnung geht vor. Nachkalkulation (Ist): Schätzung nur,
   solange zur Bestellung für diesen Zeitraum keine Eingangsrechnung erfasst ist und am Objekt im Monat keine NU-Rechnung
   gebucht ist (sonst zählt die Rechnung). Test in `plan-costing.db.test.ts`.
+- 2026-11-17: **Scan der NU-Bestellung entfernen/ersetzen** (Ahmed): Bestellung → Kasten „Unterschrift des
+  Nachunternehmers“ → „Scan entfernen / ersetzen“ (Rückfrage, `removeSignedSubcontract`): Verknüpfung zum
+  unterschriebenen Auftrag (Scan oder Handy-Unterschrift) entfällt, Datei bleibt write-once im Archiv, alter Pfad +
+  Prüfsumme im Protokoll (`signed_remove`); danach erscheint wieder „Scan hochladen“. Ist die Bestellung danach ohne
+  Unterschrift, steht sie wieder unter „Unterschrift fehlt“. Test in `subcontractors.db.test.ts` (der Ampel-Test dort
+  ist seit 15.11. datumsbedingt rot, unabhängig davon).

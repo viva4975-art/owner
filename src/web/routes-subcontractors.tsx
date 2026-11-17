@@ -61,6 +61,7 @@ import {
   terminationPdf,
   uploadDocument,
   uploadSignedSubcontract,
+  removeSignedSubcontract,
   signSubcontract,
   subcontractTotal,
   type SubcontractRow,
@@ -2712,6 +2713,14 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                   <a class="btn sec" href={`/nachunternehmer/auftraege/${id}/scan`} target="_blank">
                     Unterschriebenen Auftrag öffnen
                   </a>
+                  <form
+                    method="post"
+                    action={`/nachunternehmer/auftraege/${id}/scan/entfernen`}
+                    style="margin:8px 0 0"
+                    data-confirm="Unterschriebenen Auftrag entfernen? Danach kann ein neuer Scan hochgeladen werden. Die alte Datei bleibt im Archiv."
+                  >
+                    <button class="btn danger sm">Scan entfernen / ersetzen</button>
+                  </form>
                 </>
               ) : (
                 <>
@@ -3678,6 +3687,19 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
       throw e;
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, { ok: 'Scan gespeichert.' });
+  });
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/scan/entfernen`, async (c) => {
+    const id = c.req.param('id');
+    try {
+      await removeSignedSubcontract(deps, id, c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}`, {
+      ok: 'Scan entfernt – jetzt den neuen Scan hochladen.',
+    });
   });
   app.post(`/nachunternehmer/auftraege/:id{${UUID}}/stunden`, async (c) => {
     const id = c.req.param('id');

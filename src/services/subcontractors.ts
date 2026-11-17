@@ -766,6 +766,22 @@ export async function uploadSignedSubcontract(deps: Deps, id: string, data: Uint
 }
 
 /**
+ * Unterschriebenen Auftrag (Scan oder Handy-Unterschrift) wieder entfernen, z. B. falsche Datei hochgeladen
+ * (Ahmed 17.11.). Die Datei bleibt write-once im Archiv; nur die Verknüpfung entfällt, alter Pfad im Protokoll.
+ * Danach kann ein neuer Scan hochgeladen werden.
+ */
+export async function removeSignedSubcontract(deps: Deps, id: string, actor: string, reason?: string) {
+  const [sc] = await deps.sql<Subcontract[]>`select * from app.subcontracts where id = ${id}`;
+  if (!sc) throw new BusinessError('Auftrag nicht gefunden');
+  if (!sc.signed_file_path) throw new BusinessError('Kein unterschriebener Auftrag hinterlegt');
+  await deps.sql`update app.subcontracts set signed_file_path = null, signed_file_sha256 = null
+                 where id = ${id} and signed_file_path = ${sc.signed_file_path}`;
+  await deps.sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                 values (${actor}, 'signed_remove', 'subcontract', ${id},
+                         ${deps.sql.json({ path: sc.signed_file_path, sha256: sc.signed_file_sha256, grund: reason?.trim() || null })})`;
+}
+
+/**
  * Ansprechpartner für die Anschrift „z. Hd. …“: eine Zeile, doppelte Wörter am Ende weg (Import lieferte
  * „Herr Mohammed Ahmed Tawfeeq\nTawfeeq“), „Herr“ → „Herrn“ (Ahmed 15.11., Vereinbarung Gutschriftverfahren).
  */

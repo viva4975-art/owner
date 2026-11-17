@@ -5,6 +5,8 @@ import type { Sql } from '../db/client.js';
 import { saveSupplier } from './inventory.js';
 import { DEMO } from './seed.js';
 import {
+  removeSignedSubcontract,
+  uploadSignedSubcontract,
   addPriceChange,
   complianceOverview,
   compliancePdf,
@@ -335,6 +337,25 @@ describe.skipIf(!available)('Nachunternehmer', () => {
     await setSubcontractStatus(sql, id, 'beendet', 't');
     const [r] = await sql<{ status: string }[]>`select status from app.subcontracts where id = ${id}`;
     expect(r!.status).toBe('beendet');
+  });
+
+  it('Scan entfernen und neuen hochladen (Ahmed 17.11.)', async () => {
+    const [sc] = await sql<
+      { id: string }[]
+    >`select id from app.subcontracts where signed_file_path is null limit 1`;
+    const pdf1 = new TextEncoder().encode('%PDF-1.4\n% eins\n%%EOF');
+    const pdf2 = new TextEncoder().encode('%PDF-1.4\n% zwei\n%%EOF');
+    await uploadSignedSubcontract(deps, sc!.id, pdf1, 't');
+    await expect(uploadSignedSubcontract(deps, sc!.id, pdf2, 't')).rejects.toThrow(/bereits vor/);
+    await removeSignedSubcontract(deps, sc!.id, 't');
+    await uploadSignedSubcontract(deps, sc!.id, pdf2, 't');
+    const [r] = await sql<
+      { signed_file_path: string }[]
+    >`select signed_file_path from app.subcontracts where id = ${sc!.id}`;
+    expect(new TextDecoder().decode(await deps.archive.get(r!.signed_file_path))).toContain('zwei');
+    const log =
+      await sql`select details from app.audit_log where action = 'signed_remove' and entity_id = ${sc!.id}`;
+    expect(log.length).toBe(1);
   });
 
   it('Anfrage ohne Preis: Erteilen gesperrt, erteilte ohne Preis einmal nachtragbar (Ahmed 20.10.)', async () => {

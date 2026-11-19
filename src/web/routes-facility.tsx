@@ -288,7 +288,16 @@ export function registerFacilityRoutes(ctx: Ctx) {
               </span>
             </form>
           )}
-          <p class="small mut" style="margin:10px 0 4px">
+          <div style="margin:10px 0 4px;max-width:420px">
+            <input
+              type="search"
+              data-xf-search="rb-table"
+              aria-label="Räume durchsuchen"
+              placeholder="Räume suchen (Raum, Nr., Etage, Gebäude, Belag …)"
+              style="width:100%"
+            />
+          </div>
+          <p class="small mut" style="margin:4px 0 4px">
             Spaltenkopf anklicken = sortieren, ▾ = filtern wie in Excel (mehrere Spalten zusammen).{' '}
             <span data-xf-status="rb-table" />
           </p>

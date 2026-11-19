@@ -799,22 +799,34 @@ export const CLIENT_JS = String.raw`
       function val(r, i) { var c = r.cells[i]; var t = c ? (c.getAttribute('data-xf') != null ? c.getAttribute('data-xf') : c.textContent) : ''; t = (t || '').replace(/\s+/g, ' ').trim(); return t || '(leer)'; }
       function rows() { return Array.prototype.filter.call(body.rows, function (r) { return r.cells.length === head.cells.length && !r.classList.contains('nosort'); }); }
       var status = document.querySelector('[data-xf-status="' + (table.id || '') + '"]');
+      // Suchfeld input[data-xf-search="<tabellen-id>"]: alle Wörter müssen in der Zeile vorkommen (ohne Groß/Klein, Umlaute egal)
+      var search = table.id ? document.querySelector('input[data-xf-search="' + table.id + '"]') : null;
+      function norm(t) { return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss'); }
+      var q = [];
+      if (search) {
+        try { var sq = ss && ss.getItem(key + ':q'); if (sq && !search.value) search.value = sq; } catch (e) {}
+        var setQ = function () { q = norm(search.value).split(/\s+/).filter(Boolean); };
+        setQ();
+        search.addEventListener('input', function () { setQ(); try { ss && ss.setItem(key + ':q', search.value); } catch (e) {} apply(); });
+        search.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+      }
       function apply() {
         var all = rows(), shown = 0;
         all.forEach(function (r) {
           var ok = Object.keys(sel).every(function (k) { return sel[k].has(val(r, +k)); });
+          if (ok && q.length) { var tx = norm(r.textContent); ok = q.every(function (w) { return tx.indexOf(w) >= 0; }); }
           r.style.display = ok ? '' : 'none';
           if (ok) shown++; else r.querySelectorAll('input[type=checkbox]').forEach(function (x) { x.checked = false; });
         });
         Array.prototype.forEach.call(head.cells, function (th, i) { th.classList.toggle('xf-on', !!sel[i]); });
         try { ss && ss.setItem(key, JSON.stringify(Object.keys(sel).reduce(function (o, k) { o[k] = Array.from(sel[k]); return o; }, {}))); } catch (e) {}
         if (status) {
-          var on = Object.keys(sel).length;
+          var on = Object.keys(sel).length + (q.length ? 1 : 0);
           status.innerHTML = '';
           if (on) {
             status.appendChild(document.createTextNode(shown + ' von ' + all.length + ' angezeigt · '));
             var a = document.createElement('a'); a.href = '#'; a.textContent = 'Filter zurücksetzen';
-            a.addEventListener('click', function (e) { e.preventDefault(); sel = {}; apply(); });
+            a.addEventListener('click', function (e) { e.preventDefault(); sel = {}; if (search) { search.value = ''; q = []; try { ss && ss.removeItem(key + ':q'); } catch (x) {} } apply(); });
             status.appendChild(a);
           }
         }
@@ -876,7 +888,7 @@ export const CLIENT_JS = String.raw`
           q.focus();
         });
       });
-      if (Object.keys(sel).length) apply();
+      if (Object.keys(sel).length || q.length) apply();
     });
   })();
 

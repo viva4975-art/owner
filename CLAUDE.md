@@ -5805,3 +5805,8 @@ Testadresse.
   Gebäude wird immer mitgespeichert und gehört zum Schlüssel „schon vorhanden“. Raumbuch-Seite (Spalte nur, wenn belegt;
   mit Excel-Filter), Raum bearbeiten, CSV, Vorlage, Raumbuch-PDF (Spalte nur, wenn belegt) und QM-App/Audit-Bericht
   zeigen das Gebäude. Test in `room-import-kalk.db.test.ts`.
+- 2026-11-19: **Raumbuch: Suche** (Ahmed): Suchfeld über der Raumtabelle (Objekt → Raumbuch) – sucht in allen Spalten
+  (Raum, Nr., Etage, Gebäude, Gebäudeteil, Nutzungsart, Belag, Hinweise), mehrere Wörter = alle müssen vorkommen,
+  ohne Groß-/Kleinschreibung und Umlaut-Unterschied (Müller = muller); wirkt zusammen mit den Spaltenfiltern, Summe und
+  „n von m angezeigt · Filter zurücksetzen“ (setzt auch die Suche zurück), je Tab gemerkt. Allgemein nutzbar:
+  `input[data-xf-search="<tabellen-id>"]` zu einer `table[data-xfilter]` (client.ts).

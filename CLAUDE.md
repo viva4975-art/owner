@@ -5764,3 +5764,13 @@ Testadresse.
   (`/transfer/kontoauszug.pdf`) und Liquiditätsnachweis haben unten rechts gut lesbar „Kontoauszug <IBAN> · Blatt x von y
   · Seite x von y“ (Blatt je Konto, Seite im ganzen PDF; Übersicht/Bankbestätigung nur „Seite x von y“). `FormDoc`:
   Option `pageNumbers`, `setGroup()` für Abschnitte; Inhaltsbereich schlanker Seiten endet dann etwas früher (796).
+- 2026-11-19: **ZIP für den Steuerberater** (Ahmed: „nach Rechnungsdatum keine ZIP; eine PDF verkleinert + Excel“):
+  Rechnungen → Alle Rechnungen: je Monat Knopf **„ZIP für Steuerberater“** (nach Leistungszeitraum und nach
+  Rechnungsdatum) und oben „ZIP für Steuerberater (Jahr)“ (`/rechnungen/archiv/steuerberater.zip?monat|jahr&nach=`,
+  `archiveTaxZip` in `invoice-archive.ts`). Inhalt: **eine PDF** mit allen Rechnungen (eigene + von vor der Umstellung,
+  nach Rechnungsdatum sortiert; aus den Rechnungsdaten neu gesetzt in einem Dokument – Schrift und Briefpapier nur
+  einmal, Probe 9 Rechnungen 1 MB statt 11 MB) und **Excel** (Nr., Art, Datum, fällig, Leistung von/bis, Kunde, Objekt,
+  Netto/USt/Brutto/Offen in €, Status, Summenzeile; neues Zahlformat `eur` in `xlsx-write.ts`). Bisheriger ZIP mit den
+  Originalbelegen heißt „ZIP Originalbelege“ (nur nach Leistungszeitraum). **Hinweis:** Die Sammel-PDF ist eine
+  Zusammenstellung; maßgeblich bleiben die archivierten Originale (GoBD) – auf Wunsch des Steuerberaters die
+  Originalbelege bzw. XRechnungen schicken. `renderLegacyInvoicePdf` nimmt jetzt ein gemeinsames Dokument (`into`).

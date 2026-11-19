@@ -76,7 +76,7 @@ import {
   resolveExecutionIds,
 } from '../services/executions.js';
 import { NEW_OPTIONS, PageHead, dateDe, euro, anz } from './layout.js';
-import { archiveMonthZip, archiveYear } from '../services/invoice-archive.js';
+import { archiveMonthZip, archiveTaxZip, archiveYear } from '../services/invoice-archive.js';
 import { KIND_TITLES } from '../domain/invoice/types.js';
 import { FileArea } from './files.js';
 import { legacyInvoicePage, legacyInvoicePdf } from './routes-legacy-invoices.js';
@@ -177,7 +177,17 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
               <a href={qs({ q: '' }).replace(/&?q=(&|$)/, '$1')}>Suche aufheben</a>
             </span>
           )}
-          <span class="small mut" style="margin-left:auto">
+          {!q && months.length > 0 && (
+            <a
+              class="btn sec sm"
+              style="margin-left:auto"
+              href={`/rechnungen/archiv/steuerberater.zip?jahr=${year}&nach=${by}`}
+              title="Eine PDF mit allen Rechnungen des Jahres (verkleinert) + Excel-Liste – kann bei vielen Rechnungen etwas dauern"
+            >
+              ZIP für Steuerberater ({year})
+            </a>
+          )}
+          <span class="small mut" style={q || !months.length ? 'margin-left:auto' : ''}>
             Belege unveränderbar, 10 Jahre aufbewahrt
           </span>
         </form>
@@ -232,16 +242,26 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
               <span class="mut small" style="white-space:nowrap">
                 netto {euro(m.net)} · brutto {euro(m.gross)}
               </span>
-              {by === 'leistung' && m.rows.some((r) => !r.legacy) && (
+              <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
                 <a
                   class="btn sec sm"
-                  href={`/rechnungen/archiv/zip/${m.month}`}
-                  style="margin-left:auto"
+                  href={`/rechnungen/archiv/steuerberater.zip?monat=${m.month}&nach=${by}`}
                   onclick="event.stopPropagation()"
+                  title="Eine PDF mit allen Rechnungen (verkleinert) + Excel-Liste"
                 >
-                  ZIP herunterladen
+                  ZIP für Steuerberater
                 </a>
-              )}
+                {by === 'leistung' && m.rows.some((r) => !r.legacy) && (
+                  <a
+                    class="btn sec sm"
+                    href={`/rechnungen/archiv/zip/${m.month}`}
+                    onclick="event.stopPropagation()"
+                    title="Original-Belege je Rechnung (PDF, ZUGFeRD, XRechnung, Anlagen)"
+                  >
+                    ZIP Originalbelege
+                  </a>
+                )}
+              </span>
             </summary>
             <div class="tbl" style="margin-top:12px">
               <table>
@@ -335,6 +355,17 @@ export function registerInvoiceRoutes({ app, deps, page, back }: Ctx) {
     );
   };
 
+  app.get('/rechnungen/archiv/steuerberater.zip', async (c) => {
+    const month = /^\d{4}-\d{2}$/.test(c.req.query('monat') ?? '') ? c.req.query('monat')! : null;
+    const year = month ? Number(month.slice(0, 4)) : Number(c.req.query('jahr') ?? todayBerlin().slice(0, 4));
+    const by = c.req.query('nach') === 'datum' ? 'datum' : 'leistung';
+    const { zip, name } = await archiveTaxZip(deps, { year, month, by });
+    return c.body(zip as Uint8Array<ArrayBuffer>, 200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    });
+  });
   app.get('/rechnungen/archiv/zip/:month{[0-9]{4}-[0-9]{2}}', async (c) => {
     const month = c.req.param('month');
     const zip = await archiveMonthZip(deps, month);

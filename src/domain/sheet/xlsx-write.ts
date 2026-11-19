@@ -7,7 +7,7 @@ import { sortByRequest } from '../export-sort.js';
  * Spaltenbreiten, fixierte Kopfzeile, Autofilter.
  */
 
-export type XlsxCell = string | number | null | { n: number; fmt: 'd1' | 'pct' | 'int' } | { b: string };
+export type XlsxCell = string | number | null | { n: number; fmt: 'd1' | 'pct' | 'int' | 'eur' } | { b: string };
 
 export interface XlsxSheet {
   name: string;
@@ -38,12 +38,12 @@ const col = (i: number): string => {
 // Stil-Index: 0 normal, 1 fett, 2 Zahl 0,0, 3 Prozent 0,0 %, 4 fett Zahl, 5 fett Prozent, 6 ganze Zahl, 7 fett ganze Zahl
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts>
+<numFmts count="3"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="0.0%"/><numFmt numFmtId="166" formatCode="#,##0.00"/></numFmts>
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2E6EA"/></patternFill></fill></fills>
 <borders count="1"><border/></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="9">
+<cellXfs count="11">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
@@ -53,6 +53,8 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="1" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="166" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
 </cellXfs>
 </styleSheet>`;
 
@@ -65,7 +67,7 @@ function cellXml(ref: string, v: XlsxCell, bold: boolean): string {
   if ('b' in v)
     return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${esc(v.b)}</t></is></c>`;
   if (!Number.isFinite(v.n)) return '';
-  const s = v.fmt === 'pct' ? (bold ? 5 : 3) : v.fmt === 'int' ? (bold ? 7 : 6) : bold ? 4 : 2;
+  const s = v.fmt === 'eur' ? (bold ? 10 : 9) : v.fmt === 'pct' ? (bold ? 5 : 3) : v.fmt === 'int' ? (bold ? 7 : 6) : bold ? 4 : 2;
   return `<c r="${ref}" s="${s}"><v>${v.n}</v></c>`;
 }
 

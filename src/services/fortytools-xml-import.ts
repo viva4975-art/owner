@@ -7,6 +7,7 @@ import { formatDateDe, serviceTitle, todayBerlin } from '../domain/invoice/calc.
 import type { BuyerSnapshot, InvoiceDocument } from '../domain/invoice/types.js';
 import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { renderInvoicePdf } from '../pdf/invoice-pdf.js';
+import type { Design2Target } from '../pdf/invoice-design2.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { BusinessError } from './errors.js';
 import { parsePaymentTerms, uuidOf } from './fortytools-export-import.js';
@@ -1068,7 +1069,7 @@ export async function markLegacyPaid(
  * importierten Rechnungsdaten (Ahmed 07.10.: ohne Kopie-Vermerk). Das Original liegt in Fortytools – nicht erneut als
  * Rechnung versenden: zweite Rechnung über dieselbe Leistung → Steuer nach § 14c UStG.
  */
-export async function renderLegacyInvoicePdf(sql: Sql, id: string) {
+export async function renderLegacyInvoicePdf(sql: Sql, id: string, into?: Design2Target) {
   const [inv] = await sql<
     {
       number: string;
@@ -1198,6 +1199,7 @@ export async function renderLegacyInvoicePdf(sql: Sql, id: string) {
     terms: inv.payment_terms ? `Zahlungsbedingung: ${inv.payment_terms}` : '',
     ...(inv.footer_text ? { closing: inv.footer_text } : {}),
     qr: false,
+    ...(into ? { into } : {}),
   });
   return { pdf, filename: `Rechnung_${inv.number}.pdf` };
 }

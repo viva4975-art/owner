@@ -131,3 +131,118 @@ export async function archiveMonthZip(deps: Deps, month: string): Promise<Uint8A
   // bereits komprimierte PDFs nicht erneut packen (schneller, gleich groß)
   return zipSync(files, { level: 0 });
 }
+
+/**
+ * ZIP für den Steuerberater (Ahmed 19.11.): alle Rechnungen eines Monats bzw. Jahres – nach Leistungszeitraum oder
+ * Rechnungsdatum – in EINER verkleinerten PDF (Schrift und Briefpapier nur einmal eingebettet, aus den
+ * Rechnungsdaten neu gesetzt) plus Excel-Liste. Die Originale bleiben unverändert im Archiv.
+ */
+export async function archiveTaxZip(
+  deps: Deps,
+  o: { year: number; month: string | null; by: 'leistung' | 'datum' },
+): Promise<{ zip: Uint8Array; name: string }> {
+  const { months } = await archiveYear(deps.sql, o.year, null, o.by);
+  const rows = months
+    .filter((m) => !o.month || m.month === o.month)
+    .flatMap((m) => m.rows)
+    .sort(
+      (a, b) =>
+        a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number, 'de', { numeric: true }),
+    );
+  if (!rows.length) throw new BusinessError('Keine Rechnungen in diesem Zeitraum');
+  const { createDesign2Target } = await import('../pdf/invoice-design2.js');
+  const { renderInvoicePdf } = await import('../pdf/invoice-pdf.js');
+  const { loadDocument } = await import('./invoices.js');
+  const { renderLegacyInvoicePdf } = await import('./fortytools-xml-import.js');
+  const into = await createDesign2Target();
+  for (const r of rows) {
+    if (r.legacy) await renderLegacyInvoicePdf(deps.sql, r.id, into);
+    else await renderInvoicePdf(await loadDocument(deps.sql, r.id), { into });
+  }
+  const label = o.month ?? String(o.year);
+  const basis = o.by === 'datum' ? 'Rechnungsdatum' : 'Leistungszeitraum';
+  into.pdf.setTitle(`Rechnungen ${label} (${basis})`);
+  const pdf = await into.pdf.save({ useObjectStreams: true });
+
+  const { writeXlsx } = await import('../domain/sheet/xlsx-write.js');
+  const eur = (c: bigint | null) => (c == null ? null : { n: Number(c) / 100, fmt: 'eur' as const });
+  const de = (d: string | null) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : '');
+  const art = (r: ArchiveRow) =>
+    r.legacy
+      ? r.gross_cents < 0n
+        ? 'Rechnungskorrektur'
+        : 'Rechnung'
+      : ({
+          invoice: 'Rechnung',
+          cancellation: 'Stornorechnung',
+          correction: 'Rechnungskorrektur',
+          partial: 'Abschlagsrechnung',
+          final: 'Schlussrechnung',
+        }[r.kind] ?? r.kind);
+  const status = (r: ArchiveRow) =>
+    r.cancelled ? 'storniert' : r.gross_cents <= 0n ? 'verrechnet' : r.open_cents ? 'offen' : 'bezahlt';
+  const sum = (f: (r: ArchiveRow) => bigint) => rows.reduce((a, r) => a + f(r), 0n);
+  const xlsx = writeXlsx([
+    {
+      name: 'Rechnungen',
+      title: [`Ausgangsrechnungen ${label} – nach ${basis}`, `${rows.length} Belege`],
+      header: [
+        'Rechnungsnr.',
+        'Art',
+        'Rechnungsdatum',
+        'Fällig',
+        'Leistung von',
+        'Leistung bis',
+        'Kundennr.',
+        'Kunde',
+        'Objekt',
+        'Netto €',
+        'USt €',
+        'Brutto €',
+        'Offen €',
+        'Status',
+      ],
+      rows: rows.map((r) => [
+        r.number,
+        art(r),
+        de(r.issue_date),
+        de(r.due_date),
+        de(r.period_start),
+        de(r.period_end),
+        r.customer_no,
+        r.customer_name,
+        r.site_name ?? '',
+        eur(r.net_cents),
+        eur(r.gross_cents - r.net_cents),
+        eur(r.gross_cents),
+        eur(r.open_cents ?? 0n),
+        status(r),
+      ]),
+      footer: [
+        [
+          'Summe',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          eur(sum((r) => r.net_cents)),
+          eur(sum((r) => r.gross_cents - r.net_cents)),
+          eur(sum((r) => r.gross_cents)),
+          eur(sum((r) => r.open_cents ?? 0n)),
+          '',
+        ],
+      ],
+      widths: [14, 18, 13, 11, 12, 12, 10, 34, 30, 13, 12, 13, 12, 11],
+    },
+  ]);
+  const base = `Rechnungen_${label}_${basis}`;
+  const zip = zipSync(
+    { [`${base}.pdf`]: [pdf, { level: 6 }], [`${base}.xlsx`]: [xlsx, { level: 0 }] },
+    { level: 6 },
+  );
+  return { zip, name: `${base}.zip` };
+}

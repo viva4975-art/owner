@@ -116,6 +116,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
     date: todayBerlin(),
     author: s.legalName,
     plain: true,
+    pageNumbers: true,
   });
   const L = FORM_X.L;
   const firm = `${s.legalName} · ${s.street} · ${s.postalCode} ${s.city}`;
@@ -197,6 +198,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
   if (i.parts.includes('auszug'))
     for (const a of k.accounts) {
       page();
+      doc.setGroup(`Kontoauszug ${ibanFmt(a.iban)}`);
       doc.title('KONTOAUSZUG', `${d(i.from)} – ${d(i.date)}`);
       doc.kvBox([
         { k: 'Kontoinhaber', v: s.legalName },
@@ -253,6 +255,7 @@ export async function liquidityPdf(sql: Sql, i: LiquidityInput) {
   if (i.parts.includes('bestaetigung'))
     for (const a of k.accounts) {
       page();
+      doc.setGroup(undefined);
       doc.title('BANKBESTÄTIGUNG', 'zur Vorlage bei der Bundesagentur für Arbeit');
       doc.para(`An: ${a.bank ?? 'die kontoführende Bank'}`, { size: 10.5, bold: true });
       doc.y += 4;

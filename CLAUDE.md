@@ -5760,3 +5760,7 @@ Testadresse.
 - 2026-11-19: **Glasreinigung ohne Ansprechpartner des Kunden** (Ahmed: „Hausmeister kann drin bleiben“): Termine (Liste,
   Karte), Terminformular, Bestätigungsliste, Jahresplaner-Terminübersicht und CSV zeigen nur noch den Hausmeister des
   Objekts (Spalte „Hausmeister“). Die Ansprechpartner bleiben beim Glas-Kunden gespeichert und dort sichtbar.
+- 2026-11-19: **Kontoauszüge mit Seitenzahl** (Ahmed: „durchnummerieren, Seitenanzahl soll stehen“): Kontoauszug-PDF
+  (`/transfer/kontoauszug.pdf`) und Liquiditätsnachweis haben unten rechts gut lesbar „Kontoauszug <IBAN> · Blatt x von y
+  · Seite x von y“ (Blatt je Konto, Seite im ganzen PDF; Übersicht/Bankbestätigung nur „Seite x von y“). `FormDoc`:
+  Option `pageNumbers`, `setGroup()` für Abschnitte; Inhaltsbereich schlanker Seiten endet dann etwas früher (796).

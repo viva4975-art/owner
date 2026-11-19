@@ -76,6 +76,17 @@ export class FormDoc {
   landscape = false;
   /** Art je Seite für die Dokumentkennung (eingefügte fremde Seiten fehlen hier) */
   private kinds = new Map<PDFPage, 'bg' | 'plain'>();
+  /** sichtbare Seitenzahl unten rechts („Seite x von y“, Ahmed 19.11.) */
+  pageNumbers = false;
+  /** Abschnitt für die Seitenzahl (z. B. ein Kontoauszug je Konto) – zählt „Blatt x von y“ je Abschnitt */
+  private group: string | undefined;
+  private groups = new Map<PDFPage, string>();
+  /** Abschnitt ab der aktuellen Seite setzen (undefined = keiner) */
+  setGroup(g: string | undefined) {
+    this.group = g;
+    if (g) this.groups.set(this.page, g);
+    else this.groups.delete(this.page);
+  }
   private constructor(
     private sideRef: string,
     private watermark?: string,
@@ -91,8 +102,11 @@ export class FormDoc {
     plain?: boolean;
     /** A4 quer (schlank mit Logo), z. B. Gefährdungsbeurteilung */
     landscape?: boolean;
+    /** sichtbare Seitenzahl unten rechts */
+    pageNumbers?: boolean;
   }) {
     const d = new FormDoc(p.sideRef, p.watermark);
+    d.pageNumbers = !!p.pageNumbers;
     d.pdf = await PDFDocument.create();
     d.pdf.registerFontkit(fontkit);
     const f = await embedUiFonts(d.pdf);
@@ -127,12 +141,13 @@ export class FormDoc {
     this.page = this.pdf.addPage([this.W, this.H]);
     const plain = q || (o.plain ?? !this.bg);
     this.kinds.set(this.page, plain ? 'plain' : 'bg');
+    if (this.group) this.groups.set(this.page, this.group);
     if (plain && !this.logo) throw new Error('Logo nicht geladen (FormDoc.loadLogo)');
     // Logo-Breite schlanker Seiten: 110 pt (Raumbuch, Berichte); Aushänge größer (Ahmed 15.10.)
     const lw = o.logoWidth ?? 110;
     const lh = this.logo ? (this.logo.height / this.logo.width) * lw : 0;
     this.top = plain ? Math.max(74, Math.round(22 + lh + 18)) : TOP;
-    this.bottom = q ? this.H - 36 : plain ? 806 : BOTTOM;
+    this.bottom = q ? this.H - 36 : plain ? (this.pageNumbers ? 796 : 806) : BOTTOM;
     if (this.bg && !plain) this.page.drawImage(this.bg, { x: 0, y: 0, width: this.W, height: this.H });
     if (this.logo && plain)
       this.page.drawImage(this.logo, { x: L, y: this.H - 22 - lh, width: lw, height: lh });
@@ -632,6 +647,25 @@ export class FormDoc {
 
   async save(): Promise<Uint8Array> {
     const pages = this.pdf.getPages();
+    if (this.pageNumbers) {
+      const inGroup = new Map<string, PDFPage[]>();
+      for (const pg of pages) {
+        const g = this.groups.get(pg);
+        if (g) inGroup.set(g, [...(inGroup.get(g) ?? []), pg]);
+      }
+      pages.forEach((pg, i) => {
+        const { width } = pg.getSize();
+        const g = this.groups.get(pg);
+        const list = g ? inGroup.get(g)! : undefined;
+        const parts = [
+          g && list ? `${g} · Blatt ${list.indexOf(pg) + 1} von ${list.length}` : '',
+          `Seite ${i + 1} von ${pages.length}`,
+        ].filter(Boolean);
+        const t = uiText(parts.join('   ·   '));
+        const size = 8.5;
+        pg.drawText(t, { x: width - L - this.width(t, size), y: 22, size, font: this.reg, color: INK });
+      });
+    }
     pages.forEach((pg, i) => {
       const { width, height } = pg.getSize();
       // senkrecht am rechten Rand wie früher, aber immer in einer Zeile auf dem Blatt (Ahmed 27.10.):

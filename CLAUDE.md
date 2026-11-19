@@ -5793,3 +5793,7 @@ Testadresse.
   Suche, Alle/Keine, mehrere Spalten zusammen; je Tab gemerkt), „n von m angezeigt · Filter zurücksetzen“, Summe rechnet
   nur die angezeigten aktiven Räume, „alle angezeigten markieren“; ausgeblendete Räume verlieren ihr Häkchen (Löschen trifft
   nur Sichtbares). Allgemein nutzbar: `table[data-xfilter]` in `client.ts` (Ereignis `xfilter`, `th[data-noxf]`).
+- 2026-11-19: **Raumbuch-PDF im Querformat wie die Excel** (Ahmed): A4 quer, nur Logo oben, Kopf (Kunde, Objekt, Adresse, Stand,
+  Räume, Fläche), dann eine durchgehende Tabelle Gebäudeteil · Etage · Raum-Nr. · Raum · Nutzungsart · Bodenbelag · Fläche m² ·
+  Intervall (Turnus-Kürzel + Reinigungen/Jahr, leer wenn nicht angegeben) · Hinweise, Kopf je Seite wiederholt, Summe am
+  Ende; danach Übersicht nach Nutzungsart. Gilt für den Knopf „PDF“ und die automatische Ablage unter Dokumente.

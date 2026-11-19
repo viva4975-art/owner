@@ -9,8 +9,8 @@ import { archiveLink, storeFile, type UploadConfig } from './uploads.js';
 
 /*
  * Raumbuch als PDF (Ahmed 11.10.: „in die Dokumente soll eine PDF mit unserem Logo rein – Raumbuch für Objekte“).
- * Gestaltung „edel“ auf dem Briefpapier: Kopf mit Kunde/Objekt/Stand, Kennzahlen, Übersicht je Nutzungsart, Räume je
- * Gebäudeteil/Etage. Beim Import und auf Knopfdruck wird es unter Objekt → Dokumente (Kategorie „Raumbuch“) abgelegt;
+ * A4 quer, nur Logo (Ahmed 19.11.: „wie die Excel“): Kopf mit Kunde/Objekt/Stand, eine Tabelle aller Räume (Gebäudeteil,
+ * Etage, Nr., Raum, Nutzungsart, Belag, Fläche, Intervall, Hinweise) mit Summe, danach Übersicht je Nutzungsart. Beim Import und auf Knopfdruck wird es unter Objekt → Dokumente (Kategorie „Raumbuch“) abgelegt;
  * ein älteres, von der App erzeugtes Raumbuch-PDF wandert dort ins Archiv (Datei bleibt write-once).
  */
 
@@ -35,6 +35,7 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
     date: today,
     author: 'Viva-Deluxe Gebäudereinigung GmbH',
     plain: true,
+    landscape: true,
   });
   d.title('Raumbuch', s.site_no);
   d.infoGrid([
@@ -46,15 +47,46 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
     ['Fläche gesamt', `${m2(total)} m²`],
   ]);
 
+  // Räume als eine Tabelle wie in Excel (Ahmed 19.11.: „Querformat, ungefähr wie die Excel, mit Logo“)
+  const rows: (string[] | { sum: string[]; strong?: boolean })[] = rooms.map((r) => [
+    r.building_part ?? '',
+    r.floor ?? '',
+    r.room_no ?? '',
+    r.name,
+    r.type_name,
+    r.floor_covering ?? '',
+    m2(r.area_centi),
+    [r.turnus, r.visits_per_year != null ? frequencyLabel(r.visits_per_year) : '']
+      .filter(Boolean)
+      .join(' · '),
+    r.notes?.trim() ?? '',
+  ]);
+  rows.push({ sum: ['Summe', '', '', `${rooms.length} Räume`, '', '', m2(total), '', ''], strong: true });
+  d.table(
+    [
+      { label: 'Gebäudeteil', width: 66 },
+      { label: 'Etage', width: 50 },
+      { label: 'Raum-Nr.', width: 56 },
+      { label: 'Raum', width: 180 },
+      { label: 'Nutzungsart', width: 90 },
+      { label: 'Bodenbelag', width: 72 },
+      { label: 'Fläche m²', width: 62, align: 'right' },
+      { label: 'Intervall', width: 80 },
+      { label: 'Hinweise', width: 79 },
+    ],
+    rows,
+    { size: 7.8 },
+  );
+
   // Übersicht je Nutzungsart
-  const byType = new Map<string, { n: number; area: bigint; visits: number }>();
+  const byType = new Map<string, { n: number; area: bigint }>();
   for (const r of rooms) {
-    const e = byType.get(r.type_name) ?? { n: 0, area: 0n, visits: 0 };
+    const e = byType.get(r.type_name) ?? { n: 0, area: 0n };
     e.n++;
     e.area += BigInt(r.area_centi);
-    e.visits += Number(r.area_centi) * (r.visits_per_year ?? 0);
     byType.set(r.type_name, e);
   }
+  d.ensure(90 + byType.size * 16);
   d.section('Übersicht nach Nutzungsart');
   d.table(
     [
@@ -77,50 +109,6 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
       { sum: ['Summe', String(rooms.length), m2(total), '100 %'], strong: true },
     ],
   );
-
-  // Räume je Gebäudeteil/Etage
-  d.section('Räume');
-  const groups = new Map<string, (typeof rooms)[number][]>();
-  for (const r of rooms) {
-    const k = [r.building_part, r.floor].filter(Boolean).join(' · ') || 'ohne Etage';
-    groups.set(k, [...(groups.get(k) ?? []), r]);
-  }
-  const rows: (string[] | { group: string } | { sum: string[]; strong?: boolean })[] = [];
-  for (const [g, rs] of groups) {
-    rows.push({ group: g });
-    for (const r of rs)
-      rows.push([
-        r.room_no ?? '',
-        r.name,
-        r.type_name,
-        r.floor_covering ?? '',
-        m2(r.area_centi),
-        frequencyLabel(r.visits_per_year),
-      ]);
-    if (groups.size > 1)
-      rows.push({
-        sum: [`Summe ${g}`, '', '', '', m2(rs.reduce((a, r) => a + BigInt(r.area_centi), 0n)), ''],
-      });
-  }
-  rows.push({ sum: ['Fläche gesamt', '', '', '', m2(total), ''], strong: true });
-  d.table(
-    [
-      { label: 'Nr.', width: 62 },
-      { label: 'Raum', width: 136 },
-      { label: 'Nutzungsart', width: 96 },
-      { label: 'Bodenbelag', width: 76 },
-      { label: 'Fläche m²', width: 60, align: 'right' },
-      { label: 'Intervall', width: 68 },
-    ],
-    rows,
-    { size: 7.8 },
-  );
-  const notes = rooms.filter((r) => r.notes?.trim());
-  if (notes.length) {
-    d.section('Hinweise');
-    for (const r of notes)
-      d.para(`${[r.room_no, r.name].filter(Boolean).join(' ')}: ${r.notes}`, { size: 8.5 });
-  }
   return d.save();
 }
 

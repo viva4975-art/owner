@@ -108,9 +108,9 @@ export function registerQmOfflineRoutes({ app, deps }: Ctx) {
         room_type_id: string;
       }[]
     >`
-      select r.id, r.name, nullif(concat_ws(' · ', nullif(r.building_part, ''), nullif(r.floor, '')), '') as floor, r.room_no, r.floor_covering, r.area_centi, r.room_type_id
+      select r.id, r.name, nullif(concat_ws(' · ', nullif(r.building, ''), nullif(r.building_part, ''), nullif(r.floor, '')), '') as floor, r.room_no, r.floor_covering, r.area_centi, r.room_type_id
         from app.rooms r where r.site_id = ${siteId} and r.active
-       order by r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
+       order by r.building nulls first, r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
     const types = new Map<string, string[]>();
     const items: Record<
       string,

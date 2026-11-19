@@ -5797,3 +5797,11 @@ Testadresse.
   Räume, Fläche), dann eine durchgehende Tabelle Gebäudeteil · Etage · Raum-Nr. · Raum · Nutzungsart · Bodenbelag · Fläche m² ·
   Intervall (Turnus-Kürzel + Reinigungen/Jahr, leer wenn nicht angegeben) · Hinweise, Kopf je Seite wiederholt, Summe am
   Ende; danach Übersicht nach Nutzungsart. Gilt für den Knopf „PDF“ und die automatische Ablage unter Dokumente.
+- 2026-11-19: **Raumbuch: Gebäude als eigene Spalte** (Ahmed: „zu einem Objekt gehören manchmal mehrere Gebäude, die stehen
+  nicht im Raumbuch“): neue Spalte `rooms.building` (Migration `20270129000001`) neben Gebäudeteil. Import: Spalte
+  „Gebäude/Haus/Liegenschaft“ → Gebäude, „Gebäudeteil/Bauteil/Trakt“ → Gebäudeteil (vorher teilte sich beides ein Feld).
+  Enthält die Datei mehrere Gebäude, fragt die Vorschau weiter je Gebäude das Objekt ab – mehrere Gebäude dürfen jetzt zum
+  selben Objekt gehören; ohne passenden Objektnamen ist dieses Objekt vorgeschlagen (vorher „nicht übernehmen“). Das
+  Gebäude wird immer mitgespeichert und gehört zum Schlüssel „schon vorhanden“. Raumbuch-Seite (Spalte nur, wenn belegt;
+  mit Excel-Filter), Raum bearbeiten, CSV, Vorlage, Raumbuch-PDF (Spalte nur, wenn belegt) und QM-App/Audit-Bericht
+  zeigen das Gebäude. Test in `room-import-kalk.db.test.ts`.

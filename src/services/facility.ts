@@ -37,7 +37,9 @@ export interface Room {
   site_id: string;
   room_no: string | null;
   name: string;
-  /** Gebäudeteil/Bauteil (A, B, Haus 2 …) */
+  /** Gebäude (mehrere Gebäude je Objekt möglich) */
+  building: string | null;
+  /** Gebäudeteil/Bauteil (A, B …) */
   building_part: string | null;
   floor: string | null;
   room_type_id: string;
@@ -115,7 +117,7 @@ export async function listRooms(sql: Sql, siteId: string, includeInactive = fals
     select r.*, t.name as type_name, coalesce(r.performance_override, t.performance_m2_per_h) as performance
       from app.rooms r join app.room_types t on t.id = r.room_type_id
      where r.site_id = ${siteId} and ${includeInactive ? sql`true` : sql`r.active`}
-     order by r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
+     order by r.building nulls first, r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
   return rows.map(visitsNum);
 }
 
@@ -128,6 +130,7 @@ export interface RoomInput {
   siteId: string;
   roomNo: string | null;
   name: string;
+  building?: string | null;
   buildingPart?: string | null;
   floor: string | null;
   roomTypeId: string;
@@ -155,6 +158,7 @@ export async function saveRoom(sql: Sql, id: string, p: RoomInput) {
     site_id: p.siteId,
     room_no: p.roomNo,
     name: p.name.trim(),
+    ...(p.building !== undefined ? { building: p.building?.trim().slice(0, 120) || null } : {}),
     ...(p.buildingPart !== undefined ? { building_part: p.buildingPart?.trim().slice(0, 80) || null } : {}),
     floor: p.floor,
     room_type_id: p.roomTypeId,
@@ -419,9 +423,9 @@ export async function createQualityCheck(
       insert into app.quality_checks (id, number, site_id, check_date, inspector, attendee, created_by)
       values (${id}, ${number}, ${p.siteId}, ${p.checkDate}, ${p.inspector.trim()}, ${p.attendee}, ${actor})`;
     const rooms = await tx<{ id: string; label: string }[]>`
-      select r.id, concat_ws(' · ', nullif(r.building_part, ''), nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as label
+      select r.id, concat_ws(' · ', nullif(r.building, ''), nullif(r.building_part, ''), nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as label
         from app.rooms r where r.site_id = ${p.siteId} and r.active
-       order by r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
+       order by r.building nulls first, r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
     const areas = rooms.length
       ? rooms.map((r) => ({ key: r.id, room: r.id as string | null, area: r.label }))
       : DEFAULT_AREAS.map((a) => ({ key: a, room: null as string | null, area: a }));

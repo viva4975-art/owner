@@ -21,6 +21,7 @@ const norm = (s: string) =>
 
 export type RoomField =
   | 'building'
+  | 'part'
   | 'floor'
   | 'room_no'
   | 'name'
@@ -34,8 +35,12 @@ export type RoomField =
   | 'daycleaner'
   | 'notes';
 export const ROOM_FIELDS: Record<RoomField, { label: string; aliases: string[] }> = {
-  // Fortytools-Raumexport hat „Gebäudeteil“ und „Etage“ getrennt → zusammen als Etage („A · UG“)
-  building: { label: 'Gebäudeteil', aliases: ['gebaeudeteil', 'bauteil', 'gebaeude', 'haus', 'trakt'] },
+  // Gebäude (Haus, Liegenschaft) und Gebäudeteil (Bauteil, Trakt – Fortytools: A, B, C …) als eigene Spalten
+  building: {
+    label: 'Gebäude',
+    aliases: ['gebaeude', 'haus', 'liegenschaft', 'gebaeudename', 'gebaeudebezeichnung', 'gebaeudenr'],
+  },
+  part: { label: 'Gebäudeteil', aliases: ['gebaeudeteil', 'bauteil', 'trakt', 'gebaeudeabschnitt'] },
   floor: {
     label: 'Etage',
     aliases: ['etage', 'geschoss', 'ebene', 'stockwerk', 'og', 'etagegeschoss'],
@@ -207,6 +212,8 @@ const uuidOf = (s: string) => {
 
 export interface RoomImportRow {
   line: number;
+  /** Gebäude (eigene Spalte im Raumbuch; mehrere Gebäude können zu einem Objekt gehören) */
+  building: string | null;
   /** Gebäudeteil/Bauteil/Trakt (eigene Spalte im Raumbuch) */
   buildingPart: string | null;
   floor: string | null;
@@ -242,7 +249,7 @@ export interface RoomImportAnalysis {
   newTypes: string[];
   /** Summe Reinigungsstunden/Jahr der fehlerfreien Zeilen (null = nicht ermittelbar) */
   hoursYear: number | null;
-  /** verschiedene Werte der Spalte „Gebäude“ (Reihenfolge der Datei) – mehrere = mehrere Objekte möglich */
+  /** verschiedene Werte der Spalte „Gebäude“ (Reihenfolge der Datei) – je Gebäude ein Objekt wählbar (auch dasselbe) */
   buildings: string[];
 }
 
@@ -380,31 +387,29 @@ export async function analyzeRooms(
   const map = pick.map;
   const fields = new Set(map.values());
   const header = rows[headerIdx]!;
-  // „Gebäudeteil/Bauteil/Trakt“ (Fortytools: A, B, C … derselben Schule) = Teil EINES Objekts → nur in die Etage;
-  // nur „Gebäude/Haus/Liegenschaft“ können verschiedene Objekte sein (Kalkulation mit mehreren Schulen)
-  const bldIdx = [...map].find(([, f]) => f === 'building')?.[0];
-  const bldIsPart = bldIdx != null && /teil|trakt/.test(norm(header[bldIdx] ?? ''));
 
   const [types, existing] = await Promise.all([
     sql<{ id: string; name: string }[]>`select id, name from app.room_types`,
     sql<
       {
         id: string;
+        building: string | null;
         building_part: string | null;
         floor: string | null;
         room_no: string | null;
         name: string;
       }[]
     >`
-      select id, building_part, floor, room_no, name from app.rooms where site_id = ${siteId}`,
+      select id, building, building_part, floor, room_no, name from app.rooms where site_id = ${siteId}`,
   ]);
   const typeByNorm = new Map(types.map((t) => [norm(t.name), t]));
   const keyOf = (floor: string | null, no: string | null, name: string) =>
     no ? `${norm(floor ?? '')}|nr|${norm(no)}` : `${norm(floor ?? '')}|name|${norm(name)}`;
-  // Gebäudeteil gehört zum Schlüssel (A · EG Nr. 1 ≠ B · EG Nr. 1)
-  const fl = (part: string | null, floor: string | null) => [part, floor].filter(Boolean).join(' · ') || null;
+  // Gebäude und Gebäudeteil gehören zum Schlüssel (Haus 1 · A · EG Nr. 1 ≠ Haus 2 · A · EG Nr. 1)
+  const fl = (bld: string | null, part: string | null, floor: string | null) =>
+    [bld, part, floor].filter(Boolean).join(' · ') || null;
   const existingByKey = new Map(
-    existing.map((r) => [keyOf(fl(r.building_part, r.floor), r.room_no, r.name), r.id]),
+    existing.map((r) => [keyOf(fl(r.building, r.building_part, r.floor), r.room_no, r.name), r.id]),
   );
   const seen = new Set<string>();
   const newTypes = new Set<string>();
@@ -419,15 +424,13 @@ export async function analyzeRooms(
       return '';
     };
     const bld = get('building');
-    if (bld && !bldIsPart && !/^(summe|gesamt|total)/i.test(bld) && !buildings.includes(bld))
-      buildings.push(bld);
-    // nur ein Gebäude (= ein Objekt): andere Zeilen auslassen, Gebäude nicht mehr in die Etage schreiben
-    if (opts.building != null && !bldIsPart && bld !== opts.building) return;
-    // Gebäudeteil eigene Spalte (Ahmed 19.11.: „wie in der Excel“); ist das Gebäude ein eigenes Objekt, entfällt er
-    const buildingPart =
-      (opts.building != null && !bldIsPart ? '' : bld).replace(/\s+/g, ' ').trim().slice(0, 80) || null;
+    if (bld && !/^(summe|gesamt|total)/i.test(bld) && !buildings.includes(bld)) buildings.push(bld);
+    // nur die Zeilen eines Gebäudes (Gebäude → Objekt zugeordnet)
+    if (opts.building != null && bld !== opts.building) return;
+    const building = bld.replace(/\s+/g, ' ').trim().slice(0, 120) || null;
+    const buildingPart = get('part').replace(/\s+/g, ' ').trim().slice(0, 80) || null;
     const floorOnly = get('floor') || null;
-    const floor = fl(buildingPart, floorOnly);
+    const floor = fl(building, buildingPart, floorOnly);
     const noRaw = get('room_no');
     // „keine NR“, „ohne“, „-“ = keine Raumnummer
     const roomNo = noRaw && !/^(keine|ohne|o\.?\s?nr|n\.?\s?a\.?|-+|\?)/i.test(noRaw) ? noRaw : null;
@@ -525,6 +528,7 @@ export async function analyzeRooms(
     const turnus = (intervalText || '').slice(0, 40) || null;
     out.push({
       line: headerIdx + 2 + i,
+      building,
       buildingPart,
       floor: floorOnly,
       roomNo,
@@ -611,6 +615,7 @@ export async function applyRooms(
       }
       const row = {
         site_id: siteId,
+        building: r.building,
         building_part: r.buildingPart,
         floor: r.floor,
         room_no: r.roomNo,
@@ -649,8 +654,8 @@ export async function applyRooms(
 
 /**
  * Mehrere Gebäude in einer Datei (Ausschreibung mit mehreren Liegenschaften): Vorschlag Gebäude → Objekt desselben
- * Kunden über gemeinsame Wörter im Namen (mind. 4 Buchstaben, Ortsteil zählt); ohne Treffer beim ersten Gebäude das
- * aktuelle Objekt, sonst „nicht übernehmen“.
+ * Kunden über gemeinsame Wörter im Namen (mind. 4 Buchstaben, Ortsteil zählt); ohne Treffer das aktuelle Objekt
+ * (mehrere Gebäude können zu einem Objekt gehören).
  */
 export async function suggestBuildingSites(sql: Sql, siteId: string, buildings: string[]) {
   const sites = await sql<
@@ -693,6 +698,7 @@ export async function suggestBuildingSites(sql: Sql, siteId: string, buildings: 
     suggestion.set(p.b, p.id);
     used.add(p.id);
   }
-  if (buildings.length && ![...suggestion.values()].some(Boolean)) suggestion.set(buildings[0]!, siteId);
+  // Gebäude ohne passenden Objektnamen gehören vorgeschlagen zum aktuellen Objekt (ein Objekt, mehrere Gebäude)
+  for (const b of buildings) if (!suggestion.get(b)) suggestion.set(b, siteId);
   return { sites, suggestion };
 }

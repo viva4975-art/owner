@@ -47,33 +47,41 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
     ['Fläche gesamt', `${m2(total)} m²`],
   ]);
 
-  // Räume als eine Tabelle wie in Excel (Ahmed 19.11.: „Querformat, ungefähr wie die Excel, mit Logo“)
-  const rows: (string[] | { sum: string[]; strong?: boolean })[] = rooms.map((r) => [
-    r.building_part ?? '',
-    r.floor ?? '',
-    r.room_no ?? '',
-    r.name,
-    r.type_name,
-    r.floor_covering ?? '',
-    m2(r.area_centi),
-    [r.turnus, r.visits_per_year != null ? frequencyLabel(r.visits_per_year) : '']
-      .filter(Boolean)
-      .join(' · '),
-    r.notes?.trim() ?? '',
-  ]);
-  rows.push({ sum: ['Summe', '', '', `${rooms.length} Räume`, '', '', m2(total), '', ''], strong: true });
+  // Räume als eine Tabelle wie in Excel (Ahmed 19.11.: „Querformat, ungefähr wie die Excel, mit Logo“);
+  // Gebäude/Gebäudeteil nur, wenn im Raumbuch belegt – der frei werdende Platz geht an „Raum“
+  const hasBld = rooms.some((r) => r.building);
+  const hasPart = rooms.some((r) => r.building_part);
+  type Col = { label: string; width: number; align?: 'right'; v: (r: (typeof rooms)[number]) => string };
+  const cols: Col[] = [
+    ...(hasBld ? [{ label: 'Gebäude', width: 78, v: (r) => r.building ?? '' } as Col] : []),
+    ...(hasPart ? [{ label: 'Gebäudeteil', width: 56, v: (r) => r.building_part ?? '' } as Col] : []),
+    { label: 'Etage', width: 46, v: (r) => r.floor ?? '' },
+    { label: 'Raum-Nr.', width: 54, v: (r) => r.room_no ?? '' },
+    { label: 'Raum', width: 0, v: (r) => r.name },
+    { label: 'Nutzungsart', width: 88, v: (r) => r.type_name },
+    { label: 'Bodenbelag', width: 68, v: (r) => r.floor_covering ?? '' },
+    { label: 'Fläche m²', width: 60, align: 'right', v: (r) => m2(r.area_centi) },
+    {
+      label: 'Intervall',
+      width: 78,
+      v: (r) =>
+        [r.turnus, r.visits_per_year != null ? frequencyLabel(r.visits_per_year) : '']
+          .filter(Boolean)
+          .join(' · '),
+    },
+    { label: 'Hinweise', width: 70, v: (r) => r.notes?.trim() ?? '' },
+  ];
+  const raum = cols.find((c) => c.label === 'Raum')!;
+  raum.width = Math.max(110, 735 - cols.reduce((a, c) => a + c.width, 0));
+  const rows: (string[] | { sum: string[]; strong?: boolean })[] = rooms.map((r) => cols.map((c) => c.v(r)));
+  rows.push({
+    sum: cols.map((c, i) =>
+      i === 0 ? 'Summe' : c === raum ? `${rooms.length} Räume` : c.label === 'Fläche m²' ? m2(total) : '',
+    ),
+    strong: true,
+  });
   d.table(
-    [
-      { label: 'Gebäudeteil', width: 66 },
-      { label: 'Etage', width: 50 },
-      { label: 'Raum-Nr.', width: 56 },
-      { label: 'Raum', width: 180 },
-      { label: 'Nutzungsart', width: 90 },
-      { label: 'Bodenbelag', width: 72 },
-      { label: 'Fläche m²', width: 62, align: 'right' },
-      { label: 'Intervall', width: 80 },
-      { label: 'Hinweise', width: 79 },
-    ],
+    cols.map(({ label, width, align }) => ({ label, width, ...(align ? { align } : {}) })),
     rows,
     { size: 7.8 },
   );
@@ -125,6 +133,7 @@ export async function storeRoomBookPdf(sql: Sql, cfg: UploadConfig, siteId: stri
     .update(
       JSON.stringify(
         rooms.map((r) => [
+          r.building,
           r.building_part,
           r.floor,
           r.room_no,

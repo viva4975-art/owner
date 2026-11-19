@@ -1670,9 +1670,9 @@ f.addEventListener('submit',function(){btn.textContent='Wird hochgeladen \\u2026
     const sites = await qmSites(sql, c.get('sites'));
     const rooms = /^[0-9a-f-]{36}$/.test(siteId)
       ? await sql<{ id: string; label: string }[]>`
-          select r.id, concat_ws(' · ', nullif(r.building_part, ''), nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as label
+          select r.id, concat_ws(' · ', nullif(r.building, ''), nullif(r.building_part, ''), nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as label
             from app.rooms r where r.site_id = ${siteId} and r.active
-           order by r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`
+           order by r.building nulls first, r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`
       : [];
     return render(
       c,

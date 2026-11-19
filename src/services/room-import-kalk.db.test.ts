@@ -133,6 +133,12 @@ describe.skipIf(!available)('Raumbuch aus einer Ausschreibungs-Kalkulation (mehr
     const sug = await suggestBuildingSites(sql, DEMO.siteSchool, a.buildings);
     expect(sug.sites.some((x) => x.id === DEMO.siteSchool)).toBe(true);
     expect(sug.suggestion.size).toBe(2);
+    // ohne passenden Objektnamen: beide Gebäude zu diesem Objekt; das Gebäude steht dann im Raumbuch
+    expect([...sug.suggestion.values()].every(Boolean)).toBe(true);
+    expect(gs.rows.every((r) => r.building === 'Grundschule')).toBe(true);
+    const [bld] = await sql<{ building: string | null }[]>`
+      select building from app.rooms where site_id = ${DEMO.siteSchool} and name = 'Hausmeisterraum'`;
+    expect(bld?.building).toBe('Grundschule');
     // zweimal übernehmen legt nichts doppelt an
     expect((await applyRooms(sql, DEMO.siteSchool, 'kalk', a, { update: false }, 't')).created).toBe(0);
   }, 30_000);

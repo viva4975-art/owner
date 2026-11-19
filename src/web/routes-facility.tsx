@@ -201,6 +201,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
   app.get(`/objekte/:id{${UUID}}/raumbuch`, (c) =>
     shells.site!(c, 'raumbuch', async (s) => {
       const rooms = await listRooms(sql, s.id, true);
+      const hasBld = rooms.some((r) => r.building);
       const t = await hourTarget(sql, s.id);
       const office = canAccess(c.get('user').role, '/raumbuch/raumarten');
       const docsRb = await roomDocs(s.id);
@@ -296,6 +297,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <thead>
                 <tr>
                   <th style="width:28px" />
+                  {hasBld && <th>Gebäude</th>}
                   <th>Gebäudeteil</th>
                   <th>Etage</th>
                   <th>Raum-Nr.</th>
@@ -318,6 +320,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                         aria-label="Raum markieren"
                       />
                     </td>
+                    {hasBld && <td>{r.building}</td>}
                     <td>{r.building_part}</td>
                     <td>{r.floor}</td>
                     <td>{r.room_no}</td>
@@ -336,7 +339,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 ))}
                 {!rooms.length && (
                   <tr>
-                    <td colspan={9} class="mut">
+                    <td colspan={hasBld ? 10 : 9} class="mut">
                       Noch keine Räume erfasst. Raumbuch vom Auftraggeber? „Importieren“ oder Raumbuch unter
                       Dokumente → Raumbuch ablegen und „Aus Dokumente übernehmen“.
                     </td>
@@ -346,7 +349,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               {rooms.length > 0 && (
                 <tfoot>
                   <tr>
-                    <th colspan={7} id="rb-sum-l">
+                    <th colspan={hasBld ? 8 : 7} id="rb-sum-l">
                       Summe aktive Räume
                     </th>
                     <th class="right" id="rb-sum">
@@ -377,6 +380,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
         title: ['Raumbuch – je Raum eine Zeile, Kopfzeile nicht ändern (Erklärung im zweiten Blatt)'],
         header: [
           'Gebäude',
+          'Gebäudeteil',
           'Etage',
           'Raum-Nr.',
           'Raum',
@@ -389,13 +393,14 @@ export function registerFacilityRoutes(ctx: Ctx) {
           'Bemerkung',
         ],
         rows: [],
-        widths: [22, 10, 12, 28, 22, 16, 12, 10, 20, 15, 36],
+        widths: [22, 12, 10, 12, 28, 22, 16, 12, 10, 20, 15, 36],
       },
       {
         name: 'Erklärung',
         header: ['Spalte / Turnus', 'Bedeutung', 'Reinigungen im Jahr'],
         rows: [
-          ['Gebäude, Etage', 'frei, z. B. „Haus A“, „EG“ – erscheinen zusammen als Etage', null],
+          ['Gebäude', 'frei, z. B. „Hauptgebäude“, „Turnhalle“ – eigene Spalte im Raumbuch', null],
+          ['Gebäudeteil, Etage', 'frei, z. B. „A“, „Nordflügel“, „EG“', null],
           ['Raum-Nr.', 'leer lassen, wenn es keine gibt', null],
           ['Raum', 'Pflicht, wenn keine Raum-Nr. – sonst reicht die Raumart', null],
           ['Raumart', 'eine der Nutzungsarten unten oder frei („WC Damen“ → Sanitär / WC)', null],
@@ -650,11 +655,11 @@ export function registerFacilityRoutes(ctx: Ctx) {
             <input type="hidden" name="datei" value={sha} />
             {plan.mapping.length > 0 && (
               <div class="card" style="padding:10px 14px;margin-bottom:8px">
-                <b>Die Datei enthält {plan.mapping.length} Gebäude – welches gehört zu welchem Objekt?</b>
+                <b>Die Datei enthält {plan.mapping.length} Gebäude – zu welchem Objekt gehören sie?</b>
                 <div class="grid" style="margin-top:6px">
                   {plan.mapping.map((m) => {
                     const n = plan.all.rows.filter(
-                      (r) => r.buildingPart === m.building.replace(/\s+/g, ' ').trim().slice(0, 80),
+                      (r) => r.building === m.building.replace(/\s+/g, ' ').trim().slice(0, 120),
                     ).length;
                     return (
                       <div>
@@ -676,8 +681,9 @@ export function registerFacilityRoutes(ctx: Ctx) {
                   })}
                 </div>
                 <p class="small mut" style="margin:6px 0 0">
-                  Vorschlag über den Namen. Fehlt ein Objekt, zuerst beim Kunden anlegen und diese Seite neu
-                  laden.
+                  Mehrere Gebäude können zum selben Objekt gehören – das Gebäude steht dann im Raumbuch.
+                  Vorschlag über den Namen, sonst dieses Objekt. Fehlt ein Objekt, zuerst beim Kunden anlegen
+                  und diese Seite neu laden.
                 </p>
               </div>
             )}
@@ -729,6 +735,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <thead>
                 <tr>
                   <th>Zeile</th>
+                  <th>Gebäude</th>
                   <th>Gebäudeteil</th>
                   <th>Etage</th>
                   <th>Raum-Nr.</th>
@@ -744,7 +751,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 <tbody>
                   {p.building != null && (
                     <tr>
-                      <th colspan={10} style="background:var(--bg2,#f4f4f5)">
+                      <th colspan={11} style="background:var(--bg2,#f4f4f5)">
                         {p.building} → {p.siteName} · {p.a.rows.length} Räume
                       </th>
                     </tr>
@@ -752,6 +759,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                   {p.a.rows.map((r) => (
                     <tr style={r.errors.length ? 'background:#fdf1f1' : ''}>
                       <td class="mut">{r.line}</td>
+                      <td>{r.building}</td>
                       <td>{r.buildingPart}</td>
                       <td>{r.floor}</td>
                       <td>{r.roomNo}</td>
@@ -872,9 +880,10 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const rooms = await listRooms(sql, siteId, true);
     const q = (v: string | null | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
     const lines = [
-      'Gebäudeteil;Etage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Reinigungen pro Jahr;Intervall;aktiv',
+      'Gebäude;Gebäudeteil;Etage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Reinigungen pro Jahr;Intervall;aktiv',
       ...rooms.map((r) =>
         [
+          q(r.building),
           q(r.building_part),
           q(r.floor),
           q(r.room_no),
@@ -916,13 +925,23 @@ export function registerFacilityRoutes(ctx: Ctx) {
             <input type="hidden" name="version" value={String(r?.version ?? '')} />
             <div class="grid">
               <div>
+                <label for="building">Gebäude</label>
+                <input
+                  id="building"
+                  name="building"
+                  value={r?.building ?? ''}
+                  maxlength={120}
+                  placeholder="Hauptgebäude, Haus 2, Turnhalle"
+                />
+              </div>
+              <div>
                 <label for="building_part">Gebäudeteil</label>
                 <input
                   id="building_part"
                   name="building_part"
                   value={r?.building_part ?? ''}
                   maxlength={80}
-                  placeholder="A, B, Haus 2, Turnhalle"
+                  placeholder="A, B, Nordflügel"
                 />
               </div>
               <div>
@@ -1071,6 +1090,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
       siteId,
       roomNo: str(b, 'room_no'),
       name: str(b, 'name') ?? '',
+      ...('building' in b ? { building: str(b, 'building') } : {}),
       ...('building_part' in b ? { buildingPart: str(b, 'building_part') } : {}),
       floor: str(b, 'floor'),
       roomTypeId: str(b, 'room_type_id') ?? '',

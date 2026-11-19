@@ -17,7 +17,6 @@ import {
   PER_YEAR,
   STATUS_LABEL,
   addConfirmation,
-  customerContactsText,
   appointmentsCsv,
   applyProposals,
   autoPlan,
@@ -142,7 +141,7 @@ const Confirmations = ({ a, back: ret, edit }: { a: Appointment; back: string; e
   </div>
 );
 
-/** Ansprechpartner am Termin: Hausmeister des Objekts + Ansprechpartner des Kunden (statt Mitarbeiter – Ahmed 22.10.) */
+/** Kontakt am Termin: nur der Hausmeister des Objekts (Ansprechpartner des Kunden entfernt – Ahmed 19.11.) */
 const ContactLines = ({ a }: { a: Appointment }) => {
   const tel = (v: string) => <a href={`tel:${v.replace(/[^+\d]/g, '')}`}>{v}</a>;
   const list = [
@@ -156,7 +155,6 @@ const ContactLines = ({ a }: { a: Appointment }) => {
           },
         ]
       : []),
-    ...(a.customer_contacts ?? []),
   ];
   if (!list.length) return null;
   return (
@@ -296,7 +294,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
             a.note,
             a.caretaker_name,
             a.site_no,
-            customerContactsText(a),
           ].some((v) => (v ?? '').toLowerCase().includes(q)),
       )
       .filter((a) => {
@@ -531,11 +528,10 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
     const date = c.req.query('datum') ?? todayBerlin();
     // „noch n offen“ für das Jahr des Termins (vorher immer das laufende Jahr → falsche Zahl bei Terminen im Folgejahr)
     const planYear = Number((a?.first_day ?? date).slice(0, 4));
-    const [objects, teams, plan, customers] = await Promise.all([
+    const [objects, teams, plan] = await Promise.all([
       listObjects(sql),
       teamNames(sql),
       openPlanning(sql, planYear),
-      listCustomers(sql),
     ]);
     const openOf = new Map(plan.map((p) => [p.o.id, p.open]));
     const preObj = a?.object_id ?? c.req.query('objekt') ?? '';
@@ -543,7 +539,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
     const days: Day[] =
       a?.days ?? (pre ? suggestDays(date, Number(pre.hours ?? 2)) : [{ date, from: '08:00', to: '12:00' }]);
     const curParts = a ? partsOf(a.part) : ['Gesamt'];
-    const custOf = new Map(customers.map((k) => [k.id, k]));
     const dayRow = (d: Day | null) => (
       <div class="gp-dayrow">
         <input type="date" name="tag" value={d?.date ?? ''} aria-label="Datum" />
@@ -558,7 +553,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
     const objBox = (o: GlassObject) => {
       const known = ['Gesamt', ...o.parts.map((p) => p.name)];
       const isCur = o.id === preObj;
-      const k = o.customer_id ? custOf.get(o.customer_id) : undefined;
       const contacts = [
         ...(o.caretaker_name || o.caretaker_phone
           ? [
@@ -570,7 +564,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
               },
             ]
           : []),
-        ...(k?.contacts ?? []),
       ];
       const specials = specialsText({
         wishes: o.wishes,
@@ -603,7 +596,7 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="gp-info">
             <div>
-              <b>Hausmeister / Ansprechpartner Kunde</b>
+              <b>Hausmeister</b>
             </div>
             {contacts.length ? (
               contacts.map((p) => (
@@ -619,12 +612,6 @@ export function registerGlassRoutes({ app, deps, page, back }: Ctx) {
             )}
             <div class="small" style="margin-top:4px">
               <a href={`/glasreinigung/objekte/${o.id}`}>Hausmeister am Objekt bearbeiten</a>
-              {o.customer_id && (
-                <>
-                  {' · '}
-                  <a href={`/glasreinigung/kunden/${o.customer_id}`}>Ansprechpartner beim Kunden</a>
-                </>
-              )}
             </div>
             {specials && (
               <div style="margin-top:6px">
@@ -1030,7 +1017,7 @@ sel.addEventListener('change',sync);sync();})();`,
       list
         .map(
           (a) =>
-            `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td><b>${esc(a.object_name)}</b>${a.part ? `<br><span class="k">${esc(a.part)}</span>` : ''}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? `<br>${esc(a.phone)}` : ''}${customerContactsText(a) ? `<br><span class="k">${esc(customerContactsText(a))}</span>` : ''}</td><td>${esc(specialsText(a))}</td><td>${
+            `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td><b>${esc(a.object_name)}</b>${a.part ? `<br><span class="k">${esc(a.part)}</span>` : ''}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? `<br>${esc(a.phone)}` : ''}</td><td>${esc(specialsText(a))}</td><td>${
               withConf
                 ? (a.confirmations ?? [])
                     .map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`)
@@ -1042,7 +1029,7 @@ sel.addEventListener('change',sync);sync();})();`,
     const table = (title: string, list: Appointment[], withConf: boolean) =>
       `<h2>${title} (${list.length})</h2>${
         list.length
-          ? `<table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister / Ansprechpartner</th><th>Sonderwünsche / Besonderheiten</th><th>${withConf ? 'Bestätigung' : 'Bestätigt am / durch'}</th></tr></thead><tbody>${rows(list, withConf)}</tbody></table>`
+          ? `<table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister</th><th>Sonderwünsche / Besonderheiten</th><th>${withConf ? 'Bestätigung' : 'Bestätigt am / durch'}</th></tr></thead><tbody>${rows(list, withConf)}</tbody></table>`
           : '<p class="k">Keine Termine.</p>'
       }`;
     const kname = customers.find((k) => k.id === kunde)?.name;
@@ -1117,7 +1104,7 @@ ${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${ze
     const listRows = shown
       .map(
         (a) =>
-          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? ` ${esc(a.phone)}` : ''}${customerContactsText(a) ? `<br>${esc(customerContactsText(a))}` : ''}</td><td>${esc(specialsText(a))}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`).join('<br>')}</td></tr>`,
+          `<tr><td>${datesText(a.days)}</td><td>${timesText(a.days)}</td><td>${esc(a.object_name)}</td><td>${esc(a.customer_name ?? '')}</td><td>${esc(a.object_address ?? '')}</td><td>${esc(a.contact ?? '')}${a.phone ? ` ${esc(a.phone)}` : ''}</td><td>${esc(specialsText(a))}</td><td>${(a.confirmations ?? []).map((k) => `✓ ${k.at ? `${dateDe(k.at)} ` : ''}${esc(k.text)}`).join('<br>')}</td></tr>`,
       )
       .join('');
     return c.html(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Jahresplaner ${y}</title><style>
@@ -1132,7 +1119,7 @@ ${zeige !== 'bestaetigt' ? table('Noch nicht bestätigt', open, false) : ''}${ze
 @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="print()">Drucken / als PDF speichern</button></div>
 <div class="hd"><div><img src="/static/logo-transparent.png" alt="Viva-Deluxe" style="height:40px;display:block;margin-bottom:6px"><b>${esc('Viva-Deluxe Gebäudereinigung GmbH')}</b><div class="k">Glasreinigung</div></div><div style="text-align:right"><h1>${y}</h1><div class="k">${esc(kname ?? 'Jahresplaner')}</div></div></div>
 ${grid}<div class="lg">Rosa = Sonn-/Feiertag · Grau = Samstag · blauer Rand = Schulferien Bayern · <span class="t-team_a">${esc(teams.team_a)}</span> · <span class="t-team_b">${esc(teams.team_b)}</span> · Alle Angaben ohne Gewähr</div>
-<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister / Ansprechpartner</th><th>Besonderheiten</th><th>Bestätigung</th></tr></thead><tbody>${listRows}</tbody></table></div>
+<div class="pg"><h2>Terminübersicht ${y}${kname ? ` · ${esc(kname)}` : ''}</h2><table class="ls"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Objekt</th><th>Kunde</th><th>Adresse</th><th>Hausmeister</th><th>Besonderheiten</th><th>Bestätigung</th></tr></thead><tbody>${listRows}</tbody></table></div>
 </body></html>`);
   });
 

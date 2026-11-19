@@ -758,7 +758,6 @@ export function appointmentsCsv(list: Appointment[], teams: { team_a: string; te
       q(a.district),
       q(a.contact),
       q(a.phone),
-      q(customerContactsText(a)),
       String(a.hours ?? '').replace('.', ','),
       INTERVALS[a.interval]?.label ?? a.interval,
       q(a.team ? teams[a.team] : null),
@@ -767,7 +766,7 @@ export function appointmentsCsv(list: Appointment[], teams: { team_a: string; te
       q(a.note),
     ].join(';'),
   );
-  return `\uFEFFDatum;Uhrzeit;Objekt;Teilbereich;Kunde;Kostenstelle;Adresse;Bezirk;Hausmeister;Telefon;Ansprechpartner Kunde;Dauer (h);Turnus;Team;Status;Sonderwünsche / Besonderheiten;Notiz\r\n${rows.join('\r\n')}\r\n`;
+  return `\uFEFFDatum;Uhrzeit;Objekt;Teilbereich;Kunde;Kostenstelle;Adresse;Bezirk;Hausmeister;Telefon;Dauer (h);Turnus;Team;Status;Sonderwünsche / Besonderheiten;Notiz\r\n${rows.join('\r\n')}\r\n`;
 }
 
 // ------------------------------------------------------------------ Import alte App

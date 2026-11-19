@@ -5757,3 +5757,6 @@ Testadresse.
   Prüfsumme im Protokoll (`signed_remove`); danach erscheint wieder „Scan hochladen“. Ist die Bestellung danach ohne
   Unterschrift, steht sie wieder unter „Unterschrift fehlt“. Test in `subcontractors.db.test.ts` (der Ampel-Test dort
   ist seit 15.11. datumsbedingt rot, unabhängig davon).
+- 2026-11-19: **Glasreinigung ohne Ansprechpartner des Kunden** (Ahmed: „Hausmeister kann drin bleiben“): Termine (Liste,
+  Karte), Terminformular, Bestätigungsliste, Jahresplaner-Terminübersicht und CSV zeigen nur noch den Hausmeister des
+  Objekts (Spalte „Hausmeister“). Die Ansprechpartner bleiben beim Glas-Kunden gespeichert und dort sichtbar.

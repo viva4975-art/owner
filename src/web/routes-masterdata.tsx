@@ -60,6 +60,7 @@ import {
   suggestSiteNo,
   effectiveBilling,
   buildBuyerSnapshot,
+  addRegieRates,
 } from '../services/masterdata.js';
 import { listDunnings } from '../services/dunning.js';
 import { listOffers } from '../services/offers.js';
@@ -102,7 +103,7 @@ import { filteredSites, managers, parseSiteFilter, sitesCsv, SITE_PAGE_SIZE } fr
 import { type AppEnv, type Ctx, UUID, assertSite, taskViewerOf } from './app.js';
 import { HTTPException } from 'hono/http-exception';
 import { DocFoldAll, FileArea, docOpen } from './files.js';
-import { parseQuantity } from '../domain/money/money.js';
+import { parseEuro, parseQuantity } from '../domain/money/money.js';
 import { arr, str } from './forms.js';
 import { FORMAT_LABEL, PageHead, dateDe, euro, anz } from './layout.js';
 import { OfferTable } from './pages-offers.js';
@@ -2365,6 +2366,8 @@ export function registerMasterdataRoutes(ctx: Ctx) {
         >`select g.name from app.sites x join app.invoice_groups g on g.id = x.invoice_group_id
                                 where x.id = ${s.id} and g.active`,
       ]);
+      const [siteCount] = await sql<{ n: number }[]>`
+        select count(*)::int as n from app.sites where customer_id = ${s.customer_id} and active`;
       const [execServices, openExec] = await Promise.all([
         executableServices(sql, s.id),
         listOpenExecutions(sql, { siteId: s.id }),
@@ -2407,6 +2410,12 @@ export function registerMasterdataRoutes(ctx: Ctx) {
             services={services}
             newServiceId={randomUUID()}
             siteGroup={grp?.name ?? null}
+            regie={{
+              token: randomUUID(),
+              customerName: s.customer_name ?? 'dem Kunden',
+              siteCount: siteCount?.n ?? 1,
+              today,
+            }}
             month={month}
             invoiceDate={invoiceDate}
             preview={preview}
@@ -2717,6 +2726,60 @@ export function registerMasterdataRoutes(ctx: Ctx) {
       expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
     });
     return back(c, '/einstellungen/leistungsarten', { ok: 'Gespeichert.' });
+  });
+
+  // Regiestundensätze (Ahmed 19.11.): mehrere je Objekt, auf Wunsch für alle aktiven Objekte des Kunden
+  app.post(`/objekte/:id{${UUID}}/leistungen/regiesaetze`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody();
+    const s = (k: string) => (typeof b[k] === 'string' ? (b[k] as string).trim() : '');
+    const token = /^[0-9a-f-]{36}$/.test(s('token')) ? s('token') : randomUUID();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(s('valid_from')) ? s('valid_from') : todayBerlin();
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(s('valid_to')) ? s('valid_to') : null;
+    let price: bigint;
+    try {
+      price = parseEuro(s('unit_price'));
+    } catch {
+      return back(c, `/objekte/${id}/leistungen#regiesaetze`, {
+        fehler: 'Stundensatz ungültig (z. B. 32,50)',
+      });
+    }
+    const [site] = await sql<{ customer_id: string }[]>`select customer_id from app.sites where id = ${id}`;
+    if (!site) return c.redirect('/objekte');
+    const ids =
+      s('alle') === '1'
+        ? (
+            await sql<{ id: string }[]>`
+              select id from app.sites where customer_id = ${site.customer_id} and active order by site_no`
+          ).map((x) => x.id)
+        : [id];
+    try {
+      const r = await addRegieRates(
+        sql,
+        ids,
+        {
+          description: s('description'),
+          priceCents: price,
+          validFrom: from,
+          validTo: to,
+          note: s('note') || null,
+        },
+        token,
+        c.get('actor'),
+      );
+      return back(c, `/objekte/${id}/leistungen#regiesaetze`, {
+        ok:
+          ids.length > 1
+            ? `Regiestundensatz bei ${r.created} Objekten angelegt${r.skipped ? `, ${r.skipped} hatten ihn schon` : ''}.`
+            : r.created
+              ? 'Regiestundensatz angelegt.'
+              : 'Diesen Regiestundensatz gibt es am Objekt schon.',
+      });
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/objekte/${id}/leistungen#regiesaetze`, { fehler: e.message });
+      throw e;
+    }
   });
 
   app.post(`/objekte/:id{${UUID}}/leistungen/:sid{${UUID}}`, async (c) => {

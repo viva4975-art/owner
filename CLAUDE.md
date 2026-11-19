@@ -5774,3 +5774,13 @@ Testadresse.
   Originalbelegen heißt „ZIP Originalbelege“ (nur nach Leistungszeitraum). **Hinweis:** Die Sammel-PDF ist eine
   Zusammenstellung; maßgeblich bleiben die archivierten Originale (GoBD) – auf Wunsch des Steuerberaters die
   Originalbelege bzw. XRechnungen schicken. `renderLegacyInvoicePdf` nimmt jetzt ein gemeinsames Dokument (`into`).
+- 2026-11-19: **Regiestundensätze je Objekt** (Ahmed: „zu bestimmten Objekten unter Leistungen Regiestundensätze, vor allem
+  Stadt München“): Objekt → Leistungen & Preise → Karte **„Regiestundensätze“** (`#regiesaetze`): Liste der Sätze und
+  „+ Regiestundensatz anlegen“ (Bezeichnung mit Vorschlägen Reinigungskraft/Vorarbeiter/Glas/Sonn-Feiertag/Nacht,
+  Stundensatz netto, gültig ab/bis, Hinweis intern), Häkchen **„für alle n aktiven Objekte des Kunden anlegen“**
+  (z. B. alle Objekte der Landeshauptstadt). Ein Satz = Leistung mit Einheit Std., „je Ausführung“ (`addRegieRates`
+  in `masterdata.ts`, feste ID je Formular + Objekt, gleiche Bezeichnung + Beginn am Objekt wird übersprungen;
+  Leistungsart „Regie…“, falls angelegt). Ändern/Beenden wie jede Leistung (Klick auf den Satz; Preisänderung mit Grund).
+  **Arbeitsschein:** Hat das Objekt mehrere Sätze, gibt es bei den Regiestunden je Zeile die Spalte „Regiestundensatz“;
+  Preis wird eingefroren, auf der Rechnung steht je Satz eine Position (Stunden zusammengefasst, ohne Namen). Ein Satz
+  → automatisch dieser; keiner → Hinweis im Arbeitsschein. Test `regie-rates.db.test.ts`.

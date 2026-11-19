@@ -14,7 +14,12 @@ import type { Cents, Quantity, VatRate } from '../domain/money/money.js';
 import { workDaysLabel } from '../services/subcontract-days.js';
 import { UNIT_LABELS, unitLabel } from '../domain/invoice/types.js';
 import type { InvoiceGroupRow } from '../services/invoice-groups.js';
-import type { ServiceType, SiteService, SiteServiceRow } from '../services/masterdata.js';
+import {
+  type ServiceType,
+  type SiteService,
+  type SiteServiceRow,
+  isRegieRate,
+} from '../services/masterdata.js';
 import { centsToInput, milliToInput } from './forms.js';
 import { Icon } from './icons.js';
 import { dateDe, euro } from './layout.js';
@@ -163,6 +168,110 @@ const ServiceGroup: FC<{
     </div>
   );
 
+/** Regiestundensätze des Objekts: mehrere Sätze (z. B. Reinigungskraft, Vorarbeiter, Sonn-/Feiertag), anlegen auch für alle Objekte des Kunden */
+const RegieRates: FC<{
+  siteId: string;
+  rates: SiteServiceRow[];
+  token: string;
+  customerName: string;
+  siteCount: number;
+  today: string;
+}> = ({ siteId, rates, token, customerName, siteCount, today }) => (
+  <div class="card" style="margin-top:14px" id="regiesaetze">
+    <h3 style="margin-top:0">Regiestundensätze ({rates.length})</h3>
+    {rates.length === 0 ? (
+      <p class="small mut">
+        Noch kein Regiestundensatz. Regiestunden aus Arbeitsscheinen werden mit dem Satz berechnet, den die
+        Stundenzeile im Arbeitsschein bekommt.
+      </p>
+    ) : (
+      <div class="tbl">
+        <table>
+          <thead>
+            <tr>
+              <th>Bezeichnung</th>
+              <th>gültig</th>
+              <th class="r">je Std. netto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rates.map((r) => (
+              <tr>
+                <td>
+                  <a href={`/objekte/${siteId}/leistungen/${r.id}`}>{r.description}</a>
+                  {r.note && <div class="small mut">{r.note}</div>}
+                </td>
+                <td class="small">
+                  ab {dateDe(r.valid_from)}
+                  {r.valid_to ? ` bis ${dateDe(r.valid_to)}` : ''}
+                </td>
+                <td class="r">{euro(r.unit_price_cents)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    <details open={rates.length === 0}>
+      <summary>+ Regiestundensatz anlegen</summary>
+      <form method="post" action={`/objekte/${siteId}/leistungen/regiesaetze`}>
+        <input type="hidden" name="token" value={token} />
+        <div class="grid">
+          <div>
+            <label for="rg-desc">Bezeichnung *</label>
+            <input
+              id="rg-desc"
+              name="description"
+              required
+              maxlength={200}
+              value="Regiestunde"
+              list="rg-names"
+              placeholder="z. B. Regiestunde Reinigungskraft"
+            />
+            <datalist id="rg-names">
+              <option value="Regiestunde" />
+              <option value="Regiestunde Reinigungskraft" />
+              <option value="Regiestunde Vorarbeiter/in" />
+              <option value="Regiestunde Glasreinigung" />
+              <option value="Regiestunde Sonn-/Feiertag" />
+              <option value="Regiestunde Nacht" />
+            </datalist>
+          </div>
+          <div>
+            <label for="rg-price">Stundensatz netto € *</label>
+            <input id="rg-price" name="unit_price" required inputmode="decimal" placeholder="z. B. 32,50" />
+          </div>
+          <div>
+            <label for="rg-from">gültig ab *</label>
+            <input id="rg-from" type="date" name="valid_from" required value={today} />
+          </div>
+          <div>
+            <label for="rg-to">gültig bis</label>
+            <input id="rg-to" type="date" name="valid_to" />
+          </div>
+          <div>
+            <label for="rg-note">Hinweis (intern)</label>
+            <input id="rg-note" name="note" maxlength={300} placeholder="z. B. laut Vertrag LHM 2026" />
+          </div>
+        </div>
+        {siteCount > 1 && (
+          <label class="check">
+            <input type="checkbox" name="alle" value="1" /> für alle {siteCount} aktiven Objekte von{' '}
+            {customerName} anlegen
+          </label>
+        )}
+        <div class="actions">
+          <button class="btn">Regiestundensatz speichern</button>
+          <span class="small mut">
+            Mehrere Sätze möglich. Im Arbeitsschein wird je Stundenzeile der Satz gewählt; auf der Rechnung
+            steht je Satz eine Position.
+          </span>
+        </div>
+      </form>
+    </details>
+  </div>
+);
+
 export const ServicesPanel: FC<{
   siteId: string;
   services: SiteServiceRow[];
@@ -177,8 +286,11 @@ export const ServicesPanel: FC<{
     billedNumber: string | null;
   }[];
   progress?: Map<string, SvcStep[]> | undefined;
-}> = ({ siteId, services, newServiceId, siteGroup, month, invoiceDate, preview, progress }) => {
-  const active = services.filter((s) => s.active);
+  /** Regiestundensätze: Formular-ID und Zahl der aktiven Objekte des Kunden (für „alle Objekte“) */
+  regie?: { token: string; customerName: string; siteCount: number; today: string } | undefined;
+}> = ({ siteId, services, newServiceId, siteGroup, month, invoiceDate, preview, progress, regie }) => {
+  const rates = services.filter((s) => s.active && isRegieRate(s));
+  const active = services.filter((s) => s.active && !isRegieRate(s));
   const inactive = services.filter((s) => !s.active);
   const open = preview.filter((p) => !p.billedInvoice);
   const hours = active.reduce((a, s) => a + (s.hours_target_milli ?? 0n), 0n);
@@ -204,7 +316,7 @@ export const ServicesPanel: FC<{
           </span>
         )}
       </div>
-      {active.length === 0 && <div class="empty">Noch keine aktiven Leistungen.</div>}
+      {active.length === 0 && rates.length === 0 && <div class="empty">Noch keine aktiven Leistungen.</div>}
       <ServiceGroup title="Regelmäßige Leistungen" rows={regular} siteId={siteId} progress={progress} />
       <ServiceGroup
         title="Nach Ausführung (je Ausführung, einmalig, Zyklus)"
@@ -212,6 +324,7 @@ export const ServicesPanel: FC<{
         siteId={siteId}
         progress={progress}
       />
+      {regie && <RegieRates siteId={siteId} rates={rates} {...regie} />}
       {inactive.length > 0 && (
         <details class="svc-old">
           <summary>Inaktive Leistungen ({inactive.length})</summary>

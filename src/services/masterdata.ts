@@ -12,7 +12,7 @@ import {
   type InvoiceFormat,
   type SellerSnapshot,
 } from '../domain/invoice/types.js';
-import { parseEuro, parseQuantity } from '../domain/money/money.js';
+import { type Cents, type Quantity, parseEuro, parseQuantity } from '../domain/money/money.js';
 
 // ---------------------------------------------------------------------------
 // Firma
@@ -661,6 +661,86 @@ export async function saveService(
                  : {}),
              } as never)})`;
   });
+}
+
+/** Regiestundensatz = Leistung mit Einheit Stunde (kind hourly), „je Ausführung“, ohne Arbeitstage-Automatik */
+export const isRegieRate = (s: { kind: string; work_days?: number[] | null }) =>
+  s.kind === 'hourly' && !s.work_days?.length;
+
+/**
+ * Regiestundensätze anlegen (Ahmed 19.11.: „zu bestimmten Objekten Regiestundensätze, vor allem Stadt München“) –
+ * je Objekt eine Leistung „Regiestunde …“ mit Einheit Std., Preis je Stunde. Mehrere Sätze je Objekt möglich
+ * (z. B. Reinigungskraft, Vorarbeiter, Sonn-/Feiertag); im Arbeitsschein wird je Stundenzeile der Satz gewählt.
+ * Feste ID aus Formular + Objekt → doppelt absenden legt nichts doppelt an. Gleiche Bezeichnung mit gleichem
+ * Beginn am Objekt → übersprungen.
+ */
+export async function addRegieRates(
+  sql: Sql,
+  siteIds: string[],
+  input: {
+    description: string;
+    priceCents: bigint;
+    validFrom: string;
+    validTo: string | null;
+    note?: string | null;
+  },
+  formId: string,
+  actor: string,
+): Promise<{ created: number; skipped: number }> {
+  const description = input.description.trim().slice(0, 200);
+  if (!description) throw new BusinessError('Bezeichnung fehlt (z. B. „Regiestunde Reinigungskraft“)');
+  if (input.priceCents <= 0n) throw new BusinessError('Stundensatz muss größer 0 sein');
+  if (input.validTo && input.validTo < input.validFrom) throw new BusinessError('„bis“ liegt vor „ab“');
+  if (!siteIds.length) throw new BusinessError('Kein Objekt gewählt');
+  const [type] = await sql<{ id: string; labor_share_bp: number | null }[]>`
+    select id, labor_share_bp from app.service_types
+     where active and (name ilike 'regie%' or name ilike '%regiestund%') order by name limit 1`;
+  let created = 0;
+  let skipped = 0;
+  for (const siteId of [...new Set(siteIds)]) {
+    const id = createHash('md5').update(`regiesatz:${formId}:${siteId}`).digest('hex');
+    const uuid = `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+    const [dupe] = await sql<{ id: string }[]>`
+      select id from app.site_services
+       where site_id = ${siteId} and active and kind = 'hourly' and id <> ${uuid}
+         and lower(description) = lower(${description}) and valid_from = ${input.validFrom}`;
+    const [exists] = await sql<{ id: string }[]>`select id from app.site_services where id = ${uuid}`;
+    if (dupe || exists) {
+      skipped++;
+      continue;
+    }
+    await saveService(
+      sql,
+      uuid,
+      siteId,
+      {
+        description,
+        unit_code: 'HUR',
+        quantity: 1000n as Quantity,
+        unit_price: input.priceCents as Cents,
+        vat_rate_bp: 1900,
+        valid_from: input.validFrom,
+        valid_to: input.validTo,
+        note: input.note?.trim() || null,
+        service_type_id: type?.id ?? null,
+        billing_cycle: 'je_ausfuehrung',
+        bill_mode: 'ausfuehrung',
+        hours_target: null,
+        execution_notes: null,
+        cost_center: null,
+        order_reference: null,
+        labor_share: type?.labor_share_bp ?? null,
+        always_unfinished: false,
+        work_days: [],
+        hours_per_day: null,
+        invoice_target: null,
+        version: null,
+      } as z.infer<typeof serviceInput>,
+      actor,
+    );
+    created++;
+  }
+  return { created, skipped };
 }
 
 export async function setServiceActive(sql: Sql, id: string, active: boolean, actor: string) {

@@ -1446,13 +1446,14 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       type_name: string | null;
       own: boolean;
       site_label: string;
+      kind: string;
     };
     const services: WrSvc[] = siteId
       ? await sql<WrSvc[]>`
           with me as (select customer_id from app.sites where id = ${siteId}),
           own as (select count(*) as n from app.site_services where site_id = ${siteId} and active
                     and valid_from <= ${wrDate} and (valid_to is null or valid_to >= ${wrDate}))
-          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, t.name as type_name,
+          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, ss.kind, t.name as type_name,
                  ss.site_id = ${siteId} as own, s.site_no || ' · ' || s.name as site_label
             from app.site_services ss
             join app.sites s on s.id = ss.site_id
@@ -1468,12 +1469,14 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     if (missingChosen.length)
       services.push(
         ...(await sql<WrSvc[]>`
-          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, t.name as type_name,
+          select ss.id, ss.description, ss.unit_code, ss.unit_price_cents, ss.kind, t.name as type_name,
                  ss.site_id = ${siteId} as own, s.site_no || ' · ' || s.name as site_label
             from app.site_services ss join app.sites s on s.id = ss.site_id
             left join app.service_types t on t.id = ss.service_type_id
            where ss.id in ${sql(missingChosen)}`),
       );
+    // Regiestundensätze des Objekts (Ahmed 19.11.): mehrere möglich → Auswahl je Stundenzeile
+    const regieRates = services.filter((x) => x.own && x.unit_code === 'HUR' && x.kind === 'hourly');
     const svcGroups = new Map<string, WrSvc[]>();
     for (const x of services) {
       const k = x.own ? '' : x.site_label;
@@ -1571,9 +1574,23 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
             aria-label="Datum"
           />
         </td>
-        <td>
-          <input type="hidden" name="line_svc" value="" />
-          <input type="hidden" name="line_desc" value={l?.desc || 'Regiestunden'} />
+        {regieRates.length > 1 ? (
+          <td style="min-width:220px">
+            <select name="line_svc" aria-label="Regiestundensatz" data-nosearch class="wr-rate">
+              {regieRates.map((x, i) => (
+                <option value={x.id} selected={l?.svc ? x.id === l.svc : i === 0}>
+                  {x.description}
+                  {showPrices ? ` – ${euro(x.unit_price_cents)}` : ''}
+                </option>
+              ))}
+            </select>
+          </td>
+        ) : null}
+        <td style="min-width:170px">
+          {regieRates.length > 1 ? null : (
+            <input type="hidden" name="line_svc" value={l?.svc || regieRates[0]?.id || ''} />
+          )}
+          <input type="hidden" name="line_desc" value={l?.svc ? '' : l?.desc || 'Regiestunden'} />
           <input type="hidden" name="line_unit" value="HUR" />
           <input type="hidden" name="line_kind" value="r" />
           <input name="line_person" value={l?.person ?? ''} placeholder="Name" list="wr-names" />
@@ -1762,6 +1779,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   <thead>
                     <tr>
                       <th>Datum</th>
+                      {regieRates.length > 1 && <th>Regiestundensatz</th>}
                       <th>Name</th>
                       <th>von</th>
                       <th>bis</th>
@@ -1777,7 +1795,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colspan={5} class="r">
+                      <td colspan={regieRates.length > 1 ? 6 : 5} class="r">
                         <b>Summe</b>
                       </td>
                       <td class="r">
@@ -1799,7 +1817,11 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                   Uhrzeit von–bis und Pause sind freiwillig – dann werden die Stunden ausgerechnet, sonst nur
                   Stunden eintragen. Angehakte Mitarbeiter werden als Zeile übernommen, Stunden aus
                   Beginn/Ende vorgeschlagen. „Kopieren“ legt dieselbe Zeile für den nächsten Tag an.
-                  Abgerechnet mit dem Regiestundensatz des Objekts.
+                  {regieRates.length > 1
+                    ? 'Je Zeile den Regiestundensatz wählen – auf der Rechnung steht je Satz eine Position.'
+                    : regieRates.length
+                      ? `Abgerechnet mit „${regieRates[0]!.description}“${showPrices ? ` (${euro(regieRates[0]!.unit_price_cents)} / Std.)` : ''}.`
+                      : 'Am Objekt ist noch kein Regiestundensatz hinterlegt (Leistungen & Preise → Regiestundensätze).'}
                 </span>
               </div>
               <div class="grid">

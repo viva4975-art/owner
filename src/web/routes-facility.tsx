@@ -267,9 +267,9 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <label class="chk" style="margin:0">
                 <input
                   type="checkbox"
-                  onclick="document.querySelectorAll('input[name=ids][form=roombulk]').forEach(function(x){x.checked=this.checked}.bind(this))"
+                  onclick="document.querySelectorAll('input[name=ids][form=roombulk]').forEach(function(x){if(x.closest('tr').style.display!=='none')x.checked=this.checked}.bind(this))"
                 />{' '}
-                alle markieren
+                alle angezeigten markieren
               </label>
               <button class="btn danger sm" name="umfang" value="markierte">
                 <Icon name="trash" /> Markierte löschen
@@ -287,11 +287,16 @@ export function registerFacilityRoutes(ctx: Ctx) {
               </span>
             </form>
           )}
+          <p class="small mut" style="margin:10px 0 4px">
+            Spaltenkopf anklicken = sortieren, ▾ = filtern wie in Excel (mehrere Spalten zusammen).{' '}
+            <span data-xf-status="rb-table" />
+          </p>
           <div class="tbl">
-            <table>
+            <table id="rb-table" data-xfilter>
               <thead>
                 <tr>
                   <th style="width:28px" />
+                  <th>Gebäudeteil</th>
                   <th>Etage</th>
                   <th>Raum-Nr.</th>
                   <th>Raum</th>
@@ -303,7 +308,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               </thead>
               <tbody>
                 {rooms.map((r) => (
-                  <tr class={r.active ? '' : 'mut'}>
+                  <tr class={r.active ? '' : 'mut'} data-area={String(r.active ? r.area_centi : 0n)}>
                     <td>
                       <input
                         type="checkbox"
@@ -313,6 +318,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                         aria-label="Raum markieren"
                       />
                     </td>
+                    <td>{r.building_part}</td>
                     <td>{r.floor}</td>
                     <td>{r.room_no}</td>
                     <td>
@@ -330,7 +336,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 ))}
                 {!rooms.length && (
                   <tr>
-                    <td colspan={8} class="mut">
+                    <td colspan={9} class="mut">
                       Noch keine Räume erfasst. Raumbuch vom Auftraggeber? „Importieren“ oder Raumbuch unter
                       Dokumente → Raumbuch ablegen und „Aus Dokumente übernehmen“.
                     </td>
@@ -340,14 +346,23 @@ export function registerFacilityRoutes(ctx: Ctx) {
               {rooms.length > 0 && (
                 <tfoot>
                   <tr>
-                    <th colspan={6}>Summe aktive Räume</th>
-                    <th class="right">{m2(t.areaCenti)}</th>
+                    <th colspan={7} id="rb-sum-l">
+                      Summe aktive Räume
+                    </th>
+                    <th class="right" id="rb-sum">
+                      {m2(t.areaCenti)}
+                    </th>
                     <th />
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){var t=document.getElementById('rb-table');if(!t)return;t.addEventListener('xfilter',function(e){var s=0n;Array.prototype.forEach.call(t.tBodies[0].rows,function(r){if(r.style.display!=='none'&&r.dataset.area)s+=BigInt(r.dataset.area)});var v=(Number(s)/100).toLocaleString('de-DE',{maximumFractionDigits:2});var x=document.getElementById('rb-sum'),l=document.getElementById('rb-sum-l');if(x)x.textContent=v;if(l)l.textContent=e.detail.shown<e.detail.total?'Summe angezeigte aktive Räume ('+e.detail.shown+' von '+e.detail.total+')':'Summe aktive Räume';});})();`,
+            }}
+          />
         </>
       );
     }),
@@ -639,7 +654,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 <div class="grid" style="margin-top:6px">
                   {plan.mapping.map((m) => {
                     const n = plan.all.rows.filter(
-                      (r) => r.floor?.startsWith(`${m.building} · `) || r.floor === m.building,
+                      (r) => r.buildingPart === m.building.replace(/\s+/g, ' ').trim().slice(0, 80),
                     ).length;
                     return (
                       <div>
@@ -714,6 +729,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
               <thead>
                 <tr>
                   <th>Zeile</th>
+                  <th>Gebäudeteil</th>
                   <th>Etage</th>
                   <th>Raum-Nr.</th>
                   <th>Raum</th>
@@ -728,7 +744,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                 <tbody>
                   {p.building != null && (
                     <tr>
-                      <th colspan={9} style="background:var(--bg2,#f4f4f5)">
+                      <th colspan={10} style="background:var(--bg2,#f4f4f5)">
                         {p.building} → {p.siteName} · {p.a.rows.length} Räume
                       </th>
                     </tr>
@@ -736,6 +752,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
                   {p.a.rows.map((r) => (
                     <tr style={r.errors.length ? 'background:#fdf1f1' : ''}>
                       <td class="mut">{r.line}</td>
+                      <td>{r.buildingPart}</td>
                       <td>{r.floor}</td>
                       <td>{r.roomNo}</td>
                       <td>{r.name}</td>
@@ -855,9 +872,10 @@ export function registerFacilityRoutes(ctx: Ctx) {
     const rooms = await listRooms(sql, siteId, true);
     const q = (v: string | null | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
     const lines = [
-      'Etage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Reinigungen pro Jahr;Intervall;aktiv',
+      'Gebäudeteil;Etage;Raum-Nr.;Raum;Raumart;Bodenbelag;Fläche m²;Reinigungen pro Jahr;Intervall;aktiv',
       ...rooms.map((r) =>
         [
+          q(r.building_part),
           q(r.floor),
           q(r.room_no),
           q(r.name),
@@ -898,8 +916,18 @@ export function registerFacilityRoutes(ctx: Ctx) {
             <input type="hidden" name="version" value={String(r?.version ?? '')} />
             <div class="grid">
               <div>
-                <label for="floor">Etage / Gebäudeteil</label>
-                <input id="floor" name="floor" value={r?.floor ?? ''} placeholder="EG, 1. OG, Haus B" />
+                <label for="building_part">Gebäudeteil</label>
+                <input
+                  id="building_part"
+                  name="building_part"
+                  value={r?.building_part ?? ''}
+                  maxlength={80}
+                  placeholder="A, B, Haus 2, Turnhalle"
+                />
+              </div>
+              <div>
+                <label for="floor">Etage</label>
+                <input id="floor" name="floor" value={r?.floor ?? ''} placeholder="EG, 1. OG, UG" />
               </div>
               <div>
                 <label for="room_no">Raumnummer</label>
@@ -1043,6 +1071,7 @@ export function registerFacilityRoutes(ctx: Ctx) {
       siteId,
       roomNo: str(b, 'room_no'),
       name: str(b, 'name') ?? '',
+      ...('building_part' in b ? { buildingPart: str(b, 'building_part') } : {}),
       floor: str(b, 'floor'),
       roomTypeId: str(b, 'room_type_id') ?? '',
       floorCovering: str(b, 'floor_covering'),

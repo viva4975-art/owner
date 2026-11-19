@@ -5784,3 +5784,12 @@ Testadresse.
   **Arbeitsschein:** Hat das Objekt mehrere Sätze, gibt es bei den Regiestunden je Zeile die Spalte „Regiestundensatz“;
   Preis wird eingefroren, auf der Rechnung steht je Satz eine Position (Stunden zusammengefasst, ohne Namen). Ein Satz
   → automatisch dieser; keiner → Hinweis im Arbeitsschein. Test `regie-rates.db.test.ts`.
+- 2026-11-19: **Raumbuch: Gebäudeteil als eigene Spalte + Filter wie in Excel** (Ahmed): neue Spalte `rooms.building_part`
+  (Migration `20270128000001`; bisher stand der Gebäudeteil mit der Etage zusammen „A · UG“ – Bestand wird aufgeteilt).
+  Import schreibt Gebäudeteil/Bauteil/Trakt in die eigene Spalte (Schlüssel für „schon vorhanden“ = Gebäudeteil + Etage +
+  Nr.), Raum bearbeiten hat Felder Gebäudeteil und Etage getrennt, CSV mit Spalte Gebäudeteil, Raumbuch-PDF gruppiert
+  nach „Gebäudeteil · Etage“, QM-App/Audit-Bericht zeigen beides. Objekt → Raumbuch: Spalte Gebäudeteil, Sortieren per
+  Klick auf die Überschrift (wie überall), **▾ an jedem Spaltenkopf = Filter wie in Excel** (Werte mit Anzahl ankreuzen,
+  Suche, Alle/Keine, mehrere Spalten zusammen; je Tab gemerkt), „n von m angezeigt · Filter zurücksetzen“, Summe rechnet
+  nur die angezeigten aktiven Räume, „alle angezeigten markieren“; ausgeblendete Räume verlieren ihr Häkchen (Löschen trifft
+  nur Sichtbares). Allgemein nutzbar: `table[data-xfilter]` in `client.ts` (Ereignis `xfilter`, `th[data-noxf]`).

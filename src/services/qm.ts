@@ -95,7 +95,7 @@ export async function listTickets(
 ) {
   return sql<Ticket[]>`
     select t.*, s.name as site_name, s.site_no,
-           concat_ws(' · ', nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as room_label
+           concat_ws(' · ', nullif(r.building_part, ''), nullif(r.floor, ''), concat_ws(' ', r.room_no, r.name)) as room_label
       from app.site_tickets t join app.sites s on s.id = t.site_id left join app.rooms r on r.id = t.room_id
      where ${scope(sql, f.siteIds)}
        and ${f.siteId ? sql`t.site_id = ${f.siteId}` : sql`true`}
@@ -363,11 +363,11 @@ export async function itemsForRoomType(sql: Sql, roomTypeId: string) {
 export async function auditRooms(sql: Sql, checkId: string, siteId: string, q = '') {
   const like = `%${q.trim()}%`;
   const rooms = await sql<Omit<AuditRoom, 'items' | 'rated' | 'score'>[]>`
-    select r.id, r.name, r.floor, r.room_no, r.floor_covering, r.area_centi, r.room_type_id, t.name as room_type
+    select r.id, r.name, nullif(concat_ws(' · ', nullif(r.building_part, ''), nullif(r.floor, '')), '') as floor, r.room_no, r.floor_covering, r.area_centi, r.room_type_id, t.name as room_type
       from app.rooms r join app.room_types t on t.id = r.room_type_id
      where r.site_id = ${siteId} and r.active
-       and ${q.trim() ? sql`(r.name || ' ' || coalesce(r.floor, '') || ' ' || coalesce(r.room_no, '') || ' ' || t.name) ilike ${like}` : sql`true`}
-     order by r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
+       and ${q.trim() ? sql`(r.name || ' ' || coalesce(r.building_part, '') || ' ' || coalesce(r.floor, '') || ' ' || coalesce(r.room_no, '') || ' ' || t.name) ilike ${like}` : sql`true`}
+     order by r.building_part nulls first, r.floor nulls first, r.sort_order, r.room_no nulls last, r.name`;
   const counts = await sql<{ room_type_id: string; n: number }[]>`
     select room_type_id, count(*)::int as n from app.room_type_qm_items l join app.qm_items i on i.id = l.item_id and i.active
      group by room_type_id`;

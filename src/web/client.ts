@@ -775,6 +775,111 @@ export const CLIENT_JS = String.raw`
   }
   Array.prototype.forEach.call(document.querySelectorAll('table'), sortable);
 
+  // ---- Filter wie in Excel (table[data-xfilter], Ahmed 19.11.): je Spaltenkopf ein ▾ mit den Werten der Spalte zum
+  // An-/Abhaken (Suche, Alle/Keine). Mehrere Spalten zusammen; ausgeblendete Zeilen verlieren ihr Häkchen (Sammelaktionen
+  // treffen nur Sichtbares). th[data-noxf] ohne Filter. Gemerkt je Tab. Ereignis „xfilter“ am Tisch (Summen neu rechnen).
+  (function xfilters() {
+    var tables = document.querySelectorAll('table[data-xfilter]');
+    if (!tables.length) return;
+    var st = document.createElement('style');
+    st.textContent = '.xf-btn{border:0;background:none;padding:0 3px;margin-left:3px;font-size:11px;line-height:1;color:#8a8a90;cursor:pointer;border-radius:4px;vertical-align:middle}.xf-btn:hover{background:rgba(0,0,0,.06)}th.xf-on .xf-btn{color:#fff;background:var(--acc,#7d1435)}.xf-pop{position:fixed;z-index:60;background:#fff;border:1px solid #e5e5ea;border-radius:12px;box-shadow:0 14px 36px -10px rgba(20,10,15,.22);padding:10px;width:260px;max-width:calc(100vw - 16px);font-size:13.5px;font-weight:400;text-align:left;color:#1d1d1f}.xf-pop input[type=search]{width:100%;margin:0 0 6px;height:34px;box-sizing:border-box}.xf-pop .xf-list{max-height:260px;overflow:auto;border-top:1px solid #eee;border-bottom:1px solid #eee;padding:4px 0}.xf-pop label{display:flex;gap:8px;align-items:center;padding:3px 2px;cursor:pointer;margin:0;font-weight:400}.xf-pop label input{width:auto;height:auto;margin:0}.xf-pop .xf-n{margin-left:auto;color:#8a8a90;font-size:12px}.xf-pop .xf-row{display:flex;gap:6px;justify-content:space-between;margin-top:8px}.xf-pop .xf-row a{font-size:12.5px;cursor:pointer}';
+    document.head.appendChild(st);
+    var open = null;
+    function close() { if (open) { open.remove(); open = null; } }
+    document.addEventListener('click', function (e) { if (open && !open.contains(e.target) && !(e.target.closest && e.target.closest('.xf-btn'))) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    window.addEventListener('scroll', function (e) { if (open && !(e.target && e.target.closest && e.target.closest('.xf-pop'))) close(); }, true);
+    Array.prototype.forEach.call(tables, function (table, ti) {
+      if (!table.tHead || !table.tBodies.length) return;
+      var head = table.tHead.rows[table.tHead.rows.length - 1];
+      var body = table.tBodies[0];
+      var key = 'vd-xf:' + location.pathname + ':' + ti;
+      var sel = {}; // Spalte → Set erlaubter Werte (fehlt = alles)
+      try { var sv = JSON.parse((ss && ss.getItem(key)) || 'null'); if (sv) Object.keys(sv).forEach(function (k) { sel[k] = new Set(sv[k]); }); } catch (e) {}
+      function val(r, i) { var c = r.cells[i]; var t = c ? (c.getAttribute('data-xf') != null ? c.getAttribute('data-xf') : c.textContent) : ''; t = (t || '').replace(/\s+/g, ' ').trim(); return t || '(leer)'; }
+      function rows() { return Array.prototype.filter.call(body.rows, function (r) { return r.cells.length === head.cells.length && !r.classList.contains('nosort'); }); }
+      var status = document.querySelector('[data-xf-status="' + (table.id || '') + '"]');
+      function apply() {
+        var all = rows(), shown = 0;
+        all.forEach(function (r) {
+          var ok = Object.keys(sel).every(function (k) { return sel[k].has(val(r, +k)); });
+          r.style.display = ok ? '' : 'none';
+          if (ok) shown++; else r.querySelectorAll('input[type=checkbox]').forEach(function (x) { x.checked = false; });
+        });
+        Array.prototype.forEach.call(head.cells, function (th, i) { th.classList.toggle('xf-on', !!sel[i]); });
+        try { ss && ss.setItem(key, JSON.stringify(Object.keys(sel).reduce(function (o, k) { o[k] = Array.from(sel[k]); return o; }, {}))); } catch (e) {}
+        if (status) {
+          var on = Object.keys(sel).length;
+          status.innerHTML = '';
+          if (on) {
+            status.appendChild(document.createTextNode(shown + ' von ' + all.length + ' angezeigt · '));
+            var a = document.createElement('a'); a.href = '#'; a.textContent = 'Filter zurücksetzen';
+            a.addEventListener('click', function (e) { e.preventDefault(); sel = {}; apply(); });
+            status.appendChild(a);
+          }
+        }
+        table.dispatchEvent(new CustomEvent('xfilter', { detail: { shown: shown, total: all.length } }));
+      }
+      Array.prototype.forEach.call(head.cells, function (th, i) {
+        if (!th.textContent.trim() || th.hasAttribute('data-noxf')) return;
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'xf-btn'; b.textContent = '▾'; b.title = 'Filtern'; b.setAttribute('aria-label', 'Filtern: ' + th.textContent.trim());
+        th.appendChild(b);
+        b.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          if (open && open.dataset.col === ti + ':' + i) { close(); return; }
+          close();
+          // Werte aus den Zeilen, die die ANDEREN Filter durchlassen (wie Excel)
+          var counts = new Map();
+          rows().forEach(function (r) {
+            var ok = Object.keys(sel).every(function (k) { return +k === i || sel[k].has(val(r, +k)); });
+            if (!ok) return;
+            var v = val(r, i); counts.set(v, (counts.get(v) || 0) + 1);
+          });
+          var vals = Array.from(counts.keys()).sort(function (a, b) { return a.localeCompare(b, 'de', { numeric: true }); });
+          var pop = document.createElement('div'); pop.className = 'xf-pop'; pop.dataset.col = ti + ':' + i;
+          var q = document.createElement('input'); q.type = 'search'; q.placeholder = 'Suchen …';
+          var list = document.createElement('div'); list.className = 'xf-list';
+          var cur = sel[i];
+          var boxes = vals.map(function (v) {
+            var l = document.createElement('label');
+            var c = document.createElement('input'); c.type = 'checkbox'; c.value = v; c.checked = !cur || cur.has(v);
+            var t = document.createElement('span'); t.textContent = v;
+            var n = document.createElement('span'); n.className = 'xf-n'; n.textContent = counts.get(v);
+            l.appendChild(c); l.appendChild(t); l.appendChild(n); list.appendChild(l);
+            return c;
+          });
+          q.addEventListener('input', function () {
+            var w = q.value.toLowerCase();
+            boxes.forEach(function (c) { c.parentNode.style.display = !w || c.value.toLowerCase().indexOf(w) >= 0 ? '' : 'none'; });
+          });
+          var row1 = document.createElement('div'); row1.className = 'xf-row';
+          function link(txt, fn) { var a = document.createElement('a'); a.textContent = txt; a.addEventListener('click', fn); return a; }
+          row1.appendChild(link('Alle', function () { boxes.forEach(function (c) { if (c.parentNode.style.display !== 'none') c.checked = true; }); }));
+          row1.appendChild(link('Keine', function () { boxes.forEach(function (c) { if (c.parentNode.style.display !== 'none') c.checked = false; }); }));
+          row1.appendChild(link('Filter dieser Spalte entfernen', function () { delete sel[i]; close(); apply(); }));
+          var row2 = document.createElement('div'); row2.className = 'xf-row';
+          var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn sm'; ok.textContent = 'Übernehmen';
+          ok.addEventListener('click', function () {
+            var on = boxes.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+            if (on.length === boxes.length) delete sel[i]; else sel[i] = new Set(on);
+            close(); apply();
+          });
+          var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn sm sec'; cancel.textContent = 'Abbrechen';
+          cancel.addEventListener('click', close);
+          row2.appendChild(cancel); row2.appendChild(ok);
+          pop.appendChild(q); pop.appendChild(list); pop.appendChild(row1); pop.appendChild(row2);
+          document.body.appendChild(pop); open = pop;
+          var r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+          pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+          pop.style.top = (r.bottom + 4 + h > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+          q.focus();
+        });
+      });
+      if (Object.keys(sel).length) apply();
+    });
+  })();
+
   // ---- Gruppierte Tabellen (Nach-/Plan-Kalkulation je Kunde / Auftragsgruppe, data-grp-sort): Klick auf die Überschrift
   // sortiert die Gruppen nach ihrer Summenzeile und die Objekte darin nach derselben Spalte. Zeilen vor der ersten Gruppe
   // (Gesamt) und danach (allgemeine Kostenstellen) bleiben stehen, „ohne Auftragsgruppe“ bleibt zuletzt (Ahmed 16.11.).

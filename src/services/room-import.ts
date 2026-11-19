@@ -207,6 +207,8 @@ const uuidOf = (s: string) => {
 
 export interface RoomImportRow {
   line: number;
+  /** Gebäudeteil/Bauteil/Trakt (eigene Spalte im Raumbuch) */
+  buildingPart: string | null;
   floor: string | null;
   roomNo: string | null;
   name: string;
@@ -385,13 +387,25 @@ export async function analyzeRooms(
 
   const [types, existing] = await Promise.all([
     sql<{ id: string; name: string }[]>`select id, name from app.room_types`,
-    sql<{ id: string; floor: string | null; room_no: string | null; name: string }[]>`
-      select id, floor, room_no, name from app.rooms where site_id = ${siteId}`,
+    sql<
+      {
+        id: string;
+        building_part: string | null;
+        floor: string | null;
+        room_no: string | null;
+        name: string;
+      }[]
+    >`
+      select id, building_part, floor, room_no, name from app.rooms where site_id = ${siteId}`,
   ]);
   const typeByNorm = new Map(types.map((t) => [norm(t.name), t]));
   const keyOf = (floor: string | null, no: string | null, name: string) =>
     no ? `${norm(floor ?? '')}|nr|${norm(no)}` : `${norm(floor ?? '')}|name|${norm(name)}`;
-  const existingByKey = new Map(existing.map((r) => [keyOf(r.floor, r.room_no, r.name), r.id]));
+  // Gebäudeteil gehört zum Schlüssel (A · EG Nr. 1 ≠ B · EG Nr. 1)
+  const fl = (part: string | null, floor: string | null) => [part, floor].filter(Boolean).join(' · ') || null;
+  const existingByKey = new Map(
+    existing.map((r) => [keyOf(fl(r.building_part, r.floor), r.room_no, r.name), r.id]),
+  );
   const seen = new Set<string>();
   const newTypes = new Set<string>();
   // ohne eigene Spalte „Raum“ ist die Raumart der Raumname (Kalkulation: „Flur“, „Umkleideraum, Kabine 5“)
@@ -409,10 +423,11 @@ export async function analyzeRooms(
       buildings.push(bld);
     // nur ein Gebäude (= ein Objekt): andere Zeilen auslassen, Gebäude nicht mehr in die Etage schreiben
     if (opts.building != null && !bldIsPart && bld !== opts.building) return;
-    const floor =
-      (opts.building != null && !bldIsPart
-        ? get('floor')
-        : [bld, get('floor')].filter(Boolean).join(' · ')) || null;
+    // Gebäudeteil eigene Spalte (Ahmed 19.11.: „wie in der Excel“); ist das Gebäude ein eigenes Objekt, entfällt er
+    const buildingPart =
+      (opts.building != null && !bldIsPart ? '' : bld).replace(/\s+/g, ' ').trim().slice(0, 80) || null;
+    const floorOnly = get('floor') || null;
+    const floor = fl(buildingPart, floorOnly);
     const noRaw = get('room_no');
     // „keine NR“, „ohne“, „-“ = keine Raumnummer
     const roomNo = noRaw && !/^(keine|ohne|o\.?\s?nr|n\.?\s?a\.?|-+|\?)/i.test(noRaw) ? noRaw : null;
@@ -510,7 +525,8 @@ export async function analyzeRooms(
     const turnus = (intervalText || '').slice(0, 40) || null;
     out.push({
       line: headerIdx + 2 + i,
-      floor,
+      buildingPart,
+      floor: floorOnly,
       roomNo,
       name,
       typeName,
@@ -595,6 +611,7 @@ export async function applyRooms(
       }
       const row = {
         site_id: siteId,
+        building_part: r.buildingPart,
         floor: r.floor,
         room_no: r.roomNo,
         name: r.name,

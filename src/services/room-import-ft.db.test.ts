@@ -31,7 +31,12 @@ describe.skipIf(!available)('Raumbuch im Fortytools-Format + PDF in den Dokument
     ].join('\n');
     const a = await analyzeRooms(sql, DEMO.siteSchool, new TextEncoder().encode(csv));
     const flur = a.rows.find((r) => r.roomNo === 'A 0.01')!;
-    expect([flur.floor, flur.areaCenti, flur.covering]).toEqual(['A · UG', 1276n, 'Parkett']);
+    expect([flur.buildingPart, flur.floor, flur.areaCenti, flur.covering]).toEqual([
+      'A',
+      'UG',
+      1276n,
+      'Parkett',
+    ]);
     expect(a.rows.find((r) => r.roomNo === 'A 0.09')!.errors[0]).toMatch(/0 m²/);
     expect(a.rows.find((r) => r.roomNo === 'B 1.01')!.notes).toBe('Tafel nass wischen');
     // kein Intervall in der Datei → leer, nichts angenommen

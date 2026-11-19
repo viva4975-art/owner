@@ -82,7 +82,7 @@ export async function renderRoomBookPdf(sql: Sql, siteId: string): Promise<Uint8
   d.section('Räume');
   const groups = new Map<string, (typeof rooms)[number][]>();
   for (const r of rooms) {
-    const k = r.floor ?? 'ohne Etage';
+    const k = [r.building_part, r.floor].filter(Boolean).join(' · ') || 'ohne Etage';
     groups.set(k, [...(groups.get(k) ?? []), r]);
   }
   const rows: (string[] | { group: string } | { sum: string[]; strong?: boolean })[] = [];
@@ -137,6 +137,7 @@ export async function storeRoomBookPdf(sql: Sql, cfg: UploadConfig, siteId: stri
     .update(
       JSON.stringify(
         rooms.map((r) => [
+          r.building_part,
           r.floor,
           r.room_no,
           r.name,

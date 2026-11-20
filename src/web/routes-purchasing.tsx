@@ -1947,9 +1947,17 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                       maxlength={200}
                       required
                     />
+                    <input
+                      name="new_supplier_iban"
+                      aria-label="IBAN des neuen Lieferanten"
+                      placeholder="IBAN (optional), z. B. DE02 1203 0000 0000 2020 51"
+                      maxlength={42}
+                      autocomplete="off"
+                      style="margin-top:6px"
+                    />
                     <span class="small mut">
-                      Wird beim Speichern als Lieferant angelegt (nächste Nummer); Anschrift/IBAN später
-                      ergänzbar.
+                      Wird beim Speichern als Lieferant angelegt (nächste Nummer). IBAN optional – nötig für
+                      Zahlungsliste/SEPA; Anschrift später beim Lieferanten ergänzbar.
                     </span>
                   </div>
                 </div>
@@ -2547,7 +2555,13 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       {
         supplierId:
           one('supplier_id') === '__neu'
-            ? await quickSupplier(sql, one('new_supplier') ?? '', null, c.get('actor'))
+            ? await quickSupplier(
+                sql,
+                one('new_supplier') ?? '',
+                null,
+                c.get('actor'),
+                one('new_supplier_iban'),
+              )
             : (one('supplier_id') ?? ''),
         invoiceNo: one('invoice_no') ?? '',
         invoiceDate: one('invoice_date') ?? todayBerlin(),

@@ -5814,3 +5814,7 @@ Testadresse.
   der Eingangsrechnung oben „+ Neuer Lieferant (nur Name) …“ → Feld Name; beim Speichern wird der Lieferant angelegt
   (`quickSupplier`: nächste Nummer ab 70001, gleicher Name = vorhandener Lieferant, Protokoll) und die Rechnung ihm
   zugeordnet. Anschrift/IBAN später beim Lieferanten ergänzbar.
+  Nachtrag (Ahmed): zusätzlich Feld **IBAN (optional)** – Prüfziffer wird geprüft (falsch = Meldung, nichts gespeichert);
+  gibt es den Lieferanten schon ohne IBAN, wird sie dort nachgetragen, eine vorhandene IBAN wird nie überschrieben.
+- 2026-11-20: **Eingebaute KI wie Fortytools** – Ahmed gefragt; nicht gebaut, Rückfrage zu Anbieter/Datenschutz/Umfang
+  (siehe Antwort). Frühere Entscheidung 30.10.: eigene KI ohne fremde API vorerst nicht.

@@ -195,6 +195,12 @@ describe.skipIf(!available)('Kontoumsätze: alles erkennen', () => {
     expect(await quickSupplier(sql, 'tankstelle aral', t, 't')).toBe(sid);
     const [sp] = await sql`select iban, supplier_no from app.suppliers where id = ${sid}`;
     expect(sp!.iban).toBe('DE44500400000600178806');
+    await expect(
+      quickSupplier(sql, 'Einmal Baumarkt', null, 't', 'DE44 5004 0000 0600 1788 07'),
+    ).rejects.toThrow('IBAN ist ungültig');
+    const bm = await quickSupplier(sql, 'Einmal Baumarkt', null, 't', 'de02 1203 0000 0000 2020 51');
+    const [bmr] = await sql`select iban from app.suppliers where id = ${bm}`;
+    expect(bmr!.iban).toBe('DE02120300000000202051');
     await assignParty(sql, t.id, { kind: 'lieferant', id: sid, note: 'Tanken', category: 'fahrzeuge' }, 't');
     const fee = find(list, 'Kontoführung');
     await ignoreTransaction(sql, fee.id, 'nicht zugeordnet', 't', 'bank');

@@ -1228,19 +1228,45 @@ const checkCategory = (c: string | null | undefined) => {
 };
 
 /** Neuen Lieferanten nur mit Namen anlegen (Schnellanlage aus dem Kontoumsatz, IBAN wird übernommen). */
-export async function quickSupplier(sql: Sql, name: string, t: BankTx | null, actor: string) {
+function ibanChecksumOk(s: string): boolean {
+  if (!IBAN_RE.test(s)) return false;
+  const r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let mod = 0;
+  for (const d of r) mod = (mod * 10 + Number(d)) % 97;
+  return mod === 1;
+}
+
+export async function quickSupplier(
+  sql: Sql,
+  name: string,
+  t: BankTx | null,
+  actor: string,
+  ibanInput?: string | null,
+) {
   const n = name.trim();
   if (n.length < 2) throw new BusinessError('Bitte einen Namen angeben');
+  const given = iban(ibanInput);
+  if (given && !ibanChecksumOk(given))
+    throw new BusinessError(
+      'IBAN ist ungültig (Prüfziffer stimmt nicht) – bitte mit der Rechnung vergleichen',
+    );
   const [dup] = await sql<
-    { id: string }[]
-  >`select id from app.suppliers where lower(name) = lower(${n}) limit 1`;
-  if (dup) return dup.id;
+    { id: string; iban: string | null }[]
+  >`select id, iban from app.suppliers where lower(name) = lower(${n}) limit 1`;
+  if (dup) {
+    if (given && !dup.iban) {
+      await sql`update app.suppliers set iban = ${given} where id = ${dup.id} and iban is null`;
+      await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+                values (${actor}, 'update', 'supplier', ${dup.id}, ${sql.json({ iban: given, quick: true })})`;
+    }
+    return dup.id;
+  }
   const [row] = await sql<{ no: string }[]>`
     select (greatest(70000, coalesce(max(case when supplier_no ~ '^[0-9]{1,9}$' then supplier_no::bigint end), 70000)) + 1)::text as no
       from app.suppliers`;
   const no = row!.no;
   const id = uuidOf(`supplier:${n.toLowerCase()}`);
-  const ib = iban(t?.counterparty_iban);
+  const ib = given || iban(t?.counterparty_iban);
   await sql`insert into app.suppliers (id, supplier_no, name, iban) values (${id}, ${no}, ${n.slice(0, 200)}, ${IBAN_RE.test(ib) ? ib : null})
             on conflict (id) do nothing`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)

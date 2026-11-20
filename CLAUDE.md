@@ -5810,3 +5810,7 @@ Testadresse.
   ohne Groß-/Kleinschreibung und Umlaut-Unterschied (Müller = muller); wirkt zusammen mit den Spaltenfiltern, Summe und
   „n von m angezeigt · Filter zurücksetzen“ (setzt auch die Suche zurück), je Tab gemerkt. Allgemein nutzbar:
   `input[data-xf-search="<tabellen-id>"]` zu einer `table[data-xfilter]` (client.ts).
+- 2026-11-20: **Eingangsrechnung: neuer Lieferant nur mit Namen** (Ahmed: „einmalige Rechnungen“): In der Lieferanten-Auswahl
+  der Eingangsrechnung oben „+ Neuer Lieferant (nur Name) …“ → Feld Name; beim Speichern wird der Lieferant angelegt
+  (`quickSupplier`: nächste Nummer ab 70001, gleicher Name = vorhandener Lieferant, Protokoll) und die Rechnung ihm
+  zugeordnet. Anschrift/IBAN später beim Lieferanten ergänzbar.

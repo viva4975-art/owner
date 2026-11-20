@@ -99,6 +99,7 @@ import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
 import { RecurringRows, registerRecurringRoutes } from './routes-recurring.js';
 import { markRecurringPaid } from '../services/recurring-payments.js';
+import { quickSupplier } from '../services/bank.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -1923,14 +1924,34 @@ export function registerPurchasingRoutes(ctx: Ctx) {
               <div class="grid">
                 <div>
                   <label for="supplier_id">Lieferant / Nachunternehmer</label>
-                  <select id="supplier_id" name="supplier_id" required>
+                  <select
+                    id="supplier_id"
+                    name="supplier_id"
+                    required
+                    data-reveal="#new-supplier"
+                    data-reveal-value="__neu"
+                  >
                     <option value="">– bitte wählen –</option>
+                    <option value="__neu">+ Neuer Lieferant (nur Name) …</option>
                     {suppliers.map((s) => (
                       <option value={s.id} selected={s.id === v.supplier}>
                         {s.supplier_no} · {s.name}
                       </option>
                     ))}
                   </select>
+                  <div id="new-supplier" hidden style="margin-top:6px">
+                    <input
+                      name="new_supplier"
+                      aria-label="Name des neuen Lieferanten"
+                      placeholder="Name des Lieferanten, z. B. Baumarkt XY"
+                      maxlength={200}
+                      required
+                    />
+                    <span class="small mut">
+                      Wird beim Speichern als Lieferant angelegt (nächste Nummer); Anschrift/IBAN später
+                      ergänzbar.
+                    </span>
+                  </div>
                 </div>
                 <div>
                   <label for="invoice_no">Rechnungsnummer (vom Beleg)</label>
@@ -2524,7 +2545,10 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       sql,
       id,
       {
-        supplierId: one('supplier_id') ?? '',
+        supplierId:
+          one('supplier_id') === '__neu'
+            ? await quickSupplier(sql, one('new_supplier') ?? '', null, c.get('actor'))
+            : (one('supplier_id') ?? ''),
         invoiceNo: one('invoice_no') ?? '',
         invoiceDate: one('invoice_date') ?? todayBerlin(),
         dueDate: one('due_date'),

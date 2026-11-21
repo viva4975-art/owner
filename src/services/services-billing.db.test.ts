@@ -4,7 +4,7 @@ import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { saveInvoiceGroup, groupBillingInput } from './invoice-groups.js';
 import { getInvoice, markReviewed, runMonthly } from './invoices.js';
-import { saveService, serviceInput } from './masterdata.js';
+import { saveService, serviceInput, syncEndedServices } from './masterdata.js';
 import { DEMO } from './seed.js';
 import { type FakeMailer, dbAvailable, freshDatabase, testDeps } from './testing.js';
 import { type Deps, issueInvoice } from './workflow.js';
@@ -291,5 +291,50 @@ describe.skipIf(!(await dbAvailable()))('Preisänderung an Leistungen nur mit Gr
        and details ? 'aenderungen' order by id desc limit 1`;
     expect(log!.details.grund).toBe('Nachtrag Kunde');
     expect(log!.details.aenderungen.preis_cent).toEqual({ alt: '100000', neu: '110000' });
+  });
+});
+
+describe.skipIf(!available)('Leistung mit Ende wird automatisch inaktiv', () => {
+  let sql: Sql;
+  beforeAll(async () => {
+    sql = await freshDatabase();
+  });
+  afterAll(async () => {
+    await sql?.end();
+  });
+
+  it('nach dem Ende inaktiv, letzter Monat wird trotzdem abgerechnet, Verlängerung macht wieder aktiv', async () => {
+    const id = randomUUID();
+    await saveService(
+      sql,
+      id,
+      DEMO.siteHq,
+      serviceInput.parse({
+        kind: 'monthly_flat',
+        description: 'Glasreinigung beendet',
+        unit_code: 'LS',
+        quantity: '1',
+        unit_price: '100,00',
+        vat_rate_bp: '1900',
+        valid_from: '2026-01-01',
+        valid_to: '2026-08-31',
+        note: '',
+        billing_cycle: 'monatlich',
+        version: '',
+      }),
+      'test',
+    );
+    const r = await syncEndedServices(sql);
+    expect(r.deactivated).toBeGreaterThanOrEqual(1);
+    const [s] = await sql<{ active: boolean; ended_auto: boolean }[]>`
+      select active, ended_auto from app.site_services where id = ${id}`;
+    expect([s?.active, s?.ended_auto]).toEqual([false, true]);
+    const aug = await runMonthly(sql, '2026-08', 't', { siteIds: [DEMO.siteHq] });
+    const lines = (await getInvoice(sql, aug.created[0]!.invoiceId))!.lines.map((l) => l.description);
+    expect(lines).toContain('Glasreinigung beendet');
+    await sql`update app.site_services set valid_to = null where id = ${id}`;
+    expect((await syncEndedServices(sql)).reactivated).toBeGreaterThanOrEqual(1);
+    const [s2] = await sql<{ active: boolean }[]>`select active from app.site_services where id = ${id}`;
+    expect(s2?.active).toBe(true);
   });
 });

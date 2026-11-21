@@ -438,6 +438,8 @@ export interface RunService {
   valid_from: string;
   valid_to: string | null;
   active: boolean;
+  /** nach dem Ende automatisch inaktiv gesetzt */
+  ended_auto?: boolean;
   note: string | null;
   billing_cycle: BillingCycle;
   always_unfinished: boolean;
@@ -722,7 +724,8 @@ export const toRunService = (s: RunService) => ({
   vatRate: s.vat_rate_bp,
   validFrom: s.valid_from,
   validTo: s.valid_to,
-  active: s.active,
+  // nach dem Ende automatisch inaktiv (ended_auto): letzter Zeitraum wird trotzdem noch abgerechnet
+  active: s.active || !!s.ended_auto,
   note: s.note,
   cycle: s.billing_cycle,
   workDays: s.work_days ?? null,

@@ -5838,3 +5838,10 @@ Testadresse.
   „keine Kaution“, wählbar 19 % USt bzw. anderer Betrag. Der Vertrag behält die Klausel: fehlt der Ausfuhrnachweis, gilt
   der Preis als netto und der Käufer schuldet 19 % USt nach. **Risiko:** Die Unterschrift verschiebt die Steuerschuld
   nicht – gegenüber dem Finanzamt zahlt die Firma; vom Käufer im Ausland ist das Geld oft nur schwer zu holen.
+- 2026-11-21: **Leistung mit Ende wird automatisch inaktiv** (Ahmed: „wenn bis 31.10. steht, soll sie zu dem Zeitpunkt auf
+  inaktiv gesetzt werden“): Ab dem Tag nach dem Ende setzt der Server (beim Start und stündlich, `syncEndedServices` in
+  `masterdata.ts`) die Leistung auf inaktiv mit Kennzeichen `site_services.ended_auto` (Migration `20270131000001`,
+  Protokoll „automatisch / Ende … erreicht“). Der letzte Zeitraum wird trotzdem noch abgerechnet (Monatslauf, „Leistungen
+  verrichten“, einmalige Leistungen in den Entwürfen gelten für `ended_auto` weiter wie aktiv, nur innerhalb Beginn–Ende).
+  Wird das Ende verlängert oder entfernt, wird sie automatisch wieder aktiv; von Hand aktiv/inaktiv setzen löscht das
+  Kennzeichen. Test in `services-billing.db.test.ts`.

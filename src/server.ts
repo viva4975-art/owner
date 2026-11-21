@@ -18,6 +18,7 @@ import { replicate } from './services/archive-replica.js';
 import { runPushNotifier } from './services/push.js';
 import { createApp } from './web/app.js';
 import { syncExitReturnTasks } from './services/exit-returns.js';
+import { syncEndedServices } from './services/masterdata.js';
 
 const env = loadEnv();
 const sql = createSql(env.DATABASE_URL);
@@ -44,6 +45,18 @@ serve({ fetch: app.fetch, port: env.PORT, hostname }, (info) => {
 const dueHours = () => applyDueHours(sql).catch((e) => console.error('Wochenstunden übernehmen:', e));
 void dueHours();
 setInterval(dueHours, 60 * 60 * 1000).unref();
+
+// Leistungen mit Ende: nach dem Ende automatisch inaktiv (beim Start und stündlich)
+const endedServices = () =>
+  syncEndedServices(sql)
+    .then(
+      (r) =>
+        r.deactivated + r.reactivated &&
+        console.log(`Leistungen nach Ende: ${r.deactivated} inaktiv, ${r.reactivated} wieder aktiv`),
+    )
+    .catch((e) => console.error('Leistungen nach Ende:', e));
+setTimeout(endedServices, 30_000).unref();
+setInterval(endedServices, 60 * 60 * 1000).unref();
 
 // Austritt in Sicht, Arbeitskleidung/Schlüssel noch nicht zurück → Aufgabe (stündlich)
 const exitReturns = () => syncExitReturnTasks(sql).catch((e) => console.error('Austritt-Rückgabe:', e));

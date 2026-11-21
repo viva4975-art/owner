@@ -63,7 +63,7 @@ export async function executableServices(sql: Sql, siteId: string) {
            (select count(*)::int from app.service_executions e where e.service_id = v.id and e.invoice_id is null)
              as open_count
       from app.site_services v
-     where v.site_id = ${siteId} and v.active
+     where v.site_id = ${siteId} and (v.active or v.ended_auto)
        and (v.billing_cycle in ('einmalig', 'je_ausfuehrung') or v.kind <> 'monthly_flat')
      order by v.sort_order, v.description`;
   return rows.map((r) => ({ ...r, next_due: nextDueDate(r.billing_cycle, r.valid_from, r.done_at) }));
@@ -139,7 +139,7 @@ export async function executeServices(sql: Sql, p: ExecuteInput, actor: string):
           work_days: number[] | null;
           hours_per_day_milli: bigint | null;
         }[]
-      >`select site_id, description, active, billing_cycle::text as billing_cycle, quantity_milli, unit_price_cents,
+      >`select site_id, description, (active or ended_auto) as active, billing_cycle::text as billing_cycle, quantity_milli, unit_price_cents,
                valid_from::text as valid_from, valid_to::text as valid_to, unit_code, work_days, hours_per_day_milli
           from app.site_services where id = ${it.serviceId} for update`;
       if (!sv || sv.site_id !== p.siteId) throw new BusinessError('Leistung gehört nicht zu diesem Objekt');
@@ -222,7 +222,7 @@ export async function pendingOnceServices(sql: Sql): Promise<OpenExecution[]> {
       from app.site_services v
       join app.sites s on s.id = v.site_id
       join app.customers c on c.id = s.customer_id
-     where v.active and v.billing_cycle = 'einmalig' and not c.is_internal and v.quantity_milli > 0
+     where (v.active or v.ended_auto) and v.billing_cycle = 'einmalig' and not c.is_internal and v.quantity_milli > 0
        and not exists (select 1 from app.service_executions e where e.service_id = v.id)
      order by c.name, s.site_no, v.valid_from`;
 }

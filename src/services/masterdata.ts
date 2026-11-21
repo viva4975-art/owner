@@ -745,8 +745,37 @@ export async function addRegieRates(
 
 export async function setServiceActive(sql: Sql, id: string, active: boolean, actor: string) {
   await sql.begin(async (tx) => {
-    await tx`update app.site_services set active = ${active}, updated_at = now() where id = ${id}`;
+    await tx`update app.site_services set active = ${active}, ended_auto = false, updated_at = now() where id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id) values (${actor}, ${active ? 'activate' : 'deactivate'}, 'site_service', ${id})`;
+  });
+}
+
+/**
+ * Leistungen mit gesetztem Ende: ab dem Tag nach dem Ende automatisch inaktiv (Kennzeichen `ended_auto`, damit der
+ * letzte Zeitraum trotzdem noch abgerechnet bzw. verrichtet werden kann). Wird das Ende später verlängert bzw.
+ * entfernt, wird die Leistung wieder aktiv. Läuft beim Start und stündlich.
+ */
+export async function syncEndedServices(sql: Sql): Promise<{ deactivated: number; reactivated: number }> {
+  return sql.begin(async (tx) => {
+    const today = sql`(now() at time zone 'Europe/Berlin')::date`;
+    const off = await tx<{ id: string; valid_to: string }[]>`
+      update app.site_services set active = false, ended_auto = true, updated_at = now()
+       where active and valid_to is not null and valid_to < ${today}
+      returning id, valid_to::text as valid_to`;
+    const on = await tx<{ id: string }[]>`
+      update app.site_services ss set active = true, ended_auto = false, updated_at = now()
+        from app.sites s
+       where s.id = ss.site_id and s.active and ss.ended_auto and not ss.active
+         and (ss.valid_to is null or ss.valid_to >= ${today})
+      returning ss.id`;
+    for (const r of off)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values ('automatisch', 'deactivate', 'site_service', ${r.id},
+                       ${tx.json({ grund: `Ende ${r.valid_to} erreicht` })})`;
+    for (const r of on)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values ('automatisch', 'activate', 'site_service', ${r.id}, ${tx.json({ grund: 'Ende verlängert' })})`;
+    return { deactivated: off.length, reactivated: on.length };
   });
 }
 

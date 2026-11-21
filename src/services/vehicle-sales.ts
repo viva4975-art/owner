@@ -55,6 +55,59 @@ export const REGISTRATION = {
   angemeldet: 'Fahrzeug wird zugelassen übergeben – Käufer meldet um',
 } as const;
 
+/** Export (Ausfuhr in ein Drittland, Ahmed 21.11.) */
+export const EXPORT_TRANSPORT = {
+  eigene_achse: 'Käufer fährt das Fahrzeug selbst aus (mit Ausfuhrkennzeichen)',
+  abholung: 'Käufer bzw. sein Beauftragter holt ab und transportiert es (Anhänger, Transporter)',
+  spedition: 'Spedition im Auftrag des Käufers holt ab',
+  versand: 'Wir bringen bzw. versenden das Fahrzeug selbst ins Zielland',
+} as const;
+
+export const ID_TYPES = {
+  pass: 'Reisepass',
+  ausweis: 'Personalausweis / ID-Karte',
+  aufenthalt: 'Aufenthaltstitel',
+  sonstiges: 'sonstiges amtliches Dokument',
+} as const;
+
+export const DECLARANT = {
+  wir: 'wir (Viva-Deluxe, mit unserer EORI-Nummer, z. B. über IAA+ beim Zoll)',
+  zollagent: 'Zollagent / Spedition',
+  kaeufer: 'Käufer bzw. sein Beauftragter',
+} as const;
+
+export const DEPOSIT = {
+  ust: 'Kaution in Höhe der Umsatzsteuer (19 % des Kaufpreises) – empfohlen',
+  betrag: 'Kaution mit anderem Betrag',
+  keine: 'keine Kaution (Risiko: bei fehlendem Nachweis zahlen wir die USt)',
+} as const;
+
+export interface ExportInput {
+  destCountry: string;
+  birthDate: string | null;
+  nationality: string | null;
+  idType: keyof typeof ID_TYPES;
+  idIssuer: string | null;
+  idValidUntil: string | null;
+  representative: string | null;
+  residenceConfirmed: boolean;
+  transport: keyof typeof EXPORT_TRANSPORT;
+  agentName: string | null;
+  agentId: string | null;
+  exportPlate: string | null;
+  exitOffice: string | null;
+  deadlineDays: string;
+  deposit: keyof typeof DEPOSIT;
+  depositInput: string | null;
+  declarant: keyof typeof DECLARANT;
+  eori: string | null;
+}
+
+export interface ExportData extends ExportInput {
+  deadline: string;
+  depositCents: string;
+}
+
 export interface SaleInput {
   saleDate: string;
   handoverDate: string;
@@ -82,9 +135,11 @@ export interface SaleInput {
   registration: keyof typeof REGISTRATION;
   reregisterDays: string | null;
   note: string | null;
+  export?: ExportInput | null;
 }
 
-export interface SaleData extends SaleInput {
+export interface SaleData extends Omit<SaleInput, 'export'> {
+  export?: ExportData | null;
   vehicle: {
     plate: string;
     make: string | null;
@@ -183,6 +238,12 @@ export function checkSale(v: Vehicle, i: SaleInput, today = todayBerlin()) {
   }
   if (i.taxMode === 'export' && (EU.has(country) || country === 'DE'))
     throw new BusinessError('Ausfuhr: Land des Käufers muss außerhalb der EU liegen');
+  if (i.taxMode === 'export' && !i.buyerId?.trim())
+    throw new BusinessError('Ausfuhr: Bitte die Ausweis-/Pass-Nr. des Käufers angeben');
+  if (i.taxMode === 'export' && i.registration !== 'abgemeldet')
+    throw new BusinessError(
+      'Ausfuhr: Das Fahrzeug wird abgemeldet übergeben (Zulassung „abgemeldet“ wählen)',
+    );
   if (i.warranty === 'ausgeschlossen' && i.buyerType === 'privat')
     throw new BusinessError(
       'An Privatpersonen darf die Gewährleistung nicht ausgeschlossen werden (§ 476 BGB) – „auf 1 Jahr verkürzt“ oder „gesetzlich“ wählen',
@@ -208,8 +269,12 @@ export function checkSale(v: Vehicle, i: SaleInput, today = todayBerlin()) {
   }
   if (price <= 0n) throw new BusinessError('Bitte den Kaufpreis angeben');
   const amounts = saleAmounts(price, i.priceIs, i.taxMode);
+  const exp = i.taxMode === 'export' ? checkExport(i, country, price, i.handoverDate) : null;
+  const { export: _ignored, ...rest } = i;
+  void _ignored;
   const data: SaleData = {
-    ...i,
+    ...rest,
+    export: exp,
     buyerCountry: country,
     buyerVatId: vatId,
     docs: i.docs.filter((d) => d in DOCS),
@@ -226,6 +291,155 @@ export function checkSale(v: Vehicle, i: SaleInput, today = todayBerlin()) {
     keysN: Number(keys),
   };
   return { data, amounts };
+}
+
+function addDaysIso(d: string, n: number) {
+  const t = new Date(`${d}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+
+/** Angaben zur Ausfuhr prüfen (Abnehmer-, Ausfuhr- und Kautionsangaben) */
+function checkExport(i: SaleInput, buyerCountry: string, price: bigint, handover: string): ExportData {
+  const e = i.export;
+  if (!e) throw new BusinessError('Ausfuhr: Bitte die Angaben zur Ausfuhr ausfüllen');
+  const dest = (e.destCountry || buyerCountry).trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(dest))
+    throw new BusinessError('Ausfuhr: Zielland bitte als Länderkürzel (z. B. RS, UA, TR)');
+  if (EU.has(dest) || dest === 'DE')
+    throw new BusinessError(
+      'Ausfuhr: Zielland muss außerhalb der EU liegen (sonst innergemeinschaftliche Lieferung)',
+    );
+  if (!(e.idType in ID_TYPES)) throw new BusinessError('Ausfuhr: Art des Ausweises wählen');
+  if (!(e.transport in EXPORT_TRANSPORT)) throw new BusinessError('Ausfuhr: Art der Ausfuhr wählen');
+  if (!(e.declarant in DECLARANT)) throw new BusinessError('Ausfuhr: Wer meldet beim Zoll an?');
+  if (!(e.deposit in DEPOSIT)) throw new BusinessError('Ausfuhr: Kaution wählen');
+  if (i.buyerType === 'privat') {
+    if (!e.birthDate || !ISO.test(e.birthDate))
+      throw new BusinessError('Ausfuhr: Geburtsdatum des Käufers angeben');
+    if (!e.nationality?.trim()) throw new BusinessError('Ausfuhr: Staatsangehörigkeit des Käufers angeben');
+  } else if (!e.representative?.trim())
+    throw new BusinessError('Ausfuhr: Name der Person angeben, die für die Firma handelt (Vertreter)');
+  if (e.transport !== 'versand' && !e.residenceConfirmed)
+    throw new BusinessError(
+      'Ausfuhr: Bestätigen, dass der Käufer seinen Wohnsitz bzw. Sitz außerhalb der EU hat (Pflicht, wenn der Käufer selbst abholt – § 6 Abs. 1 Nr. 2 UStG)',
+    );
+  if (e.idValidUntil && ISO.test(e.idValidUntil) && e.idValidUntil < handover)
+    throw new BusinessError('Ausfuhr: Der Ausweis des Käufers ist am Übergabetag abgelaufen');
+  if (e.agentName?.trim() && !e.agentId?.trim())
+    throw new BusinessError('Ausfuhr: Ausweis-Nr. der abholenden Person angeben');
+  const days = e.deadlineDays.trim();
+  if (!/^\d{1,3}$/.test(days) || Number(days) < 1 || Number(days) > 180)
+    throw new BusinessError('Ausfuhr: Frist für die Ausfuhr in Tagen (1–180)');
+  let dep = 0n;
+  if (e.deposit === 'ust') dep = divRoundHalfUp(price * 19n, 100n);
+  else if (e.deposit === 'betrag') {
+    try {
+      let t = (e.depositInput ?? '').replace(/[€\s]/g, '');
+      if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+      dep = parseEuro(t);
+    } catch {
+      throw new BusinessError('Ausfuhr: Kaution ungültig');
+    }
+    if (dep <= 0n) throw new BusinessError('Ausfuhr: Bitte den Betrag der Kaution angeben');
+  }
+  const eori = e.eori?.replace(/\s/g, '').toUpperCase() || null;
+  if (eori && !/^[A-Z]{2}[0-9A-Z]{1,15}$/.test(eori))
+    throw new BusinessError('EORI-Nummer ungültig (z. B. DE1234567)');
+  return {
+    ...e,
+    destCountry: dest,
+    eori,
+    exportPlate: e.exportPlate?.trim().toUpperCase() || null,
+    deadline: addDaysIso(handover, Number(days)),
+    depositCents: String(dep),
+  };
+}
+
+export interface ChecklistItem {
+  text: string;
+  who: 'Käufer' | 'wir' | 'Zoll';
+  hint?: string | undefined;
+}
+
+/** Unterlagen und Schritte bei einer Ausfuhr – für Formular und Verkauf (Ahmed 21.11.) */
+export function exportChecklist(d: {
+  buyerType: 'privat' | 'unternehmen';
+  payment: string;
+  grossCents: bigint;
+  export: ExportData | ExportInput | null;
+}) {
+  const e = d.export;
+  const out: ChecklistItem[] = [];
+  out.push({
+    text: 'Gültigen Reisepass bzw. Personalausweis des Käufers vorlegen lassen, Kopie (Vorder- und Rückseite) zur Akte',
+    who: 'Käufer',
+    hint: 'Nummer, Ausstellungsland und Gültigkeit stehen dann im Vertrag',
+  });
+  out.push({
+    text: 'Nachweis über den Wohnsitz außerhalb der EU (z. B. ausländischer Ausweis mit Anschrift, Meldebescheinigung des Heimatlandes)',
+    who: 'Käufer',
+    hint: 'Pflicht, wenn der Käufer selbst abholt („ausländischer Abnehmer“). Wer in Deutschland gemeldet ist, ist kein ausländischer Abnehmer.',
+  });
+  if (d.buyerType === 'unternehmen')
+    out.push({
+      text: 'Bei Firmen: Handelsregisterauszug bzw. Gewerbenachweis aus dem Heimatland, Vollmacht/Vertretungsnachweis und Ausweis der handelnden Person',
+      who: 'Käufer',
+    });
+  if (e?.agentName?.trim())
+    out.push({
+      text: `Vollmacht des Käufers für ${e.agentName.trim()} (liegt im PDF bei, unterschreiben lassen) und Ausweiskopie der abholenden Person`,
+      who: 'Käufer',
+    });
+  out.push({
+    text: 'Abnehmer- und Ausfuhrerklärung (liegt im PDF bei) vom Käufer unterschreiben lassen',
+    who: 'Käufer',
+  });
+  if (!e || e.transport === 'eigene_achse')
+    out.push({
+      text: 'Ausfuhrkennzeichen (Zollkennzeichen) bei der Zulassungsstelle: Zulassungsbescheinigung Teil I und II, Kaufvertrag, Pass des Käufers, eVB-Nummer einer Kfz-Versicherung für Ausfuhrkennzeichen; die HU muss für die Zulassungsdauer gültig sein',
+      who: 'Käufer',
+      hint: 'Fahrzeug vorher abmelden. Die Zulassungsstelle trägt den Käufer als Halter ein – Kopie der Zulassung (ZB I Ausfuhr) zur Akte.',
+    });
+  out.push({
+    text:
+      !e || e.declarant === 'wir'
+        ? 'Ausfuhranmeldung beim Zoll im ATLAS-Verfahren (z. B. „Internetausfuhranmeldung Plus“, IAA+) mit unserer EORI-Nummer – MRN notieren und dem Käufer mitgeben'
+        : 'Ausfuhranmeldung beim Zoll (ATLAS) durch Zollagent/Käufer – MRN und Kopie der Anmeldung geben lassen',
+    who: e?.declarant === 'wir' || !e ? 'wir' : 'Käufer',
+    hint:
+      e?.declarant === 'wir' && !e.eori
+        ? 'EORI-Nummer fehlt – beim Zoll beantragen (kostenlos, ca. 1–2 Wochen)'
+        : undefined,
+  });
+  out.push({
+    text: 'Fahrzeug bei der Ausgangszollstelle an der EU-Grenze vorführen lassen (bei Ausfuhr über ein anderes EU-Land dort)',
+    who: 'Käufer',
+  });
+  out.push({
+    text: 'Ausgangsvermerk (elektronischer Ausgangsvermerk aus ATLAS, PDF) bekommen und hier am Verkauf hochladen – das ist der Ausfuhrnachweis (§ 9 UStDV)',
+    who: 'wir',
+    hint: 'Ohne Ausgangsvermerk ist die Lieferung steuerpflichtig: wir müssten 19 % USt an das Finanzamt zahlen.',
+  });
+  if (e && e.deposit !== 'keine')
+    out.push({
+      text: 'Kaution bei Übergabe kassieren (Quittung im PDF) und nach Eingang des Ausgangsvermerks zurückzahlen',
+      who: 'wir',
+    });
+  if (
+    d.payment === 'bar' &&
+    d.grossCents + BigInt(e && 'depositCents' in e ? e.depositCents : '0') >= 1_000_000n
+  )
+    out.push({
+      text: 'Barzahlung ab 10.000 €: Käufer identifizieren (Ausweis prüfen, Kopie aufbewahren, 5 Jahre) – Geldwäschegesetz',
+      who: 'wir',
+      hint: 'Bei Auffälligkeiten (z. B. Herkunft des Geldes unklar) Verdachtsmeldung an die FIU.',
+    });
+  out.push({
+    text: 'Zahlungsnachweis, Kaufvertrag, Rechnung, Ausweiskopie, Ausgangsvermerk 10 Jahre aufbewahren (Buchnachweis § 13 UStDV)',
+    who: 'wir',
+  });
+  return out;
 }
 
 const de = (d: string | null) => (d ? formatDateDe(d) : '–');
@@ -265,6 +479,10 @@ export async function renderSalePdf(
   const vehicleName = [v.make, v.model].filter(Boolean).join(' ');
   const sign = p.storno ? -1n : 1n;
   const bank = seller.bankAccounts.find((b) => b.primary) ?? seller.bankAccounts[0];
+  const ex = d0.taxMode === 'export' ? (d0.export ?? null) : null;
+  const dep = ex ? BigInt(ex.depositCents) : 0n;
+  let secNo = 5;
+  const sec = (t: string) => doc.section(`§ ${++secNo} ${t}`);
 
   if (!p.storno) {
     doc.y += 4;
@@ -276,7 +494,17 @@ export async function renderSalePdf(
         lines: [
           ...buyerLines,
           ...(d0.buyerVatId ? [`USt-IdNr. ${d0.buyerVatId}`] : []),
-          ...(d0.buyerId ? [`Ausweis-Nr. ${d0.buyerId}`] : []),
+          ...(ex?.representative?.trim() ? [`vertreten durch ${ex.representative.trim()}`] : []),
+          ...(ex?.birthDate
+            ? [`geb. ${de(ex.birthDate)}${ex.nationality ? ` · ${ex.nationality}` : ''}`]
+            : []),
+          ...(d0.buyerId
+            ? [
+                `${ex ? ID_TYPES[ex.idType] : 'Ausweis'}-Nr. ${d0.buyerId}${ex?.idIssuer ? ` (${ex.idIssuer})` : ''}${
+                  ex?.idValidUntil ? `, gültig bis ${de(ex.idValidUntil)}` : ''
+                }`,
+              ]
+            : []),
           ...[d0.buyerPhone, d0.buyerEmail].filter((x): x is string => !!x),
         ],
       },
@@ -323,6 +551,11 @@ export async function renderSalePdf(
             bank ? ` (${bank.name} · IBAN ${bank.iban})` : ''
           }. Das Fahrzeug wird erst nach Zahlungseingang übergeben.`,
     );
+    if (dep > 0n)
+      P(
+        `Zusätzlich zum Kaufpreis leistet der Käufer bei Übergabe eine Sicherheit (Kaution) von ${eur(dep)} für die Ausfuhr (§ 6 und Kautionsvereinbarung in der Anlage).`,
+        { bold: true },
+      );
     P(
       'Das Fahrzeug bleibt bis zur vollständigen Zahlung des Kaufpreises Eigentum des Verkäufers (Eigentumsvorbehalt). Nebenabreden bestehen nicht.',
     );
@@ -387,7 +620,35 @@ export async function renderSalePdf(
         : `Das Fahrzeug wird zugelassen übergeben. Der Käufer meldet es binnen ${d0.reregisterDays} Tagen auf sich um. Ab Übergabe trägt er Kosten, Steuer, Bußgelder und Schäden aus dem Betrieb und stellt den Verkäufer davon frei. Die Kfz-Haftpflichtversicherung geht nach § 95 VVG auf den Käufer über; beide zeigen den Verkauf dem Versicherer an (§ 97 VVG).`,
     );
 
-    doc.section('§ 6 Übergabe');
+    if (ex) {
+      const tax19 = divRoundHalfUp(p.amounts.net * 19n, 100n);
+      sec('Ausfuhr in ein Land außerhalb der EU');
+      P(
+        `(1) Der Käufer hat seinen ${d0.buyerType === 'unternehmen' ? 'Sitz' : 'Wohnsitz'} in ${countryName(d0.buyerCountry)} (außerhalb der Europäischen Union). Das Fahrzeug wird zur Ausfuhr nach ${countryName(ex.destCountry)} verkauft. Der Kaufpreis enthält deshalb keine Umsatzsteuer (steuerfreie Ausfuhrlieferung, § 4 Nr. 1 Buchst. a i. V. m. § 6 UStG).`,
+      );
+      P(
+        `(2) Der Käufer verpflichtet sich, das Fahrzeug unverzüglich, spätestens bis ${de(ex.deadline)}, unmittelbar aus der Europäischen Union auszuführen. Bis dahin darf er es in der EU nur für die Fahrt zur Ausgangszollstelle nutzen und weder verkaufen noch überlassen. Art der Ausfuhr: ${EXPORT_TRANSPORT[ex.transport]}.`,
+      );
+      P(
+        `(3) Die Ausfuhranmeldung beim Zoll (ATLAS) übernimmt: ${DECLARANT[ex.declarant].replace(/ \(.*\)$/, '')}. Der Käufer stellt das Fahrzeug bei der Ausgangszollstelle${
+          ex.exitOffice ? ` (geplant: ${ex.exitOffice})` : ''
+        } und sorgt dafür, dass dort der Ausgang bestätigt wird. Er übergibt dem Verkäufer unverzüglich den Ausgangsvermerk bzw. alle Unterlagen, die der Verkäufer als Ausfuhrnachweis (§ 9 UStDV) braucht.`,
+      );
+      if (ex.transport === 'eigene_achse')
+        P(
+          `(4) Das Fahrzeug wird abgemeldet übergeben. Ausfuhrkennzeichen und Versicherung beschafft der Käufer auf eigene Kosten und auf eigenen Namen${
+            ex.exportPlate ? ` (Ausfuhrkennzeichen ${ex.exportPlate})` : ''
+          }; ab Übergabe trägt er alle Kosten, Steuern, Bußgelder und Schäden aus dem Betrieb.`,
+        );
+      P(
+        `(${ex.transport === 'eigene_achse' ? 5 : 4}) Liegt der Ausfuhrnachweis nicht bis ${de(addDaysIso(ex.deadline, 30))} vor oder sind die Angaben des Käufers unrichtig, gilt der Kaufpreis als Nettopreis: Der Käufer schuldet dann zusätzlich die gesetzliche Umsatzsteuer von 19 % (${eur(tax19)}) sowie den Ersatz weiterer Schäden des Verkäufers.${
+          dep > 0n ? ' Der Verkäufer darf die Kaution damit verrechnen.' : ''
+        }`,
+        { bold: true },
+      );
+    }
+
+    sec('Übergabe');
     P(
       `Übergabe am ${de(d0.handoverDate)}${d0.handoverTime ? ` um ${d0.handoverTime} Uhr` : ''} mit ${d0.keysN} Schlüssel${
         d0.keysN === 1 ? '' : 'n'
@@ -396,7 +657,7 @@ export async function renderSalePdf(
     for (const [k, l] of Object.entries(DOCS)) P(`${d0.docs.includes(k) ? '☒' : '☐'}  ${l}`, { indent: 10 });
     P('Mit der Übergabe gehen Gefahr, Nutzen und Lasten auf den Käufer über.');
 
-    doc.section('§ 7 Sonstiges');
+    sec('Sonstiges');
     if (d0.note?.trim()) P(`Sonstige Vereinbarungen: ${d0.note.trim()}`);
     P(
       'Änderungen und Ergänzungen dieses Vertrags bedürfen der Textform. Sollte eine Bestimmung unwirksam sein, bleibt der Vertrag im Übrigen wirksam.',
@@ -415,6 +676,7 @@ export async function renderSalePdf(
       d0.payment === 'bar' ? 'Betrag erhalten · Unterschrift Verkäufer' : 'Verkäufer',
     );
     doc.newPage();
+    if (ex) renderExportPages(doc, { no, d: d0, ex, dep, seller, vehicleName, buyerLines });
   }
 
   // ---------------------------------------------------------------- Rechnung / Stornorechnung
@@ -466,6 +728,10 @@ export async function renderSalePdf(
     ],
   );
   if (TAX_NOTE[d0.taxMode]) doc.para(TAX_NOTE[d0.taxMode], { bold: true });
+  if (ex)
+    doc.para(
+      `Bestimmungsland: ${countryName(ex.destCountry)}. Ausfuhrnachweis: Ausgangsvermerk der Ausgangszollstelle (ATLAS).`,
+    );
   if (!p.storno)
     doc.para(
       d0.payment === 'bar'
@@ -498,6 +764,8 @@ export async function completeVehicleSale(
     await tx`select pg_advisory_xact_lock(hashtext('app.vehicle_sales'))`;
     const no = await nextNo(tx as unknown as Sql, data.saleDate);
     const pdf = await renderSalePdf(tx as unknown as Sql, { no, data, amounts });
+    if (data.export?.eori)
+      await tx`update app.company set eori_no = ${data.export.eori} where id = 1 and eori_no is distinct from ${data.export.eori}`;
     const fileId = uuidFrom(`${p.id}:fahrzeugverkauf-pdf`);
     await storeFile(
       sql,
@@ -595,4 +863,261 @@ async function nextNo(tx: Sql, date: string) {
     select coalesce(max(substring(sale_no from 9)::int), 0) + 1 as n from app.vehicle_sales
      where sale_no like ${`FV-${year}-%`}`) as unknown as [{ n: number }];
   return `FV-${year}-${String(n).padStart(3, '0')}`;
+}
+
+const COUNTRY: Record<string, string> = {
+  AL: 'Albanien',
+  BA: 'Bosnien und Herzegowina',
+  BY: 'Belarus',
+  CH: 'Schweiz',
+  GB: 'Vereinigtes Königreich',
+  GE: 'Georgien',
+  IS: 'Island',
+  LI: 'Liechtenstein',
+  MD: 'Moldau',
+  ME: 'Montenegro',
+  MK: 'Nordmazedonien',
+  NO: 'Norwegen',
+  RS: 'Serbien',
+  RU: 'Russland',
+  TR: 'Türkei',
+  UA: 'Ukraine',
+  XK: 'Kosovo',
+  AM: 'Armenien',
+  AZ: 'Aserbaidschan',
+  KZ: 'Kasachstan',
+  MA: 'Marokko',
+  TN: 'Tunesien',
+  DZ: 'Algerien',
+  EG: 'Ägypten',
+  LB: 'Libanon',
+  JO: 'Jordanien',
+  SY: 'Syrien',
+  IQ: 'Irak',
+  IR: 'Iran',
+  AE: 'Vereinigte Arabische Emirate',
+  SA: 'Saudi-Arabien',
+  NG: 'Nigeria',
+  GH: 'Ghana',
+  SN: 'Senegal',
+  BJ: 'Benin',
+  TG: 'Togo',
+  CM: 'Kamerun',
+  US: 'USA',
+  CA: 'Kanada',
+  AF: 'Afghanistan',
+  PK: 'Pakistan',
+  IN: 'Indien',
+  DE: 'Deutschland',
+};
+export const countryName = (c: string) => (COUNTRY[c] ? `${COUNTRY[c]} (${c})` : c);
+
+/** Anlagen beim Export: Abnehmer-/Ausfuhrerklärung, Kautionsvereinbarung + Quittung, Vollmacht */
+function renderExportPages(
+  doc: FormDoc,
+  p: {
+    no: string;
+    d: SaleData;
+    ex: ExportData;
+    dep: bigint;
+    seller: { legalName: string; city: string };
+    vehicleName: string;
+    buyerLines: string[];
+  },
+) {
+  const { d, ex, dep, seller } = p;
+  const v = d.vehicle;
+  const sz = 8.8;
+  const P = (t: string, o: { bold?: boolean; indent?: number } = {}) => doc.para(t, { size: sz, ...o });
+  const vehicleRow = `${p.vehicleName || 'Fahrzeug'}, FIN ${v.vin ?? '–'}`;
+
+  // Abnehmer- und Ausfuhrerklärung
+  doc.y += 4;
+  doc.title('Abnehmer- und Ausfuhrerklärung', `Anlage zu ${p.no}`);
+  doc.kvBox([
+    { k: 'Käufer', v: d.buyerName, strong: true },
+    ...(ex.representative?.trim() ? [{ k: 'vertreten durch', v: ex.representative.trim() }] : []),
+    ...(ex.birthDate
+      ? [{ k: 'Geburtsdatum', v: de(ex.birthDate), k2: 'Staatsangeh.', v2: ex.nationality ?? '–' }]
+      : []),
+    { k: 'Wohnsitz / Sitz', v: p.buyerLines.slice(1).join(', ') },
+    {
+      k: ID_TYPES[ex.idType],
+      v: `${d.buyerId ?? '–'}${ex.idIssuer ? ` · ${ex.idIssuer}` : ''}`,
+      k2: 'gültig bis',
+      v2: de(ex.idValidUntil),
+    },
+    { k: 'Fahrzeug', v: vehicleRow, k2: 'Kennz. bisher', v2: v.plate },
+    { k: 'Zielland', v: countryName(ex.destCountry), k2: 'Ausfuhr bis', v2: de(ex.deadline) },
+    {
+      k: 'Ausfuhrkennzeichen',
+      v: ex.exportPlate ?? '______________________',
+      k2: 'Ausgangszollst.',
+      v2: ex.exitOffice ?? '–',
+    },
+  ]);
+  P('Ich erkläre / Wir erklären gegenüber dem Verkäufer:');
+  const items = [
+    `Mein / unser ${d.buyerType === 'unternehmen' ? 'Sitz' : 'Wohnsitz'} liegt außerhalb der Europäischen Union; ich habe / wir haben keinen Wohnsitz bzw. keine Niederlassung in Deutschland oder einem anderen EU-Land.`,
+    `Das Fahrzeug wird nach ${countryName(ex.destCountry)} ausgeführt und bis ${de(ex.deadline)} unmittelbar aus der EU verbracht (${EXPORT_TRANSPORT[ex.transport]}).`,
+    'Bis zur Ausfuhr wird das Fahrzeug in der EU nicht genutzt (außer für die Fahrt zur Ausgangszollstelle), nicht weiterverkauft und keinem Dritten überlassen.',
+    'Ich lasse den Ausgang bei der Ausgangszollstelle bestätigen und übergebe dem Verkäufer unverzüglich den Ausgangsvermerk bzw. die Ausfuhrpapiere.',
+    'Meine Angaben sind richtig und vollständig. Mir ist bekannt, dass ich bei unrichtigen Angaben oder fehlender Ausfuhr die gesetzliche Umsatzsteuer (19 %) und weitere Schäden des Verkäufers trage.',
+  ];
+  items.forEach((t, i) => P(`${i + 1}.  ${t}`, { indent: 8 }));
+  doc.y += 2;
+  doc.signatures('Verkäufer', 'Ort, Datum · Unterschrift Käufer', {
+    leftText: `${seller.city}, den ${de(d.handoverDate)}`,
+    rightText: ' ',
+    mark: 'right',
+  });
+
+  if (dep > 0n || ex.agentName?.trim()) {
+    doc.newPage();
+    doc.y += 4;
+  }
+  if (dep > 0n) {
+    doc.section('Kautionsvereinbarung');
+    P(
+      `Der Käufer übergibt dem Verkäufer bei Übergabe des Fahrzeugs eine Kaution von ${eur(dep)} als Sicherheit für die Ausfuhr (Kaufvertrag ${p.no}, § 6). Sie wird nicht verzinst.`,
+    );
+    P(
+      `Der Verkäufer zahlt die Kaution binnen 10 Tagen zurück, nachdem ihm der Ausgangsvermerk der Ausgangszollstelle vorliegt, und zwar auf folgendes Konto des Käufers:`,
+    );
+    P(
+      'Kontoinhaber: ________________________________   IBAN: ____________________________________   BIC: ______________',
+      {
+        indent: 8,
+      },
+    );
+    P(
+      `Liegt der Ausfuhrnachweis nicht bis ${de(addDaysIso(ex.deadline, 30))} vor, verrechnet der Verkäufer die Kaution mit der dann geschuldeten Umsatzsteuer und weiteren Schäden; ein Rest wird zurückgezahlt.`,
+    );
+    doc.signatures('Kaution erhalten · Verkäufer', 'Käufer', {
+      leftText: `${seller.city}, den ${de(d.handoverDate)} · ${eur(dep)}`,
+      rightText: ' ',
+      mark: 'right',
+    });
+  }
+
+  if (ex.agentName?.trim()) {
+    doc.section('Vollmacht zur Abholung');
+    P(
+      `Ich / Wir, ${d.buyerName}, bevollmächtige(n) ${ex.agentName.trim()} (Ausweis-Nr. ${ex.agentId ?? '–'}), das oben genannte Fahrzeug mit Schlüsseln und Unterlagen beim Verkäufer in Empfang zu nehmen, die Übergabe zu bestätigen${
+        dep > 0n ? ', die Kaution zu leisten' : ''
+      } und das Fahrzeug zur Ausfuhr zu bringen. Eine Kopie des Ausweises der bevollmächtigten Person ist beigefügt.`,
+    );
+    doc.signatures('Ort, Datum · Unterschrift Käufer (Vollmachtgeber)', 'Unterschrift Bevollmächtigte/r', {
+      mark: 'left',
+    });
+  }
+  doc.newPage();
+}
+
+// ---------------------------------------------------------------- Ausfuhrnachweis und Kaution
+export interface ExportEvent {
+  id: string;
+  sale_id: string;
+  kind: 'nachweis' | 'kaution_zurueck' | 'kaution_verrechnet';
+  event_date: string;
+  mrn: string | null;
+  note: string | null;
+  file_id: string | null;
+  created_by: string;
+  created_at: Date;
+}
+
+export async function listExportEvents(sql: Sql, saleId: string) {
+  return sql<ExportEvent[]>`
+    select id, sale_id, kind, event_date::text as event_date, mrn, note, file_id, created_by, created_at
+      from app.vehicle_export_events where sale_id = ${saleId} order by created_at`;
+}
+
+/** Ausgangsvermerk bzw. Kautionsabschluss festhalten (nur anhängen, feste ID je Formular) */
+export async function recordExportEvent(
+  sql: Sql,
+  cfg: UploadConfig,
+  p: {
+    id: string;
+    saleId: string;
+    kind: ExportEvent['kind'];
+    date: string;
+    mrn: string | null;
+    note: string | null;
+    file: { name: string; type: string; data: Uint8Array } | null;
+  },
+  actor: string,
+) {
+  const [done] = await sql<ExportEvent[]>`select * from app.vehicle_export_events where id = ${p.id}`;
+  if (done) return done;
+  const [sale] = await sql<SaleRow[]>`
+    select id, sale_no, kind, vehicle_id, tax_mode from app.vehicle_sales where id = ${p.saleId}`;
+  if (!sale || sale.kind !== 'verkauf' || sale.tax_mode !== 'export')
+    throw new BusinessError('Ausfuhr-Verkauf nicht gefunden');
+  const [storno] = await sql`select 1 from app.vehicle_sales where original_id = ${sale.id}`;
+  if (storno) throw new BusinessError('Der Verkauf ist storniert');
+  if (!ISO.test(p.date)) throw new BusinessError('Bitte das Datum angeben');
+  if (p.date > todayBerlin()) throw new BusinessError('Datum liegt in der Zukunft');
+  const events = await listExportEvents(sql, sale.id);
+  const mrn = p.mrn?.replace(/\s/g, '').toUpperCase() || null;
+  if (p.kind === 'nachweis') {
+    if (events.some((e) => e.kind === 'nachweis'))
+      throw new BusinessError('Ausfuhrnachweis ist schon erfasst');
+    if (!p.file) throw new BusinessError('Bitte den Ausgangsvermerk (PDF oder Foto) hochladen');
+    if (mrn && !/^\d{2}[A-Z]{2}[0-9A-Z]{14}$/.test(mrn))
+      throw new BusinessError('MRN bitte wie auf dem Ausgangsvermerk (18 Zeichen, z. B. 26DE…)');
+  } else {
+    if (events.some((e) => e.kind !== 'nachweis'))
+      throw new BusinessError('Die Kaution ist schon abgeschlossen');
+    if (p.kind === 'kaution_verrechnet' && !p.note?.trim())
+      throw new BusinessError('Bitte den Grund für die Verrechnung angeben');
+  }
+  let fileId: string | null = null;
+  if (p.file) {
+    fileId = uuidFrom(`${p.id}:ausfuhr-datei`);
+    await storeFile(
+      sql,
+      cfg,
+      {
+        id: fileId,
+        name: `Ausgangsvermerk_${sale.sale_no}_${p.file.name}`,
+        type: p.file.type || 'application/octet-stream',
+        data: p.file.data,
+        link: { type: 'vehicle', id: sale.vehicle_id },
+        category: 'Verkauf',
+      },
+      actor,
+    );
+  }
+  const [row] = await sql<ExportEvent[]>`
+    insert into app.vehicle_export_events (id, sale_id, kind, event_date, mrn, note, file_id, created_by)
+    values (${p.id}, ${sale.id}, ${p.kind}, ${p.date}, ${mrn}, ${p.note?.trim() || null}, ${fileId}, ${actor})
+    on conflict (id) do nothing returning *`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, ${`vehicle_export_${p.kind}`}, 'vehicle', ${sale.vehicle_id},
+                    ${sql.json({ sale_no: sale.sale_no, mrn, date: p.date })})`;
+  return row!;
+}
+
+/** Offene Ausfuhren (Nachweis fehlt bzw. Kaution offen) – für Erinnerungen */
+export async function openExports(sql: Sql) {
+  const rows = await sql<
+    {
+      id: string;
+      sale_no: string;
+      vehicle_id: string;
+      data: SaleData;
+      has_proof: boolean;
+      deposit_done: boolean;
+    }[]
+  >`
+    select s.id, s.sale_no, s.vehicle_id, s.data,
+           exists (select 1 from app.vehicle_export_events e where e.sale_id = s.id and e.kind = 'nachweis') as has_proof,
+           exists (select 1 from app.vehicle_export_events e where e.sale_id = s.id and e.kind <> 'nachweis') as deposit_done
+      from app.vehicle_sales s
+     where s.kind = 'verkauf' and s.tax_mode = 'export'
+       and not exists (select 1 from app.vehicle_sales x where x.original_id = s.id)`;
+  return rows.filter(
+    (r) => !r.has_proof || (!r.deposit_done && BigInt(r.data.export?.depositCents ?? '0') > 0n),
+  );
 }

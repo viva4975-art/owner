@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { listFiles } from '../services/uploads.js';
 import {
+  DECLARANT,
+  DEPOSIT,
   DOCS,
+  EXPORT_TRANSPORT,
+  ID_TYPES,
   PAYMENT,
   REGISTRATION,
   TAX_MODES,
@@ -10,9 +14,14 @@ import {
   cancelVehicleSale,
   checkSale,
   completeVehicleSale,
+  countryName,
   currentSale,
+  exportChecklist,
+  listExportEvents,
   listVehicleSales,
+  recordExportEvent,
   renderSalePdf,
+  type ExportEvent,
   type SaleInput,
   type SaleRow,
 } from '../services/vehicle-sales.js';
@@ -219,6 +228,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
     );
     const sales = v ? await listVehicleSales(sql, id) : [];
     const sale = v ? await currentSale(sql, id) : null;
+    const exportEvents = sale && sale.tax_mode === 'export' ? await listExportEvents(sql, sale.id) : [];
     const title = v ? v.plate : 'Neues Fahrzeug';
     return page(
       c,
@@ -417,7 +427,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </form>
           <div>
-            {v && <SaleCard v={v} sale={sale} sales={sales} />}
+            {v && <SaleCard v={v} sale={sale} sales={sales} events={exportEvents} />}
             <div class="card">
               <h3>
                 <Icon name="file" size={16} /> Fahrzeugschein
@@ -524,6 +534,29 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       registration: (one('registration') ?? 'abgemeldet') as SaleInput['registration'],
       reregisterDays: one('reregister_days'),
       note: one('note'),
+      export:
+        one('tax_mode') === 'export'
+          ? {
+              destCountry: one('x_dest') ?? '',
+              birthDate: one('x_birth'),
+              nationality: one('x_nat'),
+              idType: (one('x_id_type') ?? 'pass') as never,
+              idIssuer: one('x_id_issuer'),
+              idValidUntil: one('x_id_valid'),
+              representative: one('x_rep'),
+              residenceConfirmed: b.x_residence === 'on',
+              transport: (one('x_transport') ?? 'eigene_achse') as never,
+              agentName: one('x_agent'),
+              agentId: one('x_agent_id'),
+              exportPlate: one('x_plate'),
+              exitOffice: one('x_exit'),
+              deadlineDays: one('x_days') ?? '30',
+              deposit: (one('x_deposit') ?? 'ust') as never,
+              depositInput: one('x_deposit_amount'),
+              declarant: (one('x_declarant') ?? 'wir') as never,
+              eori: one('x_eori'),
+            }
+          : null,
     };
   };
 
@@ -536,6 +569,13 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       return back(c, `/fahrzeuge/${id}`, { fehler: `Schon verkauft (${sale.sale_no}) – erst stornieren.` });
     const today = todayBerlin();
     const formId = randomUUID();
+    const [co] = await sql<{ eori_no: string | null }[]>`select eori_no from app.company where id = 1`;
+    const checklist = exportChecklist({
+      buyerType: 'unternehmen',
+      payment: 'bar',
+      grossCents: 0n,
+      export: null,
+    });
     const sel = (name: string, opts: Record<string, string>, value: string, id2 = name) => (
       <select id={id2} name={name} data-nosearch>
         {Object.entries(opts).map(([k, l]) => (
@@ -717,7 +757,19 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div>
               <label for="tm">Umsatzsteuer</label>
-              {sel('tax_mode', TAX_MODES, 'ust19', 'tm')}
+              <select
+                id="tm"
+                name="tax_mode"
+                data-nosearch
+                data-reveal="#exp-fields"
+                data-reveal-value="export"
+              >
+                {Object.entries(TAX_MODES).map(([k, l]) => (
+                  <option value={k} selected={k === 'ust19'}>
+                    {l}
+                  </option>
+                ))}
+              </select>
               <div class="small mut">
                 Der Verkauf eines Firmenfahrzeugs ist <b>immer umsatzsteuerpflichtig (19 %)</b> – auch wenn es
                 von privat ohne Vorsteuer gekauft wurde. Ohne Steuer nur: an ein Unternehmen in einem anderen
@@ -737,6 +789,121 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             <div>
               <label for="nt">Sonstige Vereinbarungen</label>
               <textarea id="nt" name="note" rows={2} />
+            </div>
+          </div>
+          <div id="exp-fields" hidden>
+            <h3>5. Ausfuhr (Export in ein Land außerhalb der EU)</h3>
+            <p class="small mut" style="max-width:820px">
+              Ohne Umsatzsteuer nur, wenn das Fahrzeug nachweislich die EU verlässt. Holt der Käufer selbst
+              ab, muss er seinen Wohnsitz bzw. Sitz außerhalb der EU haben. Nachweis ist der{' '}
+              <b>Ausgangsvermerk</b> des Zolls (ATLAS). Fehlt er, schulden wir 19 % USt – deshalb Kaution in
+              Höhe der USt nehmen. Das PDF enthält zusätzlich die Abnehmer- und Ausfuhrerklärung, die
+              Kautionsvereinbarung mit Quittung und ggf. die Vollmacht zur Abholung.
+            </p>
+            <div class="grid">
+              <div>
+                <label for="xd">Zielland (Kürzel) *</label>
+                <input
+                  id="xd"
+                  name="x_dest"
+                  maxlength={2}
+                  required
+                  placeholder="z. B. RS, UA, TR, BA"
+                  style="text-transform:uppercase"
+                />
+                <div class="small mut">Land außerhalb der EU, in das das Fahrzeug geht</div>
+              </div>
+              <div>
+                <label class="chk" style="font-weight:normal">
+                  <input type="checkbox" name="x_residence" /> Käufer hat Wohnsitz bzw. Sitz außerhalb der EU
+                  – Nachweis gesehen (z. B. ausländischer Ausweis mit Anschrift)
+                </label>
+              </div>
+              <div>
+                <label for="xb">Geburtsdatum (Privatperson) *</label>
+                <input id="xb" type="date" name="x_birth" />
+              </div>
+              <div>
+                <label for="xn">Staatsangehörigkeit (Privatperson) *</label>
+                <input id="xn" name="x_nat" placeholder="z. B. serbisch" />
+              </div>
+              <div>
+                <label for="xr">Bei Firma: handelnde Person *</label>
+                <input id="xr" name="x_rep" placeholder="Name, Funktion (z. B. Geschäftsführer)" />
+              </div>
+              <div>
+                <label for="xit">Ausweisart</label>
+                {sel('x_id_type', ID_TYPES, 'pass', 'xit')}
+                <div class="small mut">Die Nummer oben unter „Ausweis-/Pass-Nr.“ eintragen (Pflicht)</div>
+              </div>
+              <div>
+                <label for="xii">Ausgestellt von / Land</label>
+                <input id="xii" name="x_id_issuer" placeholder="z. B. Republik Serbien" />
+              </div>
+              <div>
+                <label for="xiv">Ausweis gültig bis</label>
+                <input id="xiv" type="date" name="x_id_valid" />
+              </div>
+              <div>
+                <label for="xt">Art der Ausfuhr</label>
+                {sel('x_transport', EXPORT_TRANSPORT, 'eigene_achse', 'xt')}
+              </div>
+              <div>
+                <label for="xp">Ausfuhrkennzeichen (wenn schon bekannt)</label>
+                <input id="xp" name="x_plate" placeholder="z. B. M 12345 + Ablaufdatum" />
+              </div>
+              <div>
+                <label for="xa">Abholung durch Beauftragten (Name)</label>
+                <input id="xa" name="x_agent" placeholder="leer = Käufer holt selbst ab" />
+                <div class="small mut">mit Namen → Vollmacht kommt ins PDF</div>
+              </div>
+              <div>
+                <label for="xai">Ausweis-Nr. des Beauftragten</label>
+                <input id="xai" name="x_agent_id" />
+              </div>
+              <div>
+                <label for="xdc">Ausfuhranmeldung beim Zoll macht</label>
+                {sel('x_declarant', DECLARANT, 'wir', 'xdc')}
+              </div>
+              <div>
+                <label for="xe">Unsere EORI-Nummer</label>
+                <input id="xe" name="x_eori" value={co?.eori_no ?? ''} placeholder="z. B. DE1234567" />
+                <div class="small mut">
+                  beim Zoll kostenlos beantragen; wird für die nächsten Verkäufe gemerkt
+                </div>
+              </div>
+              <div>
+                <label for="xx">Geplante Ausgangszollstelle</label>
+                <input id="xx" name="x_exit" placeholder="z. B. Zollamt Bad Reichenhall-Autobahn" />
+              </div>
+              <div>
+                <label for="xdy">Ausfuhr binnen (Tagen nach Übergabe)</label>
+                <input id="xdy" name="x_days" inputmode="numeric" value="30" />
+              </div>
+              <div>
+                <label for="xk">Kaution</label>
+                {sel('x_deposit', DEPOSIT, 'ust', 'xk')}
+              </div>
+              <div>
+                <label for="xka">Kaution Betrag (€)</label>
+                <input
+                  id="xka"
+                  name="x_deposit_amount"
+                  inputmode="decimal"
+                  placeholder="nur bei „anderer Betrag“"
+                />
+              </div>
+            </div>
+            <div class="card" style="background:var(--tint-2,#f8eff2);margin-top:10px">
+              <h3 style="margin-top:0">Was du vom Käufer brauchst und was zu tun ist</h3>
+              <ol class="small" style="margin:0;padding-left:20px">
+                {checklist.map((it) => (
+                  <li style="margin-bottom:5px">
+                    <b>{it.who}:</b> {it.text}
+                    {it.hint && <div class="mut">{it.hint}</div>}
+                  </li>
+                ))}
+              </ol>
             </div>
           </div>
           <div class="formfoot">
@@ -763,7 +930,10 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var t=document.getElementById('bt'),w=document.getElementById('war');if(!t||!w)return;
-t.addEventListener('change',function(){if(t.value==='unternehmen')w.value='ausgeschlossen';else if(w.value==='ausgeschlossen')w.value='einjahr';w.dispatchEvent(new Event('change',{bubbles:true}));});})();`,
+t.addEventListener('change',function(){if(t.value==='unternehmen')w.value='ausgeschlossen';else if(w.value==='ausgeschlossen')w.value='einjahr';w.dispatchEvent(new Event('change',{bubbles:true}));});
+var m=document.getElementById('tm'),r=document.getElementById('reg'),c=document.getElementById('bc'),xd=document.getElementById('xd');
+if(m)m.addEventListener('change',function(){if(m.value!=='export')return;if(r){r.value='abgemeldet';r.dispatchEvent(new Event('change',{bubbles:true}));}
+if(xd&&!xd.value&&c&&c.value&&c.value.toUpperCase()!=='DE')xd.value=c.value.toUpperCase();});})();`,
           }}
         />
       </>,
@@ -794,6 +964,31 @@ t.addEventListener('change',function(){if(t.value==='unternehmen')w.value='ausge
     );
     return back(c, `/fahrzeuge/${id}`, {
       ok: `Verkauf ${row.sale_no} abgeschlossen – Kaufvertrag und Rechnung liegen unter „Verkauf“.`,
+    });
+  });
+
+  app.post(`/fahrzeuge/:id{${UUID}}/verkauf/:sid{${UUID}}/ausfuhr`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const fid = str(b, 'form_id');
+    const f = b.file instanceof File && b.file.size > 0 ? b.file : null;
+    const kind = str(b, 'kind');
+    await recordExportEvent(
+      sql,
+      { dir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+      {
+        id: fid && /^[0-9a-f-]{36}$/.test(fid) ? fid : randomUUID(),
+        saleId: c.req.param('sid'),
+        kind: kind === 'kaution_zurueck' || kind === 'kaution_verrechnet' ? kind : 'nachweis',
+        date: str(b, 'date') ?? '',
+        mrn: str(b, 'mrn'),
+        note: str(b, 'note'),
+        file: f ? { name: f.name, type: f.type, data: new Uint8Array(await f.arrayBuffer()) } : null,
+      },
+      c.get('actor'),
+    );
+    return back(c, `/fahrzeuge/${id}#ausfuhr`, {
+      ok: kind === 'nachweis' || !kind ? 'Ausfuhrnachweis gespeichert.' : 'Kaution abgeschlossen.',
     });
   });
 
@@ -903,7 +1098,17 @@ function lastOfMonth(ym: string) {
 const PLATE_CSS = `.plate{display:inline-block;font-weight:700;letter-spacing:.04em;border:2px solid #1c1a19;border-radius:4px;padding:1px 8px 1px 14px;background:#fff linear-gradient(90deg,#1f4fbf 0,#1f4fbf 8px,#fff 8px);color:#1c1a19;text-decoration:none;white-space:nowrap}`;
 
 /** Kasten „Verkauf“ am Fahrzeug */
-function SaleCard({ v, sale, sales }: { v: Vehicle; sale: SaleRow | null; sales: SaleRow[] }) {
+function SaleCard({
+  v,
+  sale,
+  sales,
+  events,
+}: {
+  v: Vehicle;
+  sale: SaleRow | null;
+  sales: SaleRow[];
+  events: ExportEvent[];
+}) {
   return (
     <div class="card">
       <h3>Verkauf</h3>
@@ -922,6 +1127,7 @@ function SaleCard({ v, sale, sales }: { v: Vehicle; sale: SaleRow | null; sales:
               Kaufvertrag &amp; Rechnung (PDF)
             </a>
           )}
+          {sale.tax_mode === 'export' && <ExportBox v={v} sale={sale} events={events} />}
           <details style="margin-top:10px">
             <summary>Verkauf stornieren …</summary>
             <form method="post" action={`/fahrzeuge/${v.id}/verkauf/${sale.id}/storno`}>
@@ -974,6 +1180,109 @@ function SaleCard({ v, sale, sales }: { v: Vehicle; sale: SaleRow | null; sales:
           </ul>
         </details>
       )}
+    </div>
+  );
+}
+
+/** Ausfuhr: Unterlagen, Ausgangsvermerk, Kaution */
+function ExportBox({ v, sale, events }: { v: Vehicle; sale: SaleRow; events: ExportEvent[] }) {
+  const e = sale.data.export;
+  if (!e) return null;
+  const proof = events.find((x) => x.kind === 'nachweis');
+  const depDone = events.find((x) => x.kind !== 'nachweis');
+  const dep = BigInt(e.depositCents);
+  const today = todayBerlin();
+  const list = exportChecklist({
+    buyerType: sale.data.buyerType,
+    payment: sale.data.payment,
+    grossCents: sale.gross_cents,
+    export: e,
+  });
+  return (
+    <div id="ausfuhr" style="margin-top:12px;border-top:1px solid var(--line,#e5e5ea);padding-top:10px">
+      <h4 style="margin:0 0 6px">Ausfuhr nach {countryName(e.destCountry)}</h4>
+      {proof ? (
+        <p class="small" style="margin:0 0 6px">
+          <span class="badge ok">Ausfuhrnachweis liegt vor</span> Ausgang am {dateDe(proof.event_date)}
+          {proof.mrn && ` · MRN ${proof.mrn}`}
+          {proof.file_id && (
+            <>
+              {' · '}
+              <a href={`/dateien/${proof.file_id}`} target="_blank">
+                Ausgangsvermerk
+              </a>
+            </>
+          )}
+        </p>
+      ) : (
+        <p class="small" style="margin:0 0 6px">
+          <span class={`badge ${e.deadline < today ? 'err' : 'warn'}`}>Ausgangsvermerk fehlt</span> Ausfuhr
+          bis {dateDe(e.deadline)}. Ohne Nachweis schulden wir 19 % USt.
+        </p>
+      )}
+      {dep > 0n && (
+        <p class="small" style="margin:0 0 6px">
+          Kaution {euro(dep)}:{' '}
+          {depDone
+            ? `${depDone.kind === 'kaution_zurueck' ? 'zurückgezahlt' : 'verrechnet'} am ${dateDe(depDone.event_date)}${depDone.note ? ` (${depDone.note})` : ''}`
+            : proof
+              ? 'jetzt zurückzahlen'
+              : 'noch einbehalten'}
+        </p>
+      )}
+      {!proof && (
+        <details>
+          <summary>Ausgangsvermerk hochladen …</summary>
+          <form
+            method="post"
+            action={`/fahrzeuge/${v.id}/verkauf/${sale.id}/ausfuhr`}
+            enctype="multipart/form-data"
+          >
+            <input type="hidden" name="form_id" value={randomUUID()} />
+            <input type="hidden" name="kind" value="nachweis" />
+            <label for="xpd">Ausgang am (laut Vermerk) *</label>
+            <input id="xpd" type="date" name="date" max={today} required />
+            <label for="xpm">MRN</label>
+            <input id="xpm" name="mrn" placeholder="z. B. 26DE…" />
+            <label for="xpf">Ausgangsvermerk (PDF oder Foto) *</label>
+            <input id="xpf" type="file" name="file" required accept="application/pdf,image/*" />
+            <label for="xpn">Bemerkung</label>
+            <input id="xpn" name="note" />
+            <button class="btn sm">Ausfuhrnachweis speichern</button>
+          </form>
+        </details>
+      )}
+      {dep > 0n && !depDone && (
+        <details>
+          <summary>Kaution abschließen …</summary>
+          <form method="post" action={`/fahrzeuge/${v.id}/verkauf/${sale.id}/ausfuhr`}>
+            <input type="hidden" name="form_id" value={randomUUID()} />
+            <label for="xkk">Was ist passiert?</label>
+            <select id="xkk" name="kind" data-nosearch>
+              <option value="kaution_zurueck">an den Käufer zurückgezahlt</option>
+              <option value="kaution_verrechnet">mit der USt verrechnet (kein Nachweis)</option>
+            </select>
+            <label for="xkd">Datum *</label>
+            <input id="xkd" type="date" name="date" value={today} max={today} required />
+            <label for="xkn">Bemerkung (bei Verrechnung Pflicht)</label>
+            <input id="xkn" name="note" placeholder="z. B. Überweisung auf IBAN …" />
+            <button class="btn sm sec" data-confirm="Kaution als abgeschlossen festhalten?">
+              Speichern
+            </button>
+          </form>
+        </details>
+      )}
+      <details>
+        <summary>Unterlagen &amp; Schritte ({list.length})</summary>
+        <ol class="small" style="margin:6px 0 0;padding-left:18px">
+          {list.map((it) => (
+            <li style="margin-bottom:4px">
+              <b>{it.who}:</b> {it.text}
+              {it.hint && <div class="mut">{it.hint}</div>}
+            </li>
+          ))}
+        </ol>
+      </details>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { isOpen, leaveWarnings, warningText } from './leave-warnings.js';
 import { complianceOverview } from './subcontractors.js';
 import { upcomingEvents } from './tenders.js';
 import { remindFrom, vehiclesWithoutRegistration } from './vehicles.js';
+import { openExports } from './vehicle-sales.js';
 import { plannedShifts } from './time.js';
 import { dueRecurring } from './recurring-payments.js';
 import type { Deps } from './workflow.js';
@@ -93,6 +94,28 @@ export async function collectReminders(sql: Sql, today = todayBerlin()): Promise
       href: `/fahrzeuge/${v.id}`,
       days: null,
     });
+  for (const x of await openExports(sql)) {
+    const e = x.data.export;
+    if (!e) continue;
+    const plate = x.data.vehicle.plate;
+    if (!x.has_proof) {
+      const d = dayDiff(today, e.deadline);
+      out.push({
+        area: 'Fahrzeuge',
+        level: d < 0 ? 'rot' : 'gelb',
+        text: `${plate} (${x.sale_no}): Ausfuhrnachweis (Ausgangsvermerk) fehlt – Ausfuhr bis ${e.deadline.slice(8, 10)}.${e.deadline.slice(5, 7)}.${e.deadline.slice(0, 4)}`,
+        href: `/fahrzeuge/${x.vehicle_id}#ausfuhr`,
+        days: d,
+      });
+    } else
+      out.push({
+        area: 'Fahrzeuge',
+        level: 'gelb',
+        text: `${plate} (${x.sale_no}): Ausgangsvermerk liegt vor – Kaution zurückzahlen`,
+        href: `/fahrzeuge/${x.vehicle_id}#ausfuhr`,
+        days: null,
+      });
+  }
   for (const v of vehicles) {
     for (const [label, date, kind] of [
       ['HU (TÜV)', v.hu_due, 'hu'],

@@ -9,6 +9,11 @@ import {
   cancelVehicleSale,
   completeVehicleSale,
   currentSale,
+  listExportEvents,
+  openExports,
+  recordExportEvent,
+  renderSalePdf,
+  checkSale,
   saleAmounts,
   type SaleInput,
 } from './vehicle-sales.js';
@@ -164,5 +169,107 @@ describe.skipIf(!available)('Fahrzeugverkauf (Datenbank)', () => {
     expect([ig.vat_cents, ig.gross_cents]).toEqual([0n, 600000n]);
     const [f] = await sql`select category from app.file_links where file_id = ${ig.file_id}`;
     expect(f?.category).toBe('Verkauf');
+  });
+
+  it('Export: Pflichtangaben, Kaution, Ausgangsvermerk', async () => {
+    const vid2 = randomUUID();
+    await sql`insert into app.vehicles (id, plate, vin, ownership, active)
+              values (${vid2}, 'M-VD 88', 'WVWZZZ1KZAW000002', 'eigentum', true)`;
+    const exp = {
+      destCountry: 'RS',
+      birthDate: '1980-05-01',
+      nationality: 'serbisch',
+      idType: 'pass' as const,
+      idIssuer: 'Republik Serbien',
+      idValidUntil: '2030-01-01',
+      representative: null,
+      residenceConfirmed: true,
+      transport: 'eigene_achse' as const,
+      agentName: 'Marko Abholer',
+      agentId: 'P1234567',
+      exportPlate: null,
+      exitOffice: null,
+      deadlineDays: '30',
+      deposit: 'ust' as const,
+      depositInput: null,
+      declarant: 'wir' as const,
+      eori: 'DE1234567',
+    };
+    const base = {
+      buyerName: 'Milan Kupac',
+      buyerAddress: 'Ulica 5\n11000 Beograd',
+      buyerCountry: 'RS',
+      buyerId: 'RS987654',
+      taxMode: 'export' as const,
+      payment: 'bar' as const,
+    };
+    const v = (await getVehicle(sql, vid2))!;
+    expect(() => checkSale(v, input({ ...base, buyerId: null, export: exp }))).toThrow(/Ausweis/);
+    expect(() => checkSale(v, input({ ...base, export: { ...exp, destCountry: 'AT' } }))).toThrow(
+      /außerhalb/,
+    );
+    expect(() => checkSale(v, input({ ...base, export: { ...exp, residenceConfirmed: false } }))).toThrow(
+      /Wohnsitz/,
+    );
+    const { data, amounts } = checkSale(v, input({ ...base, export: exp }));
+    expect(amounts).toEqual({ net: 600000n, vat: 0n, gross: 600000n });
+    expect(data.export?.depositCents).toBe('114000');
+    expect(data.export?.deadline).toBe('2026-11-20');
+    const pdf = await renderSalePdf(sql, { no: null, data, amounts });
+    expect(pdf.length).toBeGreaterThan(10_000);
+
+    const s = await completeVehicleSale(
+      sql,
+      cfg(),
+      { id: randomUUID(), vehicleId: vid2, input: input({ ...base, export: exp }) },
+      't',
+    );
+    const [co] = await sql`select eori_no from app.company where id = 1`;
+    expect(co?.eori_no).toBe('DE1234567');
+    expect((await openExports(sql)).map((x) => x.id)).toContain(s.id);
+    await expect(
+      recordExportEvent(
+        sql,
+        cfg(),
+        {
+          id: randomUUID(),
+          saleId: s.id,
+          kind: 'nachweis',
+          date: '2026-10-25',
+          mrn: null,
+          note: null,
+          file: null,
+        },
+        't',
+      ),
+    ).rejects.toThrow(/hochladen/);
+    const ev = {
+      id: randomUUID(),
+      saleId: s.id,
+      kind: 'nachweis' as const,
+      date: '2026-10-25',
+      mrn: '26DE123456789012A1',
+      note: null,
+      file: { name: 'eav.pdf', type: 'application/pdf', data: new Uint8Array([37, 80, 68, 70]) },
+    };
+    await recordExportEvent(sql, cfg(), ev, 't');
+    await recordExportEvent(sql, cfg(), ev, 't'); // doppelt = nichts
+    expect((await listExportEvents(sql, s.id)).length).toBe(1);
+    expect((await openExports(sql)).map((x) => x.id)).toContain(s.id); // Kaution offen
+    await recordExportEvent(
+      sql,
+      cfg(),
+      {
+        id: randomUUID(),
+        saleId: s.id,
+        kind: 'kaution_zurueck',
+        date: '2026-10-26',
+        mrn: null,
+        note: null,
+        file: null,
+      },
+      't',
+    );
+    expect((await openExports(sql)).map((x) => x.id)).not.toContain(s.id);
   });
 });

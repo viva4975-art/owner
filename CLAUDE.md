@@ -5818,3 +5818,19 @@ Testadresse.
   gibt es den Lieferanten schon ohne IBAN, wird sie dort nachgetragen, eine vorhandene IBAN wird nie überschrieben.
 - 2026-11-20: **Eingebaute KI wie Fortytools** – Ahmed gefragt; nicht gebaut, Rückfrage zu Anbieter/Datenschutz/Umfang
   (siehe Antwort). Frühere Entscheidung 30.10.: eigene KI ohne fremde API vorerst nicht.
+- 2026-11-21: **Fahrzeugverkauf als Export (ohne USt, Drittland)** (Ahmed: „Kaufvertrag für Export, welche Unterlagen und
+  Formulare, alles vorausgefüllt, Hinweis was ich vom Käufer brauche“): Fahrzeug verkaufen → Umsatzsteuer „Ausfuhr“ öffnet
+  Abschnitt „5. Ausfuhr“ (Zulassung wird „abgemeldet“): Zielland (außerhalb EU), Geburtsdatum/Staatsangehörigkeit bzw.
+  handelnde Person, Ausweisart/ausgestellt von/gültig bis, Häkchen Wohnsitz außerhalb der EU, Art der Ausfuhr (eigene Achse
+  mit Ausfuhrkennzeichen, Abholung, Spedition, Versand), Beauftragter + Ausweis-Nr. (→ Vollmacht), Ausfuhranmeldung durch
+  wir/Zollagent/Käufer, EORI (wird in Firmendaten gemerkt, `company.eori_no`), Ausgangszollstelle, Frist (Tage nach
+  Übergabe), Kaution (= 19 % USt, anderer Betrag oder keine) und eine Checkliste, was vom Käufer zu holen und was zu tun
+  ist. PDF: Kaufvertrag mit § „Ausfuhr“ (Frist, ATLAS, Rückfall: Preis gilt als netto + 19 % USt, Verrechnung mit
+  Kaution), Rechnung „steuerfreie Ausfuhrlieferung § 4 Nr. 1a i. V. m. § 6 UStG“, Abnehmer- und Ausfuhrerklärung,
+  Kautionsvereinbarung mit Quittung, Vollmacht zur Abholung. Am verkauften Fahrzeug Kasten „Ausfuhr“: Ausgangsvermerk
+  (PDF + MRN) hochladen, Kaution zurückgezahlt/verrechnet vermerken (`app.vehicle_export_events`, nur anhängen, Migration
+  `20270130000001`); Erinnerungen „Ausfuhrnachweis fehlt“ (rot nach Frist) und „Kaution zurückzahlen“.
+  **Rechtlich/steuerlich:** Steuerfrei nur mit Ausgangsvermerk (§ 9 UStDV) und Buchnachweis (§ 13 UStDV); bei Abholung
+  durch den Käufer muss er ausländischer Abnehmer sein (Wohnsitz außerhalb der EU, § 6 Abs. 2 UStG) – sonst 19 % USt
+  schuldet die Firma. Barzahlung ab 10.000 €: Identifizierung nach GwG. Mit dem Steuerberater vor dem ersten Export
+  abstimmen; Vertragstexte sind ein Entwurf (Anwalt).

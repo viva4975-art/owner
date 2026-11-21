@@ -77,9 +77,9 @@ export const DECLARANT = {
 } as const;
 
 export const DEPOSIT = {
-  ust: 'Kaution in Höhe der Umsatzsteuer (19 % des Kaufpreises) – empfohlen',
+  keine: 'keine Kaution',
+  ust: 'Kaution in Höhe der Umsatzsteuer (19 % des Kaufpreises)',
   betrag: 'Kaution mit anderem Betrag',
-  keine: 'keine Kaution (Risiko: bei fehlendem Nachweis zahlen wir die USt)',
 } as const;
 
 export interface ExportInput {

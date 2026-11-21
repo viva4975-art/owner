@@ -5834,3 +5834,7 @@ Testadresse.
   durch den Käufer muss er ausländischer Abnehmer sein (Wohnsitz außerhalb der EU, § 6 Abs. 2 UStG) – sonst 19 % USt
   schuldet die Firma. Barzahlung ab 10.000 €: Identifizierung nach GwG. Mit dem Steuerberater vor dem ersten Export
   abstimmen; Vertragstexte sind ein Entwurf (Anwalt).
+- 2026-11-21: Export-Verkauf: **Kaution nur noch auf Wunsch** (Ahmed: „er unterschreibt, ist seine Sache“) – Standard
+  „keine Kaution“, wählbar 19 % USt bzw. anderer Betrag. Der Vertrag behält die Klausel: fehlt der Ausfuhrnachweis, gilt
+  der Preis als netto und der Käufer schuldet 19 % USt nach. **Risiko:** Die Unterschrift verschiebt die Steuerschuld
+  nicht – gegenüber dem Finanzamt zahlt die Firma; vom Käufer im Ausland ist das Geld oft nur schwer zu holen.

@@ -551,7 +551,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
               exportPlate: one('x_plate'),
               exitOffice: one('x_exit'),
               deadlineDays: one('x_days') ?? '30',
-              deposit: (one('x_deposit') ?? 'ust') as never,
+              deposit: (one('x_deposit') ?? 'keine') as never,
               depositInput: one('x_deposit_amount'),
               declarant: (one('x_declarant') ?? 'wir') as never,
               eori: one('x_eori'),
@@ -796,9 +796,10 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             <p class="small mut" style="max-width:820px">
               Ohne Umsatzsteuer nur, wenn das Fahrzeug nachweislich die EU verlässt. Holt der Käufer selbst
               ab, muss er seinen Wohnsitz bzw. Sitz außerhalb der EU haben. Nachweis ist der{' '}
-              <b>Ausgangsvermerk</b> des Zolls (ATLAS). Fehlt er, schulden wir 19 % USt – deshalb Kaution in
-              Höhe der USt nehmen. Das PDF enthält zusätzlich die Abnehmer- und Ausfuhrerklärung, die
-              Kautionsvereinbarung mit Quittung und ggf. die Vollmacht zur Abholung.
+              <b>Ausgangsvermerk</b> des Zolls (ATLAS). Fehlt er, schulden wir dem Finanzamt 19 % USt; laut
+              Vertrag muss der Käufer sie dann nachzahlen. Eine Kaution ist freiwillig (Auswahl unten). Das
+              PDF enthält zusätzlich die Abnehmer- und Ausfuhrerklärung, ggf. die Kautionsvereinbarung mit
+              Quittung und die Vollmacht zur Abholung.
             </p>
             <div class="grid">
               <div>
@@ -882,7 +883,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
               </div>
               <div>
                 <label for="xk">Kaution</label>
-                {sel('x_deposit', DEPOSIT, 'ust', 'xk')}
+                {sel('x_deposit', DEPOSIT, 'keine', 'xk')}
               </div>
               <div>
                 <label for="xka">Kaution Betrag (€)</label>

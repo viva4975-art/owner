@@ -5883,3 +5883,21 @@ Testadresse.
   alle Ansichten der Budgetplanung haben dieselbe Adresse, so wurde z. B. „Objekte nach Umsatz“ auf die Monatstabelle
   übertragen. Jetzt merkt sich die Sortierung je Ansicht (`?ansicht=`, gilt für alle Seiten), die Monatstabelle ist
   nicht sortierbar (immer Januar–Dezember).
+- 2026-11-22: **Budget: wer/was dahinter steckt, Objekte herausnehmen, automatisch neu rechnen, DB** (Ahmed):
+  - **Personalkosten je Person** (`app.budget_cost_persons`, Migration `20270202000001`): Gemeinkosten → bei Objektleitung,
+    Büro, Geschäftsführer „Wer steckt dahinter?“ mit Vergütung, Stunden, Lohn/Gehalt, AG-Kosten, Kosten je Person und
+    Auswahl **„zählt als“** Objektleitung / Büro / Geschäftsführer / nicht berücksichtigen (`app.budget_person_overrides`,
+    bleibt beim Neuberechnen, `setPersonCategory`). Damit lässt sich der **zweite Geschäftsführer** zuordnen, falls er
+    weder Tag „Geschäftsführer“ hat noch unter Firmendaten steht (dann landete er bei Büro). Hat er keine Vergütung in
+    der App, taucht er nicht auf → Betrag unter „bearbeiten“ von Hand.
+  - **Objekt-Detail:** Link „Kosten und Stunden je Person / Bestellung ansehen“ (Plan-Kalkulation-Aufschlüsselung fürs Jahr,
+    ohne Tariferhöhung).
+  - **Objekt aus dem Budget nehmen** (Objekt-Detail, Grund optional; `app.budget_excluded_sites`): Umsatz und direkte Kosten
+    zählen nicht, Liste „Herausgenommene Objekte“ unter Objekte mit „Wieder aufnehmen“. Außerdem automatisch: „Sonderleistungen
+    wie Vorjahr“ nur noch für Objekte mit laufender (nicht einmaliger) Leistung im Planjahr – eine fertige Baureinigung mit
+    nur einmaligen Leistungen steht so nicht mehr im Plan.
+  - **Automatisch neu rechnen** (Entwurf): hat sich seit der Berechnung etwas an Leistungen, Objekten, Kunden, Einsätzen oder
+    neuen NU-Bestellungen geändert (z. B. neuer Kunde mit Leistungen ab 01.01.2027), rechnet die App beim Öffnen der Seite
+    und stündlich (`refreshStaleBudgets`) neu. Freigegebene Budgets bleiben unverändert.
+  - **DB vor Gemeinkosten** als Spalte mit DB-% in allen Tabellen, Kachel „Deckungsbeitrag (vor Gemeinkosten)“, in Excel
+    (Blatt Monate) und PDF. Test in `budget.db.test.ts`.

@@ -9,7 +9,10 @@ import {
   COST_CATS,
   COST_LABEL,
   budgetActuals,
+  type BudgetPerson,
   budgetData,
+  budgetPersons,
+  budgetStale,
   deleteAdjustment,
   deleteCostRow,
   ensureBudget,
@@ -20,6 +23,8 @@ import {
   saveBudgetSettings,
   saveCostRow,
   setBudgetStatus,
+  setPersonCategory,
+  setSiteExcluded,
   startBudgetCompute,
 } from '../services/budget.js';
 import { BusinessError } from '../services/errors.js';
@@ -141,6 +146,105 @@ const MarginBadge = ({ num, den }: { num: bigint; den: bigint }) => {
   );
 };
 
+const CAT_LABEL: Record<BudgetPerson['category'], string> = {
+  lead: 'Objektleitung',
+  office: 'Büro',
+  gf: 'Geschäftsführer',
+  none: 'nicht berücksichtigen',
+};
+
+/** Personen hinter einer Personal-Kostenart: Stunden, Brutto, Arbeitgeberkosten, Kosten – Zuordnung änderbar. */
+const PersonTable = ({
+  list,
+  year,
+  back,
+  canChange,
+  manual,
+}: {
+  list: BudgetPerson[];
+  year: number;
+  back: string;
+  canChange: boolean;
+  manual: boolean;
+}) => {
+  if (!list.length) return <div class="empty small">Keine Personen.</div>;
+  const t = (a: bigint[]) => a.reduce((x, y) => x + y, 0n);
+  const sumMin = list.reduce((a, p) => a + p.minutes.reduce((x, y) => x + y, 0), 0);
+  return (
+    <div class="table-wrap" style="margin-top:6px">
+      {manual && (
+        <p class="small warn" style="margin:4px 0">
+          Die Kostenart ist von Hand geändert – die Personen zeigen den Vorschlag.
+        </p>
+      )}
+      <table class="keep">
+        <thead>
+          <tr>
+            <th>Person</th>
+            <th>Vergütung</th>
+            <th class="r">Stunden {year}</th>
+            <th class="r">Lohn/Gehalt</th>
+            <th class="r">AG-Kosten</th>
+            <th class="r">Kosten</th>
+            <th>zählt als</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((p) => (
+            <tr>
+              <td>
+                <a href={`/personal/${p.employee_id}`}>{p.name}</a>
+                {p.personnel_no && <span class="small mut"> · {p.personnel_no}</span>}
+              </td>
+              <td class="small">{p.pay ?? '–'}</td>
+              <td class="r">{hours(p.minutes.reduce((x, y) => x + y, 0))}</td>
+              <td class="r">{eur0(t(p.gross))}</td>
+              <td class="r">{eur0(t(p.employer))}</td>
+              <td class="r">
+                <b>{eur0(t(p.amounts))}</b>
+              </td>
+              <td>
+                {canChange ? (
+                  <form method="post" action={`/auswertungen/budget/${year}/person/${p.employee_id}`}>
+                    <input type="hidden" name="zurueck" value={back} />
+                    <select name="kategorie" data-autosubmit aria-label="zählt als">
+                      {(['lead', 'office', 'gf', 'none'] as const).map((k) => (
+                        <option value={k} selected={p.category === k}>
+                          {CAT_LABEL[k]}
+                          {k === p.auto_category ? ' (automatisch)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </form>
+                ) : (
+                  CAT_LABEL[p.category]
+                )}
+              </td>
+            </tr>
+          ))}
+          <tr class="sum">
+            <td colspan={2}>
+              <b>Summe</b>
+            </td>
+            <td class="r">{hours(sumMin)}</td>
+            <td class="r">{eur0(list.reduce((a, p) => a + t(p.gross), 0n))}</td>
+            <td class="r">{eur0(list.reduce((a, p) => a + t(p.employer), 0n))}</td>
+            <td class="r">
+              <b>{eur0(list.reduce((a, p) => a + t(p.amounts), 0n))}</b>
+            </td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="small mut" style="margin:4px 0 0">
+        Stunden und Lohn aus Einsatzplanung bzw. Lohnarten (Festgehalt = Monatsgehalt), ab dem Monat der
+        Tariferhöhung erhöht. Geschäftsführer ohne Arbeitgeberkosten. Fehlt jemand (z. B. ohne Vergütung in
+        der App), unter „bearbeiten“ den Betrag von Hand eintragen.
+      </p>
+    </div>
+  );
+};
+
 /** Kopfzeile der Beträge (Spalten gleich in allen Ansichten) */
 const AmountHead = ({ first }: { first: string }) => (
   <tr>
@@ -149,7 +253,9 @@ const AmountHead = ({ first }: { first: string }) => (
     <th class="r">Lohn inkl. AG</th>
     <th class="r">Nachunter&shy;nehmer</th>
     <th class="r">Material</th>
-    <th class="r">DB I</th>
+    <th class="r" title="Deckungsbeitrag = Umsatz − direkte Kosten, vor Gemeinkosten">
+      DB vor Gemein&shy;kosten
+    </th>
     <th class="r">Gemein&shy;kosten</th>
     <th class="r">Ergebnis</th>
     <th class="r">Marge</th>
@@ -183,7 +289,8 @@ const AmountCells = ({ a }: { a: Agg }) => (
       {eur0(a.material + a.adjCost)}
     </td>
     <td class={a.db < 0n ? 'r nw neg' : 'r nw'} data-sort={String(a.db)}>
-      {eur0(a.db)}
+      <b>{eur0(a.db)}</b>
+      <div class="small mut">{a.revenue ? pct(a.db, a.revenue) : '–'}</div>
     </td>
     <td class="r nw" data-sort={String(a.overhead)}>
       {eur0(a.overhead)}
@@ -427,6 +534,15 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       );
     const b = d.budget;
     const draft = b.status === 'entwurf';
+    // neue Kunden/Leistungen, geänderte Objekte oder Einsätze seit der Berechnung → automatisch neu rechnen
+    let autoStarted = false;
+    if (draft && !b.computing && (await budgetStale(sql, b)))
+      try {
+        void (await startBudgetCompute(sql, b.id, 'automatisch'));
+        autoStarted = true;
+      } catch {
+        /* läuft schon */
+      }
     const rows = filterRows(d, q);
     const filtered = !!(q.kunde || q.objekt || q.ol || q.verlust);
     const sum = agg(rows);
@@ -585,6 +701,50 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
               </tbody>
             </table>
           </div>
+          {d.excluded.length > 0 && (
+            <div class="card" style="margin-top:16px">
+              <h2>Herausgenommene Objekte ({d.excluded.length})</h2>
+              <p class="small mut">
+                Zählen im Budget nicht (Umsatz und direkte Kosten), z. B. abgeschlossene Baureinigung.
+              </p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Objekt</th>
+                    <th>Grund</th>
+                    <th class="r">Umsatz laut Berechnung</th>
+                    <th class="r">direkte Kosten</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.excluded.map((x) => (
+                    <tr>
+                      <td>
+                        {x.site_no} · {x.name}
+                        <div class="small mut">{x.customer_name}</div>
+                      </td>
+                      <td class="small">{x.reason ?? '–'}</td>
+                      <td class="r">{eur0(x.revenue)}</td>
+                      <td class="r">{eur0(x.direct)}</td>
+                      <td class="r">
+                        {draft && edit && (
+                          <form
+                            method="post"
+                            action={`/auswertungen/budget/${year}/objekt/${x.site_id}/ausschluss`}
+                          >
+                            <input type="hidden" name="aktion" value="aufnehmen" />
+                            <input type="hidden" name="zurueck" value={keep()} />
+                            <button class="btn ghost sm">Wieder aufnehmen</button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div class="card" style="margin-top:16px">
             <h2>Neugeschäft / weitere Umsätze</h2>
             <p class="small mut">
@@ -718,6 +878,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       );
     } else if (view === 'kosten') {
       const sumOf = (cat: (typeof d.costs)[number]) => total(cat.amounts);
+      const persons = await budgetPersons(sql, b.id);
+      const autoOf = (cat: string) => COST_CATS.find((x) => x.key === cat)?.auto;
+      const none = persons.filter((p) => p.category === 'none');
       body = (
         <>
           <p class="small mut" style="margin-top:0">
@@ -759,6 +922,25 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                       {r.invest && <span class="badge grey">nicht verteilt</span>}
                       {r.manual && r.suggested && <span class="badge warn">von Hand</span>}
                       {r.note && <div class="small mut">{r.note}</div>}
+                      {(() => {
+                        const auto = autoOf(r.category);
+                        if (auto !== 'lead' && auto !== 'office' && auto !== 'gf') return null;
+                        const ps = persons.filter((p) => p.category === auto);
+                        return (
+                          <details>
+                            <summary class="small">
+                              Wer steckt dahinter? ({ps.length} {ps.length === 1 ? 'Person' : 'Personen'})
+                            </summary>
+                            <PersonTable
+                              list={ps}
+                              year={year}
+                              back={keep()}
+                              canChange={draft && edit}
+                              manual={r.manual}
+                            />
+                          </details>
+                        );
+                      })()}
                       {draft && edit && (
                         <details>
                           <summary class="small">bearbeiten</summary>
@@ -808,6 +990,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
               </tbody>
             </table>
           </div>
+          {none.length > 0 && (
+            <details class="card" style="margin-top:14px">
+              <summary>Nicht berücksichtigte Personen ({none.length})</summary>
+              <PersonTable list={none} year={year} back={keep()} canChange={draft && edit} manual={false} />
+            </details>
+          )}
           {draft && edit && (
             <details class="card" style="margin-top:14px">
               <summary>+ Weitere Kostenposition</summary>
@@ -933,8 +1121,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                     <th class="r">Umsatz Plan</th>
                     <th class="r">Umsatz Ist</th>
                     <th class="r">Abw.</th>
-                    <th class="r">DB I Plan</th>
-                    <th class="r">DB I Ist</th>
+                    <th class="r">DB Plan</th>
+                    <th class="r">DB Ist</th>
                     <th class="r">Abw.</th>
                     {!filtered && (
                       <>
@@ -968,8 +1156,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                     <th class="r">Umsatz Plan</th>
                     <th class="r">Umsatz Ist</th>
                     <th class="r">Abw.</th>
-                    <th class="r">DB I Plan</th>
-                    <th class="r">DB I Ist</th>
+                    <th class="r">DB Plan</th>
+                    <th class="r">DB Ist</th>
                     <th class="r">Abw.</th>
                   </tr>
                 </thead>
@@ -998,7 +1186,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       }
     }
 
-    const refresh = b.computing ? <meta http-equiv="refresh" content="5" /> : null;
+    const refresh = b.computing || autoStarted ? <meta http-equiv="refresh" content="5" /> : null;
     return page(
       c,
       `Budget ${year}`,
@@ -1015,11 +1203,13 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <div>
             <span class={`badge ${draft ? 'warn' : 'ok'}`}>{draft ? 'Entwurf' : 'Freigegeben'}</span>{' '}
             <span class="small mut">
-              {b.computing
-                ? 'Berechnung läuft … (Seite aktualisiert sich selbst)'
-                : b.computed_at
-                  ? `berechnet ${new Date(b.computed_at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} von ${b.computed_by}`
-                  : 'noch nicht berechnet'}
+              {autoStarted
+                ? 'Leistungen, Objekte oder Einsätze haben sich geändert – wird automatisch neu berechnet …'
+                : b.computing
+                  ? 'Berechnung läuft … (Seite aktualisiert sich selbst)'
+                  : b.computed_at
+                    ? `berechnet ${new Date(b.computed_at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} von ${b.computed_by}`
+                    : 'noch nicht berechnet'}
               {!draft &&
                 b.approved_at &&
                 ` · freigegeben ${new Date(b.approved_at).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} von ${b.approved_by}`}
@@ -1080,7 +1270,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
           <div class="kpi">
-            <div class="l">Deckungsbeitrag I</div>
+            <div class="l">Deckungsbeitrag (vor Gemeinkosten)</div>
             <div class="v" style={sum.db < 0n ? 'color:var(--c-err)' : ''}>
               {eur0(sum.db)}
             </div>
@@ -1235,6 +1425,40 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     const d = await budgetData(sql, year);
     if (!d) return c.redirect(base(year));
     const r = d.rows.find((x) => x.key === c.req.param('key'));
+    const ex = d.excluded.find((x) => x.site_id === c.req.param('key'));
+    if (!r && ex)
+      return page(
+        c,
+        `Budget ${year} – ${ex.name}`,
+        'auswertungen',
+        <>
+          <PageHead
+            title={`${ex.site_no} · ${ex.name}`}
+            crumbs={[
+              ['Auswertungen', '/auswertungen'],
+              [`Budget ${year}`, base(year)],
+            ]}
+          />
+          <div class="card" style="max-width:720px">
+            <p>
+              <span class="badge grey">herausgenommen</span> Dieses Objekt zählt im Budget {year} nicht
+              {ex.reason ? ` (${ex.reason})` : ''}. Laut Berechnung: Umsatz {eur0(ex.revenue)}, direkte Kosten{' '}
+              {eur0(ex.direct)}.
+            </p>
+            {d.budget.status === 'entwurf' && canEdit(c) && (
+              <form method="post" action={`/auswertungen/budget/${year}/objekt/${ex.site_id}/ausschluss`}>
+                <input type="hidden" name="aktion" value="aufnehmen" />
+                <input
+                  type="hidden"
+                  name="zurueck"
+                  value={`/auswertungen/budget/objekt/${ex.site_id}?jahr=${year}`}
+                />
+                <button class="btn">Wieder ins Budget aufnehmen</button>
+              </form>
+            )}
+          </div>
+        </>,
+      );
     if (!r) return c.redirect(base(year));
     const draft = d.budget.status === 'entwurf';
     const edit = canEdit(c);
@@ -1256,11 +1480,11 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       ['Nachunternehmer', r.sub],
       ['Material', r.material],
       ['Anpassung Kosten', r.adjCost],
-      ['Deckungsbeitrag I', r.db, true],
+      ['Deckungsbeitrag (vor Gemeinkosten)', r.db, true],
       ['Gemeinkosten-Anteil', r.overhead],
       ['Ergebnis', r.result, true],
     ];
-    const bold = new Set(['Umsatz', 'Deckungsbeitrag I', 'Ergebnis']);
+    const bold = new Set(['Umsatz', 'Deckungsbeitrag (vor Gemeinkosten)', 'Ergebnis']);
     return page(
       c,
       `Budget ${year} – ${r.name}`,
@@ -1276,6 +1500,18 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         <p class="small mut" style="margin-top:-6px">
           {r.customer_name} · <a href={`/objekte/${r.site_id}`}>Objekt öffnen</a> ·{' '}
           <a href={`/objekte/${r.site_id}/leistungen`}>Leistungen & Preise</a>
+          {r.site_id && (
+            <>
+              {' '}
+              ·{' '}
+              <a
+                href={`/auswertungen/plankalkulation/detail?objekt=${r.site_id}&von=${year}-01&bis=${year}-12`}
+                target="_blank"
+              >
+                Kosten und Stunden je Person / Bestellung ansehen
+              </a>
+            </>
+          )}
         </p>
         <div class="kpis kpis-sm" style="margin:10px 0 14px">
           <div class="kpi">
@@ -1305,6 +1541,30 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
         </div>
+        {r.site_id && draft && edit && (
+          <details class="card" style="margin-bottom:14px">
+            <summary>Objekt aus dem Budget nehmen (z. B. abgeschlossene Baureinigung)</summary>
+            <form method="post" action={`/auswertungen/budget/${year}/objekt/${r.site_id}/ausschluss`}>
+              <input type="hidden" name="aktion" value="ausnehmen" />
+              <input type="hidden" name="zurueck" value={`${base(year)}&ansicht=objekt`} />
+              <div class="grid">
+                <label>
+                  Grund (optional)
+                  <input
+                    name="grund"
+                    maxlength={300}
+                    placeholder="z. B. einmalige Baureinigung, abgeschlossen"
+                  />
+                </label>
+              </div>
+              <p class="small mut">
+                Umsatz und direkte Kosten dieses Objekts zählen im Budget {year} nicht mehr. Wieder aufnehmen
+                unter Budget → Objekte → „Herausgenommene Objekte“.
+              </p>
+              <button class="btn sec">Aus dem Budget nehmen</button>
+            </form>
+          </details>
+        )}
         <div class="card" style="margin-bottom:14px">
           <div class="stat-head">
             <h3 style="margin:0">Umsatz, Kosten und Ergebnis je Monat</h3>
@@ -1475,7 +1735,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       'Lohn inkl. AG',
       'Nachunternehmer',
       'Material/Sonst.',
-      'DB I',
+      'DB vor Gemeinkosten',
       'Gemeinkosten',
       'Ergebnis',
       'Marge',
@@ -1496,6 +1756,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           'Lohn',
           'Nachunternehmer',
           'Material/Sonst.',
+          'DB vor Gemeinkosten',
           'Gemeinkosten',
           'Ergebnis',
           'Marge',
@@ -1507,6 +1768,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           n(m.labor),
           n(m.sub),
           n(m.material),
+          n(m.revenue - m.labor - m.sub - m.material),
           n(m.overhead),
           n(m.result),
           pc(m.result, m.revenue),
@@ -1519,6 +1781,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             n(ch.months.reduce((a, m) => a + m.labor, 0n)),
             n(ch.months.reduce((a, m) => a + m.sub, 0n)),
             n(ch.months.reduce((a, m) => a + m.material, 0n)),
+            n(ch.months.reduce((a, m) => a + m.revenue - m.labor - m.sub - m.material, 0n)),
             n(ch.months.reduce((a, m) => a + m.overhead, 0n)),
             n(ch.months.reduce((a, m) => a + m.result, 0n)),
             pc(
@@ -1527,7 +1790,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             ),
           ],
         ],
-        widths: [14, 14, 14, 14, 14, 14, 14, 14, 9],
+        widths: [14, 14, 14, 14, 14, 14, 16, 14, 14, 9],
       },
       {
         name: 'Kunden',
@@ -1581,7 +1844,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             [
               ['Umsatz', r.revenue],
               ['Direkte Kosten', r.direct],
-              ['DB I', r.db],
+              ['DB vor Gemeinkosten', r.db],
               ['Ergebnis', r.result],
             ] as const
           ).map(([l, v]) => [
@@ -1645,7 +1908,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           sub: `Lohn ${eur0(all.labor)} · NU ${eur0(all.sub)}`,
         },
         {
-          label: 'Deckungsbeitrag I',
+          label: 'Deckungsbeitrag (vor GK)',
           value: eur0(all.db),
           sub: `${pct(all.db, all.revenue)} vom Umsatz`,
           neg: all.db < 0n,
@@ -1692,7 +1955,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       { label: 'Lohn inkl. AG', width: 66, align: 'right' as const },
       { label: 'NU', width: 58, align: 'right' as const },
       { label: 'Material', width: 56, align: 'right' as const },
-      { label: 'DB I', width: 66, align: 'right' as const },
+      { label: 'DB vor GK', width: 66, align: 'right' as const },
       { label: 'Gemeinkosten', width: 66, align: 'right' as const },
       { label: 'Ergebnis', width: 66, align: 'right' as const },
       { label: 'Marge', width: 44, align: 'right' as const },
@@ -1799,6 +2062,46 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       return back(c, base(year), { ok: 'Berechnung läuft – die Seite aktualisiert sich selbst' });
     } catch (e) {
       return back(c, base(year), { fehler: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post('/auswertungen/budget/:year/person/:emp', async (c) => {
+    const year = yearOf(c.req.param('year'));
+    const body = await c.req.parseBody();
+    const to = backTo(body, year);
+    try {
+      guard(c);
+      await setPersonCategory(
+        sql,
+        await budgetIdOf(year),
+        c.req.param('emp'),
+        String(body['kategorie'] ?? ''),
+        c.get('actor'),
+      );
+      return back(c, to, { ok: 'Zuordnung geändert' });
+    } catch (e) {
+      return back(c, to, { fehler: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post('/auswertungen/budget/:year/objekt/:site/ausschluss', async (c) => {
+    const year = yearOf(c.req.param('year'));
+    const body = await c.req.parseBody();
+    const to = backTo(body, year);
+    try {
+      guard(c);
+      const ex = body['aktion'] !== 'aufnehmen';
+      await setSiteExcluded(
+        sql,
+        await budgetIdOf(year),
+        c.req.param('site'),
+        ex,
+        String(body['grund'] ?? '') || null,
+        c.get('actor'),
+      );
+      return back(c, to, { ok: ex ? 'Objekt aus dem Budget genommen' : 'Objekt wieder im Budget' });
+    } catch (e) {
+      return back(c, to, { fehler: e instanceof Error ? e.message : String(e) });
     }
   });
 

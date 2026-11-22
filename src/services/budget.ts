@@ -290,6 +290,9 @@ export async function budgetRevenue(
       : BigInt(sv.quantity_milli);
     return lineNet(qty as Quantity, BigInt(sv.unit_price_cents) as Cents);
   };
+  // Objekte mit laufender (nicht einmaliger) Leistung im Jahr – nur sie bekommen „Sonderleistungen wie Vorjahr“
+  // (abgeschlossene Baureinigung o. ä. mit nur einmaligen Leistungen soll nicht im Plan stehen, Ahmed 22.11.)
+  const running = new Set(services.filter((s) => s.billing_cycle !== 'einmalig').map((s) => s.site_id));
   for (const sv of services) {
     const r = row(sv.site_id);
     const step = CYCLE_MONTHS[sv.billing_cycle];
@@ -351,7 +354,7 @@ export async function budgetRevenue(
   }
   if (opts.extra)
     for (const [site, r] of out) {
-      if (!active.has(site) || endedFlat.has(site)) continue;
+      if (!active.has(site) || endedFlat.has(site) || !running.has(site)) continue;
       const reg = MONTHS.map((i) => r.flat[i]! + r.cycle[i]!);
       const surplus = sum(r.prev) - sum(reg);
       if (surplus <= 0n) continue;
@@ -488,8 +491,19 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
          where c.is_internal and s.id <> ${SPECIAL_SITE_ID}`
     ).map((x) => x.id),
   );
-  const pers = { lead: zero(), office: zero(), gf: zero() };
-  const persCount = { lead: new Set<string>(), office: new Set<string>(), gf: new Set<string>() };
+  type PersCat = 'lead' | 'office' | 'gf';
+  const persons = new Map<
+    string,
+    {
+      cat: PersCat;
+      name: string;
+      personnel_no: string;
+      minutes: number[];
+      gross: bigint[];
+      employer: bigint[];
+      amounts: bigint[];
+    }
+  >();
   for (const i of MONTHS) {
     const month = mKey(year, i);
     const { start, end } = monthBounds(month);
@@ -525,18 +539,59 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
       const own = isLead ? parts : parts.filter((p) => !p.site_id || internal.has(p.site_id));
       const g = own.reduce((a, p) => a + p.gross, 0n);
       if (g <= 0n) continue;
-      const cost = inc(g + round(employer * g, gross), i);
-      const k = isLead ? 'lead' : gf ? 'gf' : 'office';
-      pers[k][i]! += cost;
-      persCount[k].add(empId);
+      const emp = round(employer * g, gross);
+      const k: PersCat = isLead ? 'lead' : gf ? 'gf' : 'office';
+      const pr = persons.get(empId) ?? {
+        cat: k,
+        name: own[0]!.name || e?.full_name || '',
+        personnel_no: own[0]!.personnel_no ?? '',
+        minutes: MONTHS.map(() => 0),
+        gross: zero(),
+        employer: zero(),
+        amounts: zero(),
+      };
+      if (k === 'lead' || (k === 'gf' && pr.cat === 'office')) pr.cat = k;
+      pr.minutes[i]! += own.reduce((a, p) => a + p.minutes, 0);
+      pr.gross[i]! += inc(g, i);
+      pr.employer[i]! += inc(emp, i);
+      pr.amounts[i]! += inc(g + emp, i);
+      persons.set(empId, pr);
     }
   }
   const materialBp = BigInt(rates.material_bp);
   const sites = new Set([...revenue.keys(), ...direct.keys()]);
   const suggestions = await costSuggestions(sql, year);
-  const persLabel = (n: number) =>
-    `Einsatzplanung/Lohnarten ${year} (${n} ${n === 1 ? 'Person' : 'Personen'})`;
+  const pay = new Map(
+    (
+      await sql<{ id: string; pay: string | null }[]>`
+        select id, case pay_model when 'festgehalt' then 'Festgehalt' when 'tarif' then 'Tariflohn'
+                    when 'individuell' then 'Stundenlohn' else null end as pay
+          from app.employees where id = any(${[...persons.keys()]}::uuid[])`
+    ).map((x) => [x.id, x.pay]),
+  );
   await sql.begin(async (tx) => {
+    const overrides = new Map(
+      (
+        await tx<{ employee_id: string; category: string }[]>`
+          select employee_id, category from app.budget_person_overrides where budget_id = ${id}`
+      ).map((o) => [o.employee_id, o.category]),
+    );
+    await tx`delete from app.budget_cost_persons where budget_id = ${id}`;
+    const prow = [...persons].map(([empId, p]) => ({
+      budget_id: id,
+      employee_id: empId,
+      category: overrides.get(empId) ?? p.cat,
+      auto_category: p.cat,
+      name: p.name,
+      personnel_no: p.personnel_no || null,
+      pay: pay.get(empId) ?? null,
+      minutes: p.minutes,
+      gross: p.gross.map(String),
+      employer: p.employer.map(String),
+      amounts: p.amounts.map(String),
+    }));
+    for (let k = 0; k < prow.length; k += 300)
+      await tx`insert into app.budget_cost_persons ${tx(prow.slice(k, k + 300))}`;
     await tx`delete from app.budget_site_months where budget_id = ${id}`;
     const rows: Record<string, unknown>[] = [];
     for (const site of sites) {
@@ -581,10 +636,8 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
       if (!def || def.auto === 'none') continue;
       let amounts: bigint[];
       let source: string;
-      if (def.auto === 'lead' || def.auto === 'office' || def.auto === 'gf') {
-        amounts = pers[def.auto];
-        source = persLabel(persCount[def.auto].size);
-      } else {
+      if (def.auto === 'lead' || def.auto === 'office' || def.auto === 'gf') continue;
+      {
         const s = suggestions.get(def.key);
         amounts = s?.amounts ?? zero();
         source = s?.src.join(' + ') ?? 'keine Kosten in den letzten 12 Monaten';
@@ -593,6 +646,7 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
                  amounts = case when manual then amounts else ${amounts.map(String)}::bigint[] end, updated_at = now()
                where id = ${c.id}`;
     }
+    await refreshPersonCosts(tx as unknown as Sql, id, year);
     await tx`update app.budgets set computed_at = now(), computed_by = ${actor}, compute_error = null,
                updated_at = now() where id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -620,6 +674,133 @@ export async function startBudgetCompute(sql: Sql, id: string, actor: string): P
 }
 
 // --------------------------------------------------------------------------------------------- Gemeinkosten/Anpassungen
+
+/** Personal-Gemeinkosten (Objektleitung, Büro, Geschäftsführer) aus den Personen neu summieren. */
+async function refreshPersonCosts(sql: Sql, budgetId: string, year: number) {
+  const ps = await sql<{ category: string; amounts: bigint[] }[]>`
+    select category, amounts from app.budget_cost_persons where budget_id = ${budgetId}`;
+  for (const cat of ['lead', 'office', 'gf'] as const) {
+    const list = ps.filter((p) => p.category === cat);
+    const amounts = zero();
+    for (const p of list) for (const i of MONTHS) amounts[i]! += BigInt(p.amounts[i]!);
+    const n = list.length;
+    const source = `Einsatzplanung/Lohnarten ${year} (${n} ${n === 1 ? 'Person' : 'Personen'})`;
+    const keys = COST_CATS.filter((c) => c.auto === cat).map((c) => c.key);
+    await sql`update app.budget_costs set suggested = ${amounts.map(String)}::bigint[], source = ${source},
+                amounts = case when manual then amounts else ${amounts.map(String)}::bigint[] end, updated_at = now()
+              where budget_id = ${budgetId} and category = any(${keys})`;
+  }
+}
+
+export interface BudgetPerson {
+  employee_id: string;
+  category: 'lead' | 'office' | 'gf' | 'none';
+  auto_category: 'lead' | 'office' | 'gf';
+  name: string;
+  personnel_no: string | null;
+  pay: string | null;
+  minutes: number[];
+  gross: bigint[];
+  employer: bigint[];
+  amounts: bigint[];
+}
+
+export async function budgetPersons(sql: Sql, budgetId: string): Promise<BudgetPerson[]> {
+  const rows = await sql<BudgetPerson[]>`
+    select employee_id, category, auto_category, name, personnel_no, pay, minutes, gross, employer, amounts
+      from app.budget_cost_persons where budget_id = ${budgetId} order by name`;
+  for (const r of rows) {
+    r.gross = r.gross.map(BigInt);
+    r.employer = r.employer.map(BigInt);
+    r.amounts = r.amounts.map(BigInt);
+  }
+  return rows;
+}
+
+/** Person einer anderen Kostenart zuordnen (oder nicht berücksichtigen); gilt sofort und bei jedem Neuberechnen. */
+export async function setPersonCategory(
+  sql: Sql,
+  budgetId: string,
+  employeeId: string,
+  category: string,
+  actor: string,
+) {
+  if (!['lead', 'office', 'gf', 'none', 'auto'].includes(category))
+    throw new BusinessError('Unbekannte Zuordnung');
+  const b = await budgetById(sql, budgetId);
+  assertDraft(b);
+  await sql.begin(async (tx) => {
+    const [p] = await tx<{ auto_category: string; category: string }[]>`
+      select auto_category, category from app.budget_cost_persons
+       where budget_id = ${budgetId} and employee_id = ${employeeId} for update`;
+    if (!p) throw new BusinessError('Person nicht im Budget');
+    const cat = category === 'auto' ? p.auto_category : category;
+    if (category === 'auto' || cat === p.auto_category)
+      await tx`delete from app.budget_person_overrides where budget_id = ${budgetId} and employee_id = ${employeeId}`;
+    else
+      await tx`insert into app.budget_person_overrides (budget_id, employee_id, category, updated_by)
+               values (${budgetId}, ${employeeId}, ${cat}, ${actor})
+               on conflict (budget_id, employee_id) do update set category = excluded.category,
+                 updated_by = excluded.updated_by, updated_at = now()`;
+    await tx`update app.budget_cost_persons set category = ${cat}
+              where budget_id = ${budgetId} and employee_id = ${employeeId}`;
+    await refreshPersonCosts(tx as unknown as Sql, budgetId, b.year);
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'person_category', 'budget', ${budgetId},
+                     ${tx.json({ employee_id: employeeId, alt: p.category, neu: cat })})`;
+  });
+}
+
+/** Objekt aus dem Budget herausnehmen bzw. wieder aufnehmen (Umsatz und direkte Kosten fallen weg). */
+export async function setSiteExcluded(
+  sql: Sql,
+  budgetId: string,
+  siteId: string,
+  exclude: boolean,
+  reason: string | null,
+  actor: string,
+) {
+  const b = await budgetById(sql, budgetId);
+  assertDraft(b);
+  if (exclude)
+    await sql`insert into app.budget_excluded_sites (budget_id, site_id, reason, created_by)
+              values (${budgetId}, ${siteId}, ${reason?.trim().slice(0, 300) || null}, ${actor})
+              on conflict (budget_id, site_id) do update set reason = excluded.reason`;
+  else await sql`delete from app.budget_excluded_sites where budget_id = ${budgetId} and site_id = ${siteId}`;
+  await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+            values (${actor}, ${exclude ? 'site_exclude' : 'site_include'}, 'budget', ${budgetId},
+                    ${sql.json({ site_id: siteId, reason })})`;
+}
+
+/**
+ * Haben sich seit der letzten Berechnung Leistungen, Objekte, Kunden oder Einsätze geändert (z. B. neuer Kunde mit
+ * Leistungen ab 01.01.)? Dann rechnet die App das Budget (Entwurf) selbst neu.
+ */
+export async function budgetStale(sql: Sql, b: Budget): Promise<boolean> {
+  if (b.status !== 'entwurf' || b.computing) return false;
+  if (!b.computed_at) return true;
+  const [r] = await sql<{ stale: boolean }[]>`
+    select exists (select 1 from app.site_services where updated_at > ${b.computed_at})
+        or exists (select 1 from app.sites where updated_at > ${b.computed_at})
+        or exists (select 1 from app.customers where updated_at > ${b.computed_at})
+        or exists (select 1 from app.shift_plans where updated_at > ${b.computed_at})
+        or exists (select 1 from app.subcontracts where created_at > ${b.computed_at}) as stale`;
+  return !!r?.stale;
+}
+
+/** Stündlich: Budgets (Entwurf) für dieses und kommende Jahre neu rechnen, wenn sich Grundlagen geändert haben. */
+export async function refreshStaleBudgets(sql: Sql, thisYear: number): Promise<number> {
+  const list = await sql<{ year: number }[]>`
+    select year from app.budgets where status = 'entwurf' and year >= ${thisYear} and not computing`;
+  let n = 0;
+  for (const { year } of list) {
+    const b = await getBudget(sql, year);
+    if (!b || !(await budgetStale(sql, b))) continue;
+    await await startBudgetCompute(sql, b.id, 'automatisch').catch(() => null);
+    n++;
+  }
+  return n;
+}
 
 const parseAmounts = (a: bigint[]) => {
   if (a.length !== 12) throw new BusinessError('Je Monat ein Betrag');
@@ -740,12 +921,22 @@ export interface BudgetData {
   /** Gemeinkosten je Monat (ohne Investitionen) */
   overhead: bigint[];
   invest: bigint[];
+  /** herausgenommene Objekte (Umsatz/Kosten zählen nicht) */
+  excluded: {
+    site_id: string;
+    site_no: string;
+    name: string;
+    customer_name: string;
+    reason: string | null;
+    revenue: bigint;
+    direct: bigint;
+  }[];
 }
 
 export async function budgetData(sql: Sql, year: number): Promise<BudgetData | null> {
   const budget = await getBudget(sql, year);
   if (!budget) return null;
-  const [months, costs, adjustments, sites] = await Promise.all([
+  const [months, costs, adjustments, sites, excl] = await Promise.all([
     sql<
       {
         site_id: string;
@@ -779,7 +970,11 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
       }[]
     >`select s.id, s.site_no, s.name, s.customer_id, s.manager_user_id, c.name as customer_name, c.customer_no
         from app.sites s join app.customers c on c.id = s.customer_id`,
+    sql<{ site_id: string; reason: string | null }[]>`
+      select site_id, reason from app.budget_excluded_sites where budget_id = ${budget.id}`,
   ]);
+  const exclMap = new Map(excl.map((e) => [e.site_id, e.reason]));
+  const exclSum = new Map<string, { revenue: bigint; direct: bigint }>();
   for (const c of costs) {
     c.amounts = c.amounts.map(BigInt);
     c.suggested = c.suggested ? c.suggested.map(BigInt) : null;
@@ -837,6 +1032,17 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     return r;
   };
   for (const m of months) {
+    if (exclMap.has(m.site_id)) {
+      const e = exclSum.get(m.site_id) ?? { revenue: 0n, direct: 0n };
+      e.revenue +=
+        BigInt(m.revenue_flat) +
+        BigInt(m.revenue_cycle) +
+        BigInt(m.revenue_extra) +
+        BigInt(m.revenue_increase);
+      e.direct += BigInt(m.labor) + BigInt(m.subcontractor) + BigInt(m.material);
+      exclSum.set(m.site_id, e);
+      continue;
+    }
     const r = siteRow(m.site_id);
     const i = m.month - 1;
     r.flat[i] = BigInt(m.revenue_flat);
@@ -851,6 +1057,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
   }
   for (const a of adjustments) {
     let r: BudgetRow;
+    if (a.site_id && exclMap.has(a.site_id)) continue;
     if (a.site_id) r = siteRow(a.site_id);
     else {
       const [cn, cno] = (a.customer_id && custName.get(a.customer_id)) || ['', null];
@@ -892,7 +1099,20 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
   rows.sort((a, b) =>
     a.newBusiness === b.newBusiness ? a.site_no.localeCompare(b.site_no) : a.newBusiness ? 1 : -1,
   );
-  return { budget, rows, costs, adjustments, overhead, invest };
+  const excluded = [...exclMap].map(([site_id, reason]) => {
+    const st = siteMap.get(site_id);
+    const e = exclSum.get(site_id) ?? { revenue: 0n, direct: 0n };
+    return {
+      site_id,
+      site_no: st?.site_no ?? '',
+      name: st?.name ?? '(gelöscht)',
+      customer_name: st?.customer_name ?? '',
+      reason,
+      ...e,
+    };
+  });
+  excluded.sort((a, b) => a.site_no.localeCompare(b.site_no));
+  return { budget, rows, costs, adjustments, overhead, invest, excluded };
 }
 
 export const yearSum = (a: bigint[]) => sum(a);

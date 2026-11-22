@@ -7,8 +7,13 @@ import {
   ensureBudget,
   saveAdjustment,
   saveBudgetSettings,
+  budgetPersons,
+  budgetStale,
+  getBudget,
   saveCostRow,
   setBudgetStatus,
+  setPersonCategory,
+  setSiteExcluded,
   splitBy,
 } from './budget.js';
 import { DEMO } from './seed.js';
@@ -148,5 +153,33 @@ describe.skipIf(!available)('Budgetplanung', () => {
       ),
     ).rejects.toThrow(/freigegeben/);
     await setBudgetStatus(sql, b.id, 'entwurf', 'test');
+  });
+  it('Personen je Kostenart, Zuordnung ändern, Objekt herausnehmen, Neuberechnung bei neuen Leistungen', async () => {
+    const b = (await ensureBudget(sql, 2027, 'test'))!;
+    const ps = await budgetPersons(sql, b.id);
+    const lp = ps.find((p) => p.employee_id === lead)!;
+    expect(lp.category).toBe('lead');
+    expect(lp.minutes.reduce((a, x) => a + x, 0)).toBeGreaterThan(0);
+    const op = ps.find((p) => p.employee_id === office)!;
+    expect(op.category).toBe('office');
+    let d = (await budgetData(sql, 2027))!;
+    const gfBefore = d.costs.find((c) => c.category === 'geschaeftsfuehrer')!.amounts[0]!;
+    await setPersonCategory(sql, b.id, office, 'gf', 'test');
+    d = (await budgetData(sql, 2027))!;
+    expect(d.costs.find((c) => c.category === 'geschaeftsfuehrer')!.amounts[0]).toBe(
+      gfBefore + op.amounts[0]!,
+    );
+    await setPersonCategory(sql, b.id, office, 'auto', 'test');
+    // Objekt herausnehmen: zählt nicht mehr, steht in der Liste
+    await setSiteExcluded(sql, b.id, site, true, 'Baureinigung fertig', 'test');
+    d = (await budgetData(sql, 2027))!;
+    expect(d.rows.find((x) => x.site_id === site)).toBeUndefined();
+    expect(d.excluded[0]!.revenue).toBeGreaterThan(0n);
+    await setSiteExcluded(sql, b.id, site, false, null, 'test');
+    // neue Leistung → Budget gilt als veraltet
+    const fresh = (await getBudget(sql, 2027))!;
+    expect(await budgetStale(sql, fresh)).toBe(false);
+    await sql`update app.site_services set updated_at = now() + interval '1 second' where site_id = ${site}`;
+    expect(await budgetStale(sql, fresh)).toBe(true);
   });
 });

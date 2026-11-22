@@ -19,6 +19,8 @@ import { runPushNotifier } from './services/push.js';
 import { createApp } from './web/app.js';
 import { syncExitReturnTasks } from './services/exit-returns.js';
 import { syncEndedServices } from './services/masterdata.js';
+import { refreshStaleBudgets } from './services/budget.js';
+import { todayBerlin } from './domain/invoice/calc.js';
 
 const env = loadEnv();
 const sql = createSql(env.DATABASE_URL);
@@ -62,6 +64,14 @@ setInterval(endedServices, 60 * 60 * 1000).unref();
 const exitReturns = () => syncExitReturnTasks(sql).catch((e) => console.error('Austritt-Rückgabe:', e));
 setTimeout(exitReturns, 45_000).unref();
 setInterval(exitReturns, 60 * 60 * 1000).unref();
+
+// Budgetplanung: Entwürfe neu rechnen, wenn neue Kunden/Leistungen/Einsätze dazukamen (stündlich)
+const budgets = () =>
+  refreshStaleBudgets(sql, Number(todayBerlin().slice(0, 4)))
+    .then((n) => n && console.log(`Budget neu berechnet: ${n}`))
+    .catch((e) => console.error('Budget neu berechnen:', e));
+setTimeout(budgets, 120_000).unref();
+setInterval(budgets, 60 * 60 * 1000).unref();
 
 // „Soll als Ist nach N Tagen“ (Zeiterfassung → Einstellungen): stündlich prüfen
 const autoIst = () =>

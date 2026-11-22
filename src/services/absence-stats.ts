@@ -69,7 +69,7 @@ const clip = (a: string, b: string, from: string, to: string): [string, string] 
   return s > e ? null : [s, e];
 };
 
-function countDays(from: string, to: string) {
+export function countDays(from: string, to: string) {
   let weekdays = 0;
   let holidays = 0;
   for (let d = from; d <= to; d = addDays(d, 1)) {

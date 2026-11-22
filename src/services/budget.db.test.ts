@@ -182,4 +182,73 @@ describe.skipIf(!available)('Budgetplanung', () => {
     await sql`update app.site_services set updated_at = now() + interval '1 second' where site_id = ${site}`;
     expect(await budgetStale(sql, fresh)).toBe(true);
   });
+  it('Urlaub/Krank als Zuschlag auf den Lohn, Stunden von Hand am Objekt', async () => {
+    const b = (await ensureBudget(sql, 2027, 'test'))!;
+    const settings = {
+      wage_increase_bp: b.wage_increase_bp,
+      wage_increase_month: b.wage_increase_month,
+      pass_on: b.pass_on,
+      extra_like_prev: b.extra_like_prev,
+      allocate: b.allocate,
+      note: null,
+    };
+    await saveBudgetSettings(sql, b.id, { ...settings, vacation_days: 30, sick_days: 12 }, 'test');
+    let d = (await budgetData(sql, 2027))!;
+    const ab = d.absence;
+    expect(ab.present).toBe(ab.workdays - ab.holidays - 42);
+    expect(ab.vacation_bp).toBe(Math.round((30 / ab.present) * 10000));
+    expect(ab.sick_bp).toBe(Math.round((12 / ab.present) * 10000));
+    const r = d.rows.find((x) => x.site_id === site)!;
+    expect(r.labor[0]).toBeGreaterThan(0n);
+    expect(r.vacation[0]).toBeGreaterThan(0n);
+    expect(r.direct[0]).toBe(
+      r.labor[0]! + r.vacation[0]! + r.sick[0]! + r.sub[0]! + r.material[0]! + r.adjCost[0]!,
+    );
+    // Stunden von Hand ersetzen die Einsatzplanung (Feb–Mär)
+    await saveAdjustment(
+      sql,
+      b.id,
+      {
+        id: randomUUID(),
+        site_id: site,
+        customer_id: null,
+        label: 'Neues Objekt – Stunden laut Angebot',
+        from_month: 2,
+        to_month: 3,
+        revenue_month: 0n,
+        cost_month: 0n,
+        hours_month: 100,
+        wage_cents: 2000n,
+        replace_plan: true,
+        note: null,
+      },
+      'test',
+    );
+    d = (await budgetData(sql, 2027))!;
+    const r2 = d.rows.find((x) => x.site_id === site)!;
+    expect(r2.labor[1]).toBe(200000n);
+    expect(r2.minutes[1]).toBe(6000);
+    expect(r2.vacation[1]).toBe((200000n * BigInt(d.absence.vacation_bp) + 5000n) / 10000n);
+    expect(r2.labor[0]).toBe(r.labor[0]);
+    await expect(
+      saveAdjustment(
+        sql,
+        b.id,
+        {
+          id: randomUUID(),
+          site_id: site,
+          customer_id: null,
+          label: 'ohne Satz',
+          from_month: 1,
+          to_month: 1,
+          revenue_month: 0n,
+          cost_month: 0n,
+          hours_month: 10,
+          wage_cents: 0n,
+          note: null,
+        },
+        'test',
+      ),
+    ).rejects.toThrow(/Stundensatz/);
+  });
 });

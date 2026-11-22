@@ -20,6 +20,7 @@ import {
   listBudgets,
   resetCostRow,
   saveAdjustment,
+  defaultHourRate,
   saveBudgetSettings,
   saveCostRow,
   setBudgetStatus,
@@ -67,6 +68,8 @@ const pct = (num: bigint, den: bigint) =>
     ? '–'
     : `${(Number((num * 10000n) / den) / 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 const marginBp = (num: bigint, den: bigint) => (den === 0n ? null : Number((num * 10000n) / den));
+const fmtDays = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+const bpTxt = (bp: number) => `${(bp / 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 const hours = (min: number) => `${Math.round(min / 60).toLocaleString('de-DE')} Std.`;
 const VIEWS = ['uebersicht', 'objekt', 'kunde', 'monat', 'kosten', 'sollist'] as const;
 type View = (typeof VIEWS)[number];
@@ -93,6 +96,8 @@ interface Agg {
   prev: bigint;
   minutes: number;
   labor: bigint;
+  vacation: bigint;
+  sick: bigint;
   sub: bigint;
   material: bigint;
   adjCost: bigint;
@@ -110,6 +115,8 @@ const agg = (rows: BudgetRow[], months: number[] = M12): Agg => {
     prev: 0n,
     minutes: 0,
     labor: 0n,
+    vacation: 0n,
+    sick: 0n,
     sub: 0n,
     material: 0n,
     adjCost: 0n,
@@ -127,6 +134,8 @@ const agg = (rows: BudgetRow[], months: number[] = M12): Agg => {
       a.prev += r.prev[i]!;
       a.minutes += r.minutes[i]!;
       a.labor += r.labor[i]!;
+      a.vacation += r.vacation[i]!;
+      a.sick += r.sick[i]!;
       a.sub += r.sub[i]!;
       a.material += r.material[i]!;
       a.adjCost += r.adjCost[i]!;
@@ -251,6 +260,9 @@ const AmountHead = ({ first }: { first: string }) => (
     <th style="min-width:220px">{first}</th>
     <th class="r">Umsatz</th>
     <th class="r">Lohn inkl. AG</th>
+    <th class="r" title="Ausfallzeiten: bezahlter Urlaub und Krankheit als Zuschlag auf den Lohn">
+      Urlaub / Krank
+    </th>
     <th class="r">Nachunter&shy;nehmer</th>
     <th class="r">Material</th>
     <th class="r" title="Deckungsbeitrag = Umsatz − direkte Kosten, vor Gemeinkosten">
@@ -282,6 +294,14 @@ const AmountCells = ({ a }: { a: Agg }) => (
       {eur0(a.labor)}
       {a.minutes > 0 && <div class="small mut">{hours(a.minutes)}</div>}
     </td>
+    <td class="r nw" data-sort={String(a.vacation + a.sick)}>
+      {eur0(a.vacation + a.sick)}
+      {a.vacation + a.sick > 0n && (
+        <div class="small mut" style="white-space:nowrap">
+          U {eur0(a.vacation)} · K {eur0(a.sick)}
+        </div>
+      )}
+    </td>
     <td class="r nw" data-sort={String(a.sub)}>
       {eur0(a.sub)}
     </td>
@@ -311,6 +331,7 @@ interface MonthChart {
   revenue: bigint;
   prev: bigint;
   labor: bigint;
+  absence: bigint;
   sub: bigint;
   material: bigint;
   overhead: bigint;
@@ -327,6 +348,7 @@ const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
       revenue: a.revenue,
       prev: a.prev,
       labor: a.labor,
+      absence: a.vacation + a.sick,
       sub: a.sub,
       material: a.material + a.adjCost,
       overhead: oh,
@@ -338,6 +360,7 @@ const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
   const result = tot((m) => m.result);
   const structure = [
     { label: 'Lohn inkl. AG-Kosten', href: null, cents: tot((m) => m.labor) },
+    { label: 'Ausfall Urlaub / Krank', href: null, cents: tot((m) => m.absence) },
     { label: 'Nachunternehmer', href: null, cents: tot((m) => m.sub) },
     { label: 'Material', href: null, cents: tot((m) => m.material) },
     { label: 'Gemeinkosten', href: null, cents: tot((m) => m.overhead) },
@@ -376,7 +399,7 @@ const StackBars = ({ months }: { months: MonthChart[] }) => {
   const L = 78;
   const B = 40;
   const max = months.reduce((m, r) => {
-    const cost = r.labor + r.sub + r.material + r.overhead;
+    const cost = r.labor + r.absence + r.sub + r.material + r.overhead;
     const v = cost > r.revenue ? cost : r.revenue;
     return v > m ? v : m;
   }, 1n);
@@ -390,7 +413,7 @@ const StackBars = ({ months }: { months: MonthChart[] }) => {
   const y = (e: number) => H - B - ((H - B - 22) * Math.max(0, e)) / top;
   const bw = (W - L - 10) / months.length;
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
-  const colors = ['#7d1435', '#c2185b', '#e07a5f', '#98c1d9'];
+  const colors = ['#7d1435', '#b35a7a', '#c2185b', '#e07a5f', '#98c1d9'];
   const short = (e: number) =>
     Math.abs(e) >= 1e6
       ? `${(e / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio`
@@ -411,7 +434,7 @@ const StackBars = ({ months }: { months: MonthChart[] }) => {
         const w = bw * 0.6;
         const x = L + i * bw + (bw - w) / 2;
         let acc = 0;
-        const parts = [m.labor, m.sub, m.material, m.overhead].map((v, k) => {
+        const parts = [m.labor, m.absence, m.sub, m.material, m.overhead].map((v, k) => {
           const e = Number(v) / 100;
           const y1 = y(acc + e);
           const h = y(acc) - y1;
@@ -437,7 +460,7 @@ const StackBars = ({ months }: { months: MonthChart[] }) => {
             >
               {short(res)}
             </text>
-            <title>{`${m.label}: Umsatz ${euro(m.revenue)} · Lohn ${euro(m.labor)} · NU ${euro(m.sub)} · Material ${euro(m.material)} · Gemeinkosten ${euro(m.overhead)} · Ergebnis ${euro(m.result)}`}</title>
+            <title>{`${m.label}: Umsatz ${euro(m.revenue)} · Lohn ${euro(m.labor)} · Urlaub/Krank ${euro(m.absence)} · NU ${euro(m.sub)} · Material ${euro(m.material)} · Gemeinkosten ${euro(m.overhead)} · Ergebnis ${euro(m.result)}`}</title>
             <text x={x + w / 2} y={H - B + 18} text-anchor="middle" class="ax">
               {m.label}
             </text>
@@ -533,6 +556,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         </>,
       );
     const b = d.budget;
+    const ab = d.absence;
     const draft = b.status === 'entwurf';
     // neue Kunden/Leistungen, geänderte Objekte oder Einsätze seit der Berechnung → automatisch neu rechnen
     let autoStarted = false;
@@ -563,6 +587,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       return p.toString();
     })();
     const resultAll = filtered ? sum.result : sum.db - overheadYear;
+    const hourRate = await defaultHourRate(sql);
     const customers = [
       ...new Map(
         d.rows
@@ -636,9 +661,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             <div class="stat-head">
               <h3 style="margin:0">Kosten und Ergebnis je Monat</h3>
               <span class="legend">
-                <i style="background:#7d1435" /> Lohn <i style="background:#c2185b" /> Nachunternehmer{' '}
-                <i style="background:#e07a5f" /> Material <i style="background:#98c1d9" /> Gemeinkosten{' '}
-                <i style="background:#2e7d4f" /> Ergebnis
+                <i style="background:#7d1435" /> Lohn <i style="background:#b35a7a" /> Urlaub/Krank{' '}
+                <i style="background:#c2185b" /> Nachunternehmer <i style="background:#e07a5f" /> Material{' '}
+                <i style="background:#98c1d9" /> Gemeinkosten <i style="background:#2e7d4f" /> Ergebnis
               </span>
             </div>
             <StackBars months={ch.months} />
@@ -775,7 +800,15 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                           {MON[a.from_month - 1]}–{MON[a.to_month - 1]}
                         </td>
                         <td class="r">{euro(a.revenue_month)}</td>
-                        <td class="r">{euro(a.cost_month)}</td>
+                        <td class="r">
+                          {euro(a.cost_month)}
+                          {a.hours_month > 0 && (
+                            <div class="small mut">
+                              + {a.hours_month.toLocaleString('de-DE')} Std. × {euro(a.wage_cents)}
+                              {a.replace_plan ? ' (statt Plan)' : ''}
+                            </div>
+                          )}
+                        </td>
                         <td class="r">
                           {draft && edit && (
                             <form
@@ -796,7 +829,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             {draft && edit && (
               <details>
                 <summary>+ Neugeschäft hinzufügen</summary>
-                <AdjustmentForm year={year} back={keep()} customers={customers} />
+                <AdjustmentForm year={year} back={keep()} customers={customers} rate={hourRate} />
               </details>
             )}
           </div>
@@ -1264,9 +1297,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="kpi">
             <div class="l">Direkte Kosten</div>
-            <div class="v">{eur0(sum.labor + sum.sub + sum.material + sum.adjCost)}</div>
+            <div class="v">
+              {eur0(sum.labor + sum.vacation + sum.sick + sum.sub + sum.material + sum.adjCost)}
+            </div>
             <div class="s">
-              Lohn {eur0(sum.labor)} · NU {eur0(sum.sub)} · Material {eur0(sum.material + sum.adjCost)}
+              Lohn {eur0(sum.labor)} · Urlaub/Krank {eur0(sum.vacation + sum.sick)} · NU {eur0(sum.sub)} ·
+              Material {eur0(sum.material + sum.adjCost)}
             </div>
           </div>
           <div class="kpi">
@@ -1299,7 +1335,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             Annahmen: Tariferhöhung {(b.wage_increase_bp / 100).toLocaleString('de-DE')} % ab{' '}
             {MON_LONG[b.wage_increase_month - 1]}
             {b.pass_on ? ', an Kunden weitergegeben' : ', nicht weitergegeben'}
-            {b.extra_like_prev ? ', Sonderleistungen wie Vorjahr' : ''}
+            {b.extra_like_prev ? ', Sonderleistungen wie Vorjahr' : ''} · Urlaub {fmtDays(ab.vacation_days)}{' '}
+            Tage (+{bpTxt(ab.vacation_bp)}) · Krank {fmtDays(ab.sick_days)} Tage (+{bpTxt(ab.sick_bp)})
           </summary>
           <form method="post" action={`/auswertungen/budget/${year}/einstellungen`} data-noback>
             <div class="grid">
@@ -1353,6 +1390,30 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                 Gemeinkosten nach Umsatz auf die Objekte verteilen
               </label>
               <label>
+                Urlaubstage je Vollzeit-Jahr
+                <input
+                  name="vacation_days"
+                  inputmode="decimal"
+                  value={fmtDays(ab.vacation_days)}
+                  disabled={!draft || !edit}
+                />
+              </label>
+              <label>
+                Kranktage je Vollzeit-Jahr (leer = Durchschnitt)
+                <input
+                  name="sick_days"
+                  inputmode="decimal"
+                  value={b.sick_days == null ? '' : fmtDays(Number(b.sick_days))}
+                  placeholder={ab.sick_auto == null ? 'kein Wert' : fmtDays(ab.sick_auto)}
+                  disabled={!draft || !edit}
+                />
+                <span class="small mut">
+                  {ab.sick_auto == null
+                    ? 'Kein Durchschnitt aus den Vorjahren vorhanden – bitte eintragen.'
+                    : `Durchschnitt ${fmtDays(ab.sick_auto)} Tage (${ab.basis ?? 'Vorjahr'}, Auswertungen → Ausfallzeiten)`}
+                </span>
+              </label>
+              <label>
                 Notiz
                 <textarea name="note" rows={2} disabled={!draft || !edit}>
                   {b.note ?? ''}
@@ -1366,8 +1427,10 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             )}
           </form>
           <p class="small mut">
-            Lohn = Einsatzplanung {year} wie Lohnarten (Urlaub, Krank, Feiertag, Zuschläge) +
-            Arbeitgeberkosten nach Lohnhöhe (Minijob/Midijob/regulär, Sätze unter Plan-Kalkulation).
+            Lohn = Einsatzplanung {year} wie Lohnarten (Feiertag, Zuschläge, schon eingetragene Abwesenheiten)
+            + Arbeitgeberkosten nach Lohnhöhe (Minijob/Midijob/regulär, Sätze unter Plan-Kalkulation). Urlaub
+            und Krankheit separat als Zuschlag auf den Lohn: Ausfalltage ÷ Anwesenheitstage ({ab.workdays}{' '}
+            Tage Mo–Fr − {ab.holidays} Feiertage − Urlaub − Krank = {fmtDays(ab.present)} Tage).
             Nachunternehmer laut erteilten Bestellungen. Material {''}pauschal in % vom Umsatz. Einsätze, die
             erst später geplant werden, fehlen – dann Lohn über eine Anpassung am Objekt ergänzen.
           </p>
@@ -1462,6 +1525,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     if (!r) return c.redirect(base(year));
     const draft = d.budget.status === 'entwurf';
     const edit = canEdit(c);
+    const hourRate = await defaultHourRate(sql);
     const a = agg([r]);
     const adj = d.adjustments.filter((x) => x.site_id === r.site_id);
     const back2 = `/auswertungen/budget/objekt/${r.key}?jahr=${year}`;
@@ -1477,6 +1541,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       ['Umsatz', r.revenue],
       ['Vorjahr (Ist)', r.prev],
       ['Lohn inkl. AG-Kosten', r.labor],
+      ['Ausfall Urlaub', r.vacation],
+      ['Ausfall Krank', r.sick],
       ['Nachunternehmer', r.sub],
       ['Material', r.material],
       ['Anpassung Kosten', r.adjCost],
@@ -1569,9 +1635,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <div class="stat-head">
             <h3 style="margin:0">Umsatz, Kosten und Ergebnis je Monat</h3>
             <span class="legend">
-              <i style="background:#7d1435" /> Lohn <i style="background:#c2185b" /> Nachunternehmer{' '}
-              <i style="background:#e07a5f" /> Material <i style="background:#98c1d9" /> Gemeinkosten{' '}
-              <i style="background:#2e7d4f" /> Ergebnis
+              <i style="background:#7d1435" /> Lohn <i style="background:#b35a7a" /> Urlaub/Krank{' '}
+              <i style="background:#c2185b" /> Nachunternehmer <i style="background:#e07a5f" /> Material{' '}
+              <i style="background:#98c1d9" /> Gemeinkosten <i style="background:#2e7d4f" /> Ergebnis
             </span>
           </div>
           <StackBars
@@ -1580,6 +1646,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
               revenue: r.revenue[i]!,
               prev: r.prev[i]!,
               labor: r.labor[i]!,
+              absence: r.vacation[i]! + r.sick[i]!,
               sub: r.sub[i]!,
               material: r.material[i]! + r.adjCost[i]!,
               overhead: r.overhead[i]!,
@@ -1643,7 +1710,15 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                       {MON[x.from_month - 1]}–{MON[x.to_month - 1]}
                     </td>
                     <td class="r">{euro(x.revenue_month)}</td>
-                    <td class="r">{euro(x.cost_month)}</td>
+                    <td class="r">
+                      {euro(x.cost_month)}
+                      {x.hours_month > 0 && (
+                        <div class="small mut">
+                          + {x.hours_month.toLocaleString('de-DE')} Std. × {euro(x.wage_cents)}
+                          {x.replace_plan ? ' (statt Plan)' : ''}
+                        </div>
+                      )}
+                    </td>
                     <td class="r">
                       {draft && edit && (
                         <form
@@ -1662,7 +1737,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             </table>
           )}
           {draft && edit ? (
-            <AdjustmentForm year={year} back={back2} siteId={r.site_id!} />
+            <AdjustmentForm year={year} back={back2} siteId={r.site_id!} rate={hourRate} />
           ) : (
             !draft && <p class="small mut">Budget ist freigegeben – Änderungen erst nach „Wieder öffnen“.</p>
           )}
@@ -1721,6 +1796,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       n(a.prev),
       hrs(a.minutes),
       n(a.labor),
+      n(a.vacation + a.sick),
       n(a.sub),
       n(a.material + a.adjCost),
       n(a.db),
@@ -1733,6 +1809,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       'Vorjahr Ist',
       'Stunden',
       'Lohn inkl. AG',
+      'Urlaub/Krank',
       'Nachunternehmer',
       'Material/Sonst.',
       'DB vor Gemeinkosten',
@@ -1754,6 +1831,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           'Umsatz',
           'Vorjahr Ist',
           'Lohn',
+          'Urlaub/Krank',
           'Nachunternehmer',
           'Material/Sonst.',
           'DB vor Gemeinkosten',
@@ -1766,9 +1844,10 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           n(m.revenue),
           n(m.prev),
           n(m.labor),
+          n(m.absence),
           n(m.sub),
           n(m.material),
-          n(m.revenue - m.labor - m.sub - m.material),
+          n(m.revenue - m.labor - m.absence - m.sub - m.material),
           n(m.overhead),
           n(m.result),
           pc(m.result, m.revenue),
@@ -1779,9 +1858,10 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             n(ch.months.reduce((a, m) => a + m.revenue, 0n)),
             n(ch.months.reduce((a, m) => a + m.prev, 0n)),
             n(ch.months.reduce((a, m) => a + m.labor, 0n)),
+            n(ch.months.reduce((a, m) => a + m.absence, 0n)),
             n(ch.months.reduce((a, m) => a + m.sub, 0n)),
             n(ch.months.reduce((a, m) => a + m.material, 0n)),
-            n(ch.months.reduce((a, m) => a + m.revenue - m.labor - m.sub - m.material, 0n)),
+            n(ch.months.reduce((a, m) => a + m.revenue - m.labor - m.absence - m.sub - m.material, 0n)),
             n(ch.months.reduce((a, m) => a + m.overhead, 0n)),
             n(ch.months.reduce((a, m) => a + m.result, 0n)),
             pc(
@@ -1904,8 +1984,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         },
         {
           label: 'Direkte Kosten',
-          value: eur0(all.labor + all.sub + all.material + all.adjCost),
-          sub: `Lohn ${eur0(all.labor)} · NU ${eur0(all.sub)}`,
+          value: eur0(all.labor + all.vacation + all.sick + all.sub + all.material + all.adjCost),
+          sub: `Lohn ${eur0(all.labor)} · Urlaub/Krank ${eur0(all.vacation + all.sick)} · NU ${eur0(all.sub)}`,
         },
         {
           label: 'Deckungsbeitrag (vor GK)',
@@ -1929,7 +2009,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         label: m.label,
         revenue: m.revenue,
         prev: m.prev,
-        costs: m.labor + m.sub + m.material + m.overhead,
+        costs: m.labor + m.absence + m.sub + m.material + m.overhead,
         result: m.result,
       })),
       structure: ch.structure.map((s) => ({
@@ -1949,10 +2029,11 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       overhead: filtered ? [] : ch.overhead,
     });
     const cols = [
-      { label: 'Bezeichnung', width: 230, wrap: true },
+      { label: 'Bezeichnung', width: 190, wrap: true },
       { label: 'Umsatz', width: 70, align: 'right' as const },
       { label: 'Vorjahr', width: 64, align: 'right' as const },
       { label: 'Lohn inkl. AG', width: 66, align: 'right' as const },
+      { label: 'Urlaub/Krank', width: 60, align: 'right' as const },
       { label: 'NU', width: 58, align: 'right' as const },
       { label: 'Material', width: 56, align: 'right' as const },
       { label: 'DB vor GK', width: 66, align: 'right' as const },
@@ -1966,6 +2047,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       bold ? { text: eur0(a.revenue), bold: true } : eur0(a.revenue),
       a.prev ? eur0(a.prev) : '–',
       eur0(a.labor),
+      eur0(a.vacation + a.sick),
       eur0(a.sub),
       eur0(a.material + a.adjCost),
       a.db < 0n ? { text: eur0(a.db), color: red } : eur0(a.db),
@@ -2117,6 +2199,16 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           .trim() || '0';
       const bp = Math.round(Number(pctIn) * 100);
       if (!Number.isFinite(bp)) throw new BusinessError('Tariferhöhung: bitte Zahl in %');
+      const dayIn = (v: unknown, what: string) => {
+        const t = String(v ?? '')
+          .replace(',', '.')
+          .trim();
+        if (!t) return null;
+        const n = Number(t);
+        if (!Number.isFinite(n)) throw new BusinessError(`${what}: bitte Zahl`);
+        return Math.round(n * 10) / 10;
+      };
+      const vac = dayIn(b.vacation_days, 'Urlaubstage');
       await saveBudgetSettings(
         sql,
         id,
@@ -2127,6 +2219,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           extra_like_prev: b.extra === '1',
           allocate: b.allocate === '1',
           note: typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 2000) : null,
+          vacation_days: vac ?? 30,
+          sick_days: dayIn(b.sick_days, 'Kranktage'),
         },
         c.get('actor'),
       );
@@ -2219,6 +2313,11 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       const site = typeof b.site_id === 'string' && /^[0-9a-f-]{36}$/i.test(b.site_id) ? b.site_id : null;
       const cust =
         typeof b.customer_id === 'string' && /^[0-9a-f-]{36}$/i.test(b.customer_id) ? b.customer_id : null;
+      const hTxt = String(b.hours ?? '')
+        .replace(',', '.')
+        .trim();
+      const hoursIn = hTxt ? Math.round(Number(hTxt) * 100) / 100 : 0;
+      if (!Number.isFinite(hoursIn)) throw new BusinessError('Stunden je Monat: bitte Zahl');
       await saveAdjustment(
         sql,
         await budgetIdOf(year),
@@ -2231,6 +2330,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           to_month: Number(b.to_month ?? 12),
           revenue_month: moneyIn(b.revenue),
           cost_month: moneyIn(b.cost),
+          hours_month: hoursIn,
+          wage_cents: hoursIn > 0 ? moneyIn(b.wage) : 0n,
+          replace_plan: b.replace_plan === '1',
           note: typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 500) : null,
         },
         c.get('actor'),
@@ -2260,11 +2362,14 @@ const AdjustmentForm = ({
   back,
   siteId,
   customers,
+  rate,
 }: {
   year: number;
   back: string;
   siteId?: string;
   customers?: [string, string][];
+  /** Vorschlag Stundensatz inkl. AG-Kosten (Cent) */
+  rate: bigint;
 }) => (
   <form method="post" action={`/auswertungen/budget/${year}/anpassung`} style="margin-top:10px" data-noback>
     <input type="hidden" name="id" value={randomUUID()} />
@@ -2318,7 +2423,29 @@ const AdjustmentForm = ({
         <input name="revenue" inputmode="decimal" placeholder="0,00" />
       </label>
       <label>
-        Kosten je Monat € (Lohn, NU, Material)
+        Stunden je Monat (eigene Leute)
+        <input name="hours" inputmode="decimal" placeholder="z. B. 86,5" />
+        <span class="small mut">
+          für neue Objekte ohne Einsatzplanung – zählt als Lohn, dazu Urlaub/Krank
+        </span>
+      </label>
+      <label>
+        Stundensatz € inkl. AG-Kosten
+        <input
+          name="wage"
+          inputmode="decimal"
+          value={rate > 0n ? (Number(rate) / 100).toFixed(2).replace('.', ',') : ''}
+        />
+        <span class="small mut">Vorschlag: niedrigster Tariflohn + Arbeitgeberkosten</span>
+      </label>
+      {siteId && (
+        <label class="chk">
+          <input type="checkbox" name="replace_plan" value="1" /> Stunden ersetzen die Einsatzplanung in
+          diesen Monaten (sonst zusätzlich)
+        </label>
+      )}
+      <label>
+        Sonstige Kosten je Monat € (NU, Material)
         <input name="cost" inputmode="decimal" placeholder="0,00" />
       </label>
       <label>

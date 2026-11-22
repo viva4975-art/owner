@@ -4,6 +4,7 @@ import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { employerCost, isManagingDirector } from '../domain/hr/employer-cost.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { laborFromPayroll } from './costing-labor.js';
+import { absenceStats, countDays } from './absence-stats.js';
 import { revenueLines, siteCosting, SPECIAL_SITE_ID } from './costing.js';
 import { BusinessError } from './errors.js';
 import { getPlanCostRates, planCosting } from './plan-costing.js';
@@ -100,6 +101,12 @@ export interface Budget {
   computed_by: string | null;
   approved_at: string | null;
   approved_by: string | null;
+  /** Urlaubstage je Vollzeit-Jahr (Standard 30) */
+  vacation_days: number;
+  /** Kranktage je Vollzeit-Jahr von Hand (null = Ø aus den Daten) */
+  sick_days: number | null;
+  sick_days_auto: number | null;
+  sick_basis: string | null;
 }
 
 export interface BudgetCostRow {
@@ -124,12 +131,18 @@ export interface BudgetAdjustment {
   to_month: number;
   revenue_month: bigint;
   cost_month: bigint;
+  /** Stunden je Monat von Hand (z. B. neues Objekt ohne Einsatzplanung) × Stundensatz inkl. AG-Kosten */
+  hours_month: number;
+  wage_cents: bigint;
+  /** Stunden ersetzen die Einsatzplanung des Objekts in diesen Monaten */
+  replace_plan: boolean;
   note: string | null;
 }
 
 const BUDGET_COLS = (sql: Sql) => sql`
   id, year, status, wage_increase_bp, wage_increase_month, pass_on, extra_like_prev, allocate, note, computing,
-  compute_error, computed_at::text, computed_by, approved_at::text, approved_by`;
+  compute_error, computed_at::text, computed_by, approved_at::text, approved_by, vacation_days::float8 as vacation_days,
+  sick_days::float8 as sick_days, sick_days_auto::float8 as sick_days_auto, sick_basis`;
 
 export async function listBudgets(sql: Sql) {
   return sql<{ id: string; year: number; status: string; computed_at: string | null }[]>`
@@ -182,10 +195,19 @@ export async function saveBudgetSettings(
     extra_like_prev: boolean;
     allocate: boolean;
     note: string | null;
+    vacation_days?: number;
+    sick_days?: number | null;
   },
   actor: string,
 ) {
   assertDraft(await budgetById(sql, id));
+  if (s.vacation_days != null && !(s.vacation_days >= 0 && s.vacation_days <= 60))
+    throw new BusinessError('Urlaubstage: 0 bis 60');
+  if (s.sick_days != null && !(s.sick_days >= 0 && s.sick_days <= 100))
+    throw new BusinessError('Kranktage: 0 bis 100');
+  if (s.vacation_days != null)
+    await sql`update app.budgets set vacation_days = ${s.vacation_days}, sick_days = ${s.sick_days ?? null}
+              where id = ${id}`;
   if (!Number.isInteger(s.wage_increase_bp) || s.wage_increase_bp < 0 || s.wage_increase_bp > 5000)
     throw new BusinessError('Tariferhöhung: 0 bis 50 %');
   if (!Number.isInteger(s.wage_increase_month) || s.wage_increase_month < 1 || s.wage_increase_month > 12)
@@ -558,6 +580,20 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
       persons.set(empId, pr);
     }
   }
+  // Ø Kranktage je Vollzeit-Jahr aus den letzten Daten (Vorjahr des Plans, sonst davor)
+  const { weekdays: planWeekdays } = countDays(`${year}-01-01`, `${year}-12-31`);
+  let sickAuto: number | null = null;
+  let sickBasis: string | null = null;
+  for (const y of [year - 1, year - 2, year - 3]) {
+    const st = await absenceStats(sql, y);
+    if (!st.total.heads || !st.total.weekdays) continue;
+    sickAuto = Math.round(st.total.sick_rate * planWeekdays * 10) / 10;
+    const bis = st.partial ? ` bis ${st.to.slice(8, 10)}.${st.to.slice(5, 7)}.` : '';
+    sickBasis =
+      `Ø ${y}${bis}: Krankenquote ${(st.total.sick_rate * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %` +
+      ` (${st.total.heads} Personen, ${st.total.sick_per_head.toLocaleString('de-DE')} Tage je Vollzeit-Jahr)`;
+    break;
+  }
   const materialBp = BigInt(rates.material_bp);
   const sites = new Set([...revenue.keys(), ...direct.keys()]);
   const suggestions = await costSuggestions(sql, year);
@@ -647,6 +683,7 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
                where id = ${c.id}`;
     }
     await refreshPersonCosts(tx as unknown as Sql, id, year);
+    await tx`update app.budgets set sick_days_auto = ${sickAuto}, sick_basis = ${sickBasis} where id = ${id}`;
     await tx`update app.budgets set computed_at = now(), computed_by = ${actor}, compute_error = null,
                updated_at = now() where id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
@@ -857,23 +894,41 @@ export async function deleteCostRow(sql: Sql, budgetId: string, rowId: string, a
 export async function saveAdjustment(
   sql: Sql,
   budgetId: string,
-  a: Omit<BudgetAdjustment, 'note'> & { note: string | null },
+  input: Omit<BudgetAdjustment, 'note' | 'hours_month' | 'wage_cents' | 'replace_plan'> & {
+    note: string | null;
+    hours_month?: number;
+    wage_cents?: bigint;
+    replace_plan?: boolean;
+  },
   actor: string,
 ) {
+  const a = { hours_month: 0, wage_cents: 0n, replace_plan: false, ...input };
   assertDraft(await budgetById(sql, budgetId));
   if (!a.label.trim()) throw new BusinessError('Bezeichnung fehlt');
   if (a.from_month < 1 || a.to_month > 12 || a.to_month < a.from_month)
     throw new BusinessError('Monate ungültig');
-  if (a.revenue_month === 0n && a.cost_month === 0n)
-    throw new BusinessError('Umsatz oder Kosten je Monat angeben');
+  if (!(a.hours_month >= 0 && a.hours_month <= 100000)) throw new BusinessError('Stunden je Monat ungültig');
+  if (a.hours_month > 0 && a.wage_cents <= 0n) throw new BusinessError('Stundensatz fehlt');
+  if (a.revenue_month === 0n && a.cost_month === 0n && !a.hours_month)
+    throw new BusinessError('Umsatz, Kosten oder Stunden je Monat angeben');
   await sql`
     insert into app.budget_adjustments (id, budget_id, site_id, customer_id, label, from_month, to_month,
-      revenue_month, cost_month, note, created_by)
+      revenue_month, cost_month, hours_month, wage_cents, replace_plan, note, created_by)
     values (${a.id}, ${budgetId}, ${a.site_id}, ${a.customer_id}, ${a.label.trim()}, ${a.from_month}, ${a.to_month},
-            ${a.revenue_month}, ${a.cost_month}, ${a.note}, ${actor})
+            ${a.revenue_month}, ${a.cost_month}, ${a.hours_month}, ${a.wage_cents},
+            ${!!a.site_id && a.replace_plan && a.hours_month > 0}, ${a.note}, ${actor})
     on conflict (id) do nothing`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'create', 'budget_adjustment', ${a.id}, ${sql.json({ label: a.label, site: a.site_id })})`;
+}
+
+/** Vorschlag Stundensatz für Stunden-Anpassungen: niedrigster aktiver Tariflohn + AG-Kosten (regulär) */
+export async function defaultHourRate(sql: Sql): Promise<bigint> {
+  const [w] = await sql<{ w: bigint | null }[]>`
+    select min(hourly_wage_cents)::bigint as w from app.wage_levels where active`;
+  const r = await getPlanCostRates(sql);
+  const wage = BigInt(w?.w ?? 0n);
+  return round(wage * BigInt(10000 + r.sv_employer_bp + r.levies_bp + r.accident_bp), 10000n);
 }
 
 export async function deleteAdjustment(sql: Sql, budgetId: string, adjId: string, actor: string) {
@@ -904,6 +959,9 @@ export interface BudgetRow {
   revenue: bigint[];
   minutes: number[];
   labor: bigint[];
+  /** Ausfallkosten Urlaub / Krankheit auf den Lohn */
+  vacation: bigint[];
+  sick: bigint[];
   sub: bigint[];
   material: bigint[];
   adjCost: bigint[];
@@ -921,6 +979,18 @@ export interface BudgetData {
   /** Gemeinkosten je Monat (ohne Investitionen) */
   overhead: bigint[];
   invest: bigint[];
+  /** Ausfallzeiten: Tage und Zuschläge auf den Lohn (Basispunkte) */
+  absence: {
+    workdays: number;
+    holidays: number;
+    vacation_days: number;
+    sick_days: number;
+    sick_auto: number | null;
+    basis: string | null;
+    present: number;
+    vacation_bp: number;
+    sick_bp: number;
+  };
   /** herausgenommene Objekte (Umsatz/Kosten zählen nicht) */
   excluded: {
     site_id: string;
@@ -956,7 +1026,8 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
       select id, category, label, amounts, suggested, source, manual, invest, sort, note
         from app.budget_costs where budget_id = ${budget.id} order by sort, label`,
     sql<BudgetAdjustment[]>`
-      select id, site_id, customer_id, label, from_month, to_month, revenue_month, cost_month, note
+      select id, site_id, customer_id, label, from_month, to_month, revenue_month, cost_month,
+             hours_month::float8 as hours_month, wage_cents, replace_plan, note
         from app.budget_adjustments where budget_id = ${budget.id} order by created_at`,
     sql<
       {
@@ -982,6 +1053,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
   for (const a of adjustments) {
     a.revenue_month = BigInt(a.revenue_month);
     a.cost_month = BigInt(a.cost_month);
+    a.wage_cents = BigInt(a.wage_cents);
   }
   const siteMap = new Map(sites.map((s) => [s.id, s]));
   const custName = new Map(sites.map((s) => [s.customer_id, [s.customer_name, s.customer_no] as const]));
@@ -1005,6 +1077,8 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     revenue: zero(),
     minutes: MONTHS.map(() => 0),
     labor: zero(),
+    vacation: zero(),
+    sick: zero(),
     sub: zero(),
     material: zero(),
     adjCost: zero(),
@@ -1055,6 +1129,15 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     r.sub[i] = BigInt(m.subcontractor);
     r.material[i] = BigInt(m.material);
   }
+  // Stunden von Hand, die die Einsatzplanung ersetzen: geplante Stunden/Lohn dieser Monate erst leeren
+  for (const a of adjustments)
+    if (a.site_id && a.replace_plan && !exclMap.has(a.site_id)) {
+      const r = siteRow(a.site_id);
+      for (let i = a.from_month - 1; i < a.to_month; i++) {
+        r.labor[i] = 0n;
+        r.minutes[i] = 0;
+      }
+    }
   for (const a of adjustments) {
     let r: BudgetRow;
     if (a.site_id && exclMap.has(a.site_id)) continue;
@@ -1071,16 +1154,40 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
       });
       map.set(r.key, r);
     }
+    const hoursCost = a.hours_month
+      ? round(BigInt(Math.round(a.hours_month * 100)) * a.wage_cents, 100n)
+      : 0n;
     for (let i = a.from_month - 1; i < a.to_month; i++) {
       r.adjRevenue[i]! += a.revenue_month;
       r.adjCost[i]! += a.cost_month;
+      r.labor[i]! += hoursCost;
+      r.minutes[i]! += Math.round(a.hours_month * 60);
     }
   }
+  // Ausfallzeiten: Zuschlag auf den Lohn = Ausfalltage ÷ Anwesenheitstage (Feiertage sind im Plan schon bezahlt)
+  const days = countDays(`${year}-01-01`, `${year}-12-31`);
+  const vacDays = Number(budget.vacation_days);
+  const sickDays = Number(budget.sick_days ?? budget.sick_days_auto ?? 0);
+  const present = days.weekdays - days.holidays - vacDays - sickDays;
+  const bpOf = (d: number) => (present > 0 ? Math.round((d / present) * 10000) : 0);
+  const absence = {
+    workdays: days.weekdays,
+    holidays: days.holidays,
+    vacation_days: vacDays,
+    sick_days: sickDays,
+    sick_auto: budget.sick_days_auto == null ? null : Number(budget.sick_days_auto),
+    basis: budget.sick_basis,
+    present,
+    vacation_bp: bpOf(vacDays),
+    sick_bp: bpOf(sickDays),
+  };
   const rows = [...map.values()];
   for (const r of rows)
     for (const i of MONTHS) {
+      r.vacation[i] = round(r.labor[i]! * BigInt(absence.vacation_bp), 10000n);
+      r.sick[i] = round(r.labor[i]! * BigInt(absence.sick_bp), 10000n);
       r.revenue[i] = r.flat[i]! + r.cycle[i]! + r.extra[i]! + r.increase[i]! + r.adjRevenue[i]!;
-      r.direct[i] = r.labor[i]! + r.sub[i]! + r.material[i]! + r.adjCost[i]!;
+      r.direct[i] = r.labor[i]! + r.vacation[i]! + r.sick[i]! + r.sub[i]! + r.material[i]! + r.adjCost[i]!;
       r.db[i] = r.revenue[i]! - r.direct[i]!;
     }
   const overhead = zero();
@@ -1112,7 +1219,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     };
   });
   excluded.sort((a, b) => a.site_no.localeCompare(b.site_no));
-  return { budget, rows, costs, adjustments, overhead, invest, excluded };
+  return { budget, rows, costs, adjustments, overhead, invest, absence, excluded };
 }
 
 export const yearSum = (a: bigint[]) => sum(a);

@@ -5901,3 +5901,15 @@ Testadresse.
     und stündlich (`refreshStaleBudgets`) neu. Freigegebene Budgets bleiben unverändert.
   - **DB vor Gemeinkosten** als Spalte mit DB-% in allen Tabellen, Kachel „Deckungsbeitrag (vor Gemeinkosten)“, in Excel
     (Blatt Monate) und PDF. Test in `budget.db.test.ts`.
+- 2026-11-22: **Budget: Urlaub/Krank separat, Stunden von Hand für neue Objekte** (Ahmed: „30 Tage Urlaub, krank letzter
+  Durchschnitt; bei neuen Objekten fehlen Stunden“): Annahmen des Budgets mit **Urlaubstage je Vollzeit-Jahr**
+  (Standard 30) und **Kranktage** (leer = Durchschnitt aus Auswertungen → Ausfallzeiten des letzten Jahres mit Daten,
+  bis 3 Jahre zurück; `budgets.vacation_days/sick_days/sick_days_auto/sick_basis`, Migration `20270203000001`).
+  Zuschlag auf den Plan-Lohn (inkl. AG-Kosten) = Ausfalltage ÷ Anwesenheitstage (Mo–Fr − Feiertage − Urlaub − Krank;
+  Feiertage sind im Plan schon bezahlt) – eigene Spalte „Urlaub / Krank“ (U/K getrennt), in direkten Kosten, DB,
+  Diagrammen, Objekt-Detail, Excel und PDF. **Stunden von Hand** in jeder Anpassung (Objekt oder Neugeschäft): Stunden
+  je Monat × Stundensatz inkl. AG-Kosten (Vorschlag: niedrigster Tariflohn + AG-Sätze der Plan-Kalkulation), zählen als
+  Lohn mit Urlaub/Krank-Zuschlag; am Objekt optional „ersetzen die Einsatzplanung in diesen Monaten“
+  (`budget_adjustments.hours_month/wage_cents/replace_plan`). **Hinweis:** Lohnfortzahlung bei Krankheit nur 6 Wochen
+  je Erkrankung (§ 3 EFZG) – der Durchschnitt enthält auch Langzeitkranke, dann Kranktage von Hand niedriger setzen;
+  schon in der Planung eingetragene Abwesenheiten stecken im Plan-Lohn und kommen zum Zuschlag dazu (meist wenige).

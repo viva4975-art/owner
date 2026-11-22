@@ -26,6 +26,9 @@ import { BusinessError } from '../services/errors.js';
 import type { AppEnv, Ctx } from './app.js';
 import { centsToInput } from './forms.js';
 import { PageHead, Tabs, euro } from './layout.js';
+import { ShareCard, StatBars } from './routes-reports.js';
+import { budgetOverviewPdf, mergePdfs } from '../pdf/budget-overview.js';
+import { renderTablePdf, type PdfRow } from '../pdf/table.js';
 
 /*
  * Budgetplanung (Ahmed 22.11.): Jahresplan je Objekt (Umsatz aus Leistungen, direkte Kosten), Gemeinkosten je
@@ -60,7 +63,7 @@ const pct = (num: bigint, den: bigint) =>
     : `${(Number((num * 10000n) / den) / 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 const marginBp = (num: bigint, den: bigint) => (den === 0n ? null : Number((num * 10000n) / den));
 const hours = (min: number) => `${Math.round(min / 60).toLocaleString('de-DE')} Std.`;
-const VIEWS = ['objekt', 'kunde', 'monat', 'kosten', 'sollist'] as const;
+const VIEWS = ['uebersicht', 'objekt', 'kunde', 'monat', 'kosten', 'sollist'] as const;
 type View = (typeof VIEWS)[number];
 
 const moneyIn = (v: unknown): bigint => {
@@ -194,6 +197,150 @@ const AmountCells = ({ a }: { a: Agg }) => (
   </>
 );
 
+const pctOf = (v: bigint, of: bigint) => pct(v, of);
+
+interface MonthChart {
+  label: string;
+  revenue: bigint;
+  prev: bigint;
+  labor: bigint;
+  sub: bigint;
+  material: bigint;
+  overhead: bigint;
+  result: bigint;
+}
+
+/** Daten für Diagramme und PDF-Übersicht (mit Filter: Gemeinkosten = verteilter Anteil). */
+const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
+  const months: MonthChart[] = M12.map((i) => {
+    const a = agg(rows, [i]);
+    const oh = filtered ? a.overhead : d.overhead[i]!;
+    return {
+      label: MON[i]!,
+      revenue: a.revenue,
+      prev: a.prev,
+      labor: a.labor,
+      sub: a.sub,
+      material: a.material + a.adjCost,
+      overhead: oh,
+      result: a.db - oh,
+    };
+  });
+  const tot = (f: (m: MonthChart) => bigint) => months.reduce((x, m) => x + f(m), 0n);
+  const a = agg(rows);
+  const result = tot((m) => m.result);
+  const structure = [
+    { label: 'Lohn inkl. AG-Kosten', href: null, cents: tot((m) => m.labor) },
+    { label: 'Nachunternehmer', href: null, cents: tot((m) => m.sub) },
+    { label: 'Material', href: null, cents: tot((m) => m.material) },
+    { label: 'Gemeinkosten', href: null, cents: tot((m) => m.overhead) },
+    { label: result >= 0n ? 'Ergebnis' : 'Ergebnis (Verlust)', href: null, cents: result > 0n ? result : 0n },
+  ].filter((x) => x.cents !== 0n);
+  const kinds = [
+    { label: 'Laufende Leistungen / Turnus', href: null, cents: a.regular },
+    { label: 'Sonderleistungen wie Vorjahr', href: null, cents: a.extra },
+    { label: 'Preiserhöhung (Lohnanteil)', href: null, cents: a.increase },
+    { label: 'Neugeschäft / Anpassungen', href: null, cents: a.adj },
+  ].filter((k) => k.cents !== 0n);
+  const byCust = new Map<string, { label: string; href: string | null; cents: bigint }>();
+  for (const r of rows) {
+    const k = r.customer_id ?? `neu:${r.key}`;
+    const e = byCust.get(k) ?? {
+      label: r.customer_id ? r.customer_name : `Neugeschäft: ${r.name}`,
+      href: null,
+      cents: 0n,
+    };
+    e.cents += total(r.revenue);
+    byCust.set(k, e);
+  }
+  const customers = [...byCust.values()].sort((x, y) => (y.cents > x.cents ? 1 : y.cents < x.cents ? -1 : 0));
+  const overhead = d.costs
+    .filter((c) => !c.invest)
+    .map((c) => ({ label: c.label, href: null, cents: total(c.amounts) }))
+    .filter((c) => c.cents > 0n)
+    .sort((x, y) => (y.cents > x.cents ? 1 : y.cents < x.cents ? -1 : 0));
+  return { months, structure, kinds, customers, overhead };
+};
+
+/** Gestapelte Säulen je Monat: Lohn, NU, Material, Gemeinkosten, darüber Ergebnis (grün) bzw. Verlust (rot). */
+const StackBars = ({ months }: { months: MonthChart[] }) => {
+  const W = 960;
+  const H = 300;
+  const L = 78;
+  const B = 40;
+  const max = months.reduce((m, r) => {
+    const cost = r.labor + r.sub + r.material + r.overhead;
+    const v = cost > r.revenue ? cost : r.revenue;
+    return v > m ? v : m;
+  }, 1n);
+  const maxE = Number(max) / 100;
+  const step = (() => {
+    const raw = maxE / 4;
+    const p = 10 ** Math.floor(Math.log10(raw || 1));
+    return ([1, 2, 2.5, 5, 10].find((m) => m * p >= raw) ?? 10) * p;
+  })();
+  const top = Math.ceil(maxE / step) * step || 1;
+  const y = (e: number) => H - B - ((H - B - 22) * Math.max(0, e)) / top;
+  const bw = (W - L - 10) / months.length;
+  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  const colors = ['#7d1435', '#c2185b', '#e07a5f', '#98c1d9'];
+  const short = (e: number) =>
+    Math.abs(e) >= 1e6
+      ? `${(e / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio`
+      : Math.abs(e) >= 1000
+        ? `${Math.round(e / 1000).toLocaleString('de-DE')} T`
+        : Math.round(e).toLocaleString('de-DE');
+  return (
+    <svg class="stat-bars" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Kosten und Ergebnis je Monat">
+      {ticks.map((t) => (
+        <g>
+          <line x1={L} x2={W - 6} y1={y(t)} y2={y(t)} class="grid" />
+          <text x={L - 8} y={y(t) + 4} text-anchor="end" class="ax">
+            {`${t.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`}
+          </text>
+        </g>
+      ))}
+      {months.map((m, i) => {
+        const w = bw * 0.6;
+        const x = L + i * bw + (bw - w) / 2;
+        let acc = 0;
+        const parts = [m.labor, m.sub, m.material, m.overhead].map((v, k) => {
+          const e = Number(v) / 100;
+          const y1 = y(acc + e);
+          const h = y(acc) - y1;
+          acc += e;
+          return h > 0 ? <rect x={x} y={y1} width={w} height={h} fill={colors[k]} /> : null;
+        });
+        const rev = Number(m.revenue) / 100;
+        const res = Number(m.result) / 100;
+        return (
+          <g class="bar">
+            <rect x={L + i * bw} y={10} width={bw} height={H - B - 10} class="hit" />
+            {parts}
+            {res > 0 && <rect x={x} y={y(rev)} width={w} height={y(acc) - y(rev)} fill="#2e7d4f" rx={2} />}
+            {res < 0 && (
+              <line x1={x - 3} x2={x + w + 3} y1={y(rev)} y2={y(rev)} stroke="#b3261e" stroke-width={2.5} />
+            )}
+            <text
+              x={x + w / 2}
+              y={y(Math.max(rev, acc)) - 5}
+              text-anchor="middle"
+              class="val"
+              style={res < 0 ? 'fill:#b3261e' : 'fill:#2e7d4f'}
+            >
+              {short(res)}
+            </text>
+            <title>{`${m.label}: Umsatz ${euro(m.revenue)} · Lohn ${euro(m.labor)} · NU ${euro(m.sub)} · Material ${euro(m.material)} · Gemeinkosten ${euro(m.overhead)} · Ergebnis ${euro(m.result)}`}</title>
+            <text x={x + w / 2} y={H - B + 18} text-anchor="middle" class="ax">
+              {m.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
 export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
   const { sql } = deps;
   const canEdit = (c: Context<AppEnv>) => ['admin', 'buchhaltung'].includes(c.get('user').role);
@@ -228,7 +375,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     const year = yearOf(c.req.query('jahr'));
     const view: View = (VIEWS as readonly string[]).includes(c.req.query('ansicht') ?? '')
       ? (c.req.query('ansicht') as View)
-      : 'objekt';
+      : 'uebersicht';
     const q = {
       kunde: c.req.query('kunde') ?? '',
       objekt: c.req.query('objekt') ?? '',
@@ -290,9 +437,16 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       const p = new URLSearchParams({ jahr: String(year) });
       const all = { ansicht: view, ...q, verlust: q.verlust ? '1' : '', ...extra };
       for (const [k, v] of Object.entries(all))
-        if (v && !(k === 'ansicht' && v === 'objekt')) p.set(k, String(v));
+        if (v && !(k === 'ansicht' && v === 'uebersicht')) p.set(k, String(v));
       return `/auswertungen/budget?${p.toString()}`;
     };
+    const exportQs = (() => {
+      const p = new URLSearchParams({ jahr: String(year) });
+      for (const [k, v] of Object.entries({ ...q, verlust: q.verlust ? '1' : '' }))
+        if (v) p.set(k, String(v));
+      return p.toString();
+    })();
+    const resultAll = filtered ? sum.result : sum.db - overheadYear;
     const customers = [
       ...new Map(
         d.rows
@@ -309,6 +463,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           select user_id, name from app.manager_contacts where user_id = any(${managerIds}::uuid[]) order by name`
       : [];
     const tabs = [
+      { key: 'uebersicht', label: 'Übersicht', href: keep({ ansicht: 'uebersicht' }) },
       { key: 'objekt', label: 'Objekte', href: keep({ ansicht: 'objekt' }) },
       { key: 'kunde', label: 'Kunden', href: keep({ ansicht: 'kunde' }) },
       { key: 'monat', label: 'Monate', href: keep({ ansicht: 'monat' }) },
@@ -318,7 +473,78 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
 
     // ---------- Inhalt je Ansicht
     let body: unknown;
-    if (view === 'objekt') {
+    if (view === 'uebersicht') {
+      const ch = chartData(d, rows, filtered);
+      const best = [...rows].filter((r) => !r.newBusiness && total(r.revenue) > 0n);
+      best.sort((x, y) =>
+        total(y.result) > total(x.result) ? 1 : total(y.result) < total(x.result) ? -1 : 0,
+      );
+      const TopList = ({ title, list }: { title: string; list: BudgetRow[] }) => (
+        <div class="card">
+          <h3 style="margin-top:0">{title}</h3>
+          <table>
+            <tbody>
+              {list.map((r) => {
+                const a = agg([r]);
+                return (
+                  <tr>
+                    <td>
+                      <a href={`/auswertungen/budget/objekt/${r.key}?jahr=${year}`}>
+                        {r.site_no} · {r.name}
+                      </a>
+                      <div class="small mut">{r.customer_name}</div>
+                    </td>
+                    <td class={a.result < 0n ? 'r nw neg' : 'r nw'}>{eur0(a.result)}</td>
+                    <td class="r nw">
+                      <MarginBadge num={a.result} den={a.revenue} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      body = (
+        <>
+          <div class="card">
+            <div class="stat-head">
+              <h3 style="margin:0">Umsatz je Monat</h3>
+              <span class="legend">
+                <i class="lg-now" /> Plan {year} <i class="lg-prev" /> Vorjahr (Ist)
+              </span>
+            </div>
+            <StatBars rows={ch.months.map((m) => ({ label: m.label, cents: m.revenue, prev: m.prev }))} />
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="stat-head">
+              <h3 style="margin:0">Kosten und Ergebnis je Monat</h3>
+              <span class="legend">
+                <i style="background:#7d1435" /> Lohn <i style="background:#c2185b" /> Nachunternehmer{' '}
+                <i style="background:#e07a5f" /> Material <i style="background:#98c1d9" /> Gemeinkosten{' '}
+                <i style="background:#2e7d4f" /> Ergebnis
+              </span>
+            </div>
+            <StackBars months={ch.months} />
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-top:14px">
+            <ShareCard title="Wohin geht der Umsatz?" rows={ch.structure} total={sum.revenue} pct={pctOf} />
+            <ShareCard title="Umsatz nach Art" rows={ch.kinds} total={sum.revenue} pct={pctOf} />
+            <ShareCard title="Umsatz je Kunde" rows={ch.customers} total={sum.revenue} pct={pctOf} />
+            {!filtered && (
+              <ShareCard
+                title="Gemeinkosten nach Kostenart"
+                rows={ch.overhead}
+                total={overheadYear}
+                pct={pctOf}
+              />
+            )}
+            <TopList title="Beste Objekte (Ergebnis)" list={best.slice(0, 6)} />
+            <TopList title="Schwächste Objekte (Ergebnis)" list={best.slice(-6).reverse()} />
+          </div>
+        </>
+      );
+    } else if (view === 'objekt') {
       body = (
         <>
           <div class="table-wrap">
@@ -685,6 +911,18 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
               Eingangsrechnungen). Bis einschließlich {MON_LONG[act.lastFull - 1]} {year}. Rot = schlechter
               als geplant bzw. Verlust.
             </p>
+            <div class="card" style="margin-bottom:14px">
+              <div class="stat-head">
+                <h3 style="margin:0">Umsatz Ist gegen Plan</h3>
+                <span class="legend">
+                  <i class="lg-now" /> Ist <i class="lg-prev" /> Plan
+                </span>
+              </div>
+              <StatBars
+                prevLabel="Plan"
+                rows={lines.map((l) => ({ label: MON[l.i]!, cents: l.iRev, prev: l.sRev }))}
+              />
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -796,7 +1034,10 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                 </button>
               </form>
             )}
-            <a class="btn sec" href={`/auswertungen/budget/export.xlsx?jahr=${year}`}>
+            <a class="btn sec" href={`/auswertungen/budget/export.pdf?${exportQs}`} target="_blank">
+              PDF
+            </a>
+            <a class="btn sec" href={`/auswertungen/budget/export.xlsx?${exportQs}`}>
               Excel
             </a>
             {isAdmin(c) && draft && b.computed_at && !b.computing && (
@@ -854,12 +1095,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           </div>
           <div class="kpi">
             <div class="l">Ergebnis</div>
-            <div class="v" style={sum.result < 0n ? 'color:var(--c-err)' : ''}>
-              {eur0(sum.result)}
+            <div class="v" style={resultAll < 0n ? 'color:var(--c-err)' : ''}>
+              {eur0(resultAll)}
             </div>
             <div class="s">
-              {pct(sum.result, sum.revenue)} Marge
-              {!filtered && investYear > 0n && ` · nach Investitionen ${eur0(sum.result - investYear)}`}
+              {pct(resultAll, sum.revenue)} Marge
+              {!filtered && investYear > 0n && ` · nach Investitionen ${eur0(resultAll - investYear)}`}
             </div>
           </div>
         </div>
@@ -945,7 +1186,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         {view !== 'kosten' && (
           <form method="get" action="/auswertungen/budget" class="actions" style="margin:8px 0 12px">
             <input type="hidden" name="jahr" value={String(year)} />
-            {view !== 'objekt' && <input type="hidden" name="ansicht" value={view} />}
+            {view !== 'uebersicht' && <input type="hidden" name="ansicht" value={view} />}
             <select name="kunde" aria-label="Kunde" style="max-width:280px">
               <option value="">Alle Kunden</option>
               {customers.map(([id, name]) => (
@@ -1064,6 +1305,28 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             </div>
           </div>
         </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="stat-head">
+            <h3 style="margin:0">Umsatz, Kosten und Ergebnis je Monat</h3>
+            <span class="legend">
+              <i style="background:#7d1435" /> Lohn <i style="background:#c2185b" /> Nachunternehmer{' '}
+              <i style="background:#e07a5f" /> Material <i style="background:#98c1d9" /> Gemeinkosten{' '}
+              <i style="background:#2e7d4f" /> Ergebnis
+            </span>
+          </div>
+          <StackBars
+            months={M12.map((i) => ({
+              label: MON[i]!,
+              revenue: r.revenue[i]!,
+              prev: r.prev[i]!,
+              labor: r.labor[i]!,
+              sub: r.sub[i]!,
+              material: r.material[i]! + r.adjCost[i]!,
+              overhead: r.overhead[i]!,
+              result: r.result[i]!,
+            }))}
+          />
+        </div>
         <div class="table-wrap">
           <table data-nostick style="font-size:13px">
             <thead>
@@ -1149,112 +1412,366 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
   });
 
   // ---------------------------------------------------------------- Excel
-  app.get('/auswertungen/budget/export.xlsx', async (c) => {
+  /** Export-Daten mit denselben Filtern wie die Seite */
+  const exportData = async (c: Context<AppEnv>) => {
     const year = yearOf(c.req.query('jahr'));
     const d = await budgetData(sql, year);
-    if (!d) return c.redirect(base(year));
+    if (!d) return null;
+    const q = {
+      kunde: c.req.query('kunde') ?? '',
+      objekt: c.req.query('objekt') ?? '',
+      ol: c.req.query('ol') ?? '',
+      verlust: c.req.query('verlust') === '1',
+    };
+    const rows = filterRows(d, q);
+    const filtered = !!(q.kunde || q.objekt || q.ol || q.verlust);
+    const ch = chartData(d, rows, filtered);
+    const byCust = new Map<string, BudgetRow[]>();
+    for (const r of rows) {
+      const k = r.customer_id ?? `neu:${r.key}`;
+      byCust.set(k, [...(byCust.get(k) ?? []), r]);
+    }
+    const custs = [...byCust.values()]
+      .map((rs) => ({ rs, a: agg(rs) }))
+      .sort((x, y) => (y.a.revenue > x.a.revenue ? 1 : y.a.revenue < x.a.revenue ? -1 : 0));
+    let filterText = '';
+    if (filtered) {
+      const parts: string[] = [];
+      if (q.kunde)
+        parts.push(`Kunde: ${d.rows.find((r) => r.customer_id === q.kunde)?.customer_name ?? '–'}`);
+      if (q.objekt) parts.push(`Objekt: ${d.rows.find((r) => r.key === q.objekt)?.name ?? '–'}`);
+      if (q.ol) parts.push(q.ol === 'ohne' ? 'ohne Objektleitung' : 'Objektleitung gewählt');
+      if (q.verlust) parts.push('nur Verlust');
+      filterText = parts.join(' · ');
+    }
+    return { year, d, rows, filtered, ch, custs, filterText };
+  };
+
+  // ---------------------------------------------------------------- Excel
+  app.get('/auswertungen/budget/export.xlsx', async (c) => {
+    const x = await exportData(c);
+    if (!x) return c.redirect(base(yearOf(c.req.query('jahr'))));
+    const { year, d, rows, ch, custs, filterText } = x;
     const n = (v: bigint): XlsxCell => ({ n: Number(v) / 100, fmt: 'eur' });
-    const objRows = d.rows.map((r) => {
-      const a = agg([r]);
-      return [
-        r.newBusiness ? 'NEU' : r.site_no,
-        r.name,
-        r.customer_name,
-        n(a.revenue),
-        n(a.regular),
-        n(a.extra),
-        n(a.increase + a.adj),
-        n(a.prev),
-        { n: Math.round(a.minutes / 60), fmt: 'int' } as XlsxCell,
-        n(a.labor),
-        n(a.sub),
-        n(a.material + a.adjCost),
-        n(a.db),
-        n(a.overhead),
-        n(a.result),
-      ];
-    });
-    const all = agg(d.rows);
+    const hrs = (min: number): XlsxCell => ({ n: Math.round(min / 60), fmt: 'int' });
+    const pc = (v: bigint, of: bigint): XlsxCell =>
+      of === 0n ? '' : { n: Number((v * 10000n) / of) / 10000, fmt: 'pct' };
+    const amountRow = (a: Agg) => [
+      n(a.revenue),
+      n(a.prev),
+      hrs(a.minutes),
+      n(a.labor),
+      n(a.sub),
+      n(a.material + a.adjCost),
+      n(a.db),
+      n(a.overhead),
+      n(a.result),
+      pc(a.result, a.revenue),
+    ];
+    const amountHead = [
+      'Umsatz',
+      'Vorjahr Ist',
+      'Stunden',
+      'Lohn inkl. AG',
+      'Nachunternehmer',
+      'Material/Sonst.',
+      'DB I',
+      'Gemeinkosten',
+      'Ergebnis',
+      'Marge',
+    ];
+    const all = agg(rows);
+    const title = [
+      `Budget ${year} (${d.budget.status === 'freigegeben' ? 'freigegeben' : 'Entwurf'})`,
+      ...(filterText ? [`Filter: ${filterText}`] : []),
+    ];
     const sheets = [
       {
+        name: 'Monate',
+        title,
+        header: [
+          'Monat',
+          'Umsatz',
+          'Vorjahr Ist',
+          'Lohn',
+          'Nachunternehmer',
+          'Material/Sonst.',
+          'Gemeinkosten',
+          'Ergebnis',
+          'Marge',
+        ],
+        rows: ch.months.map((m, i) => [
+          MON_LONG[i]!,
+          n(m.revenue),
+          n(m.prev),
+          n(m.labor),
+          n(m.sub),
+          n(m.material),
+          n(m.overhead),
+          n(m.result),
+          pc(m.result, m.revenue),
+        ]),
+        footer: [
+          [
+            'Jahr',
+            n(ch.months.reduce((a, m) => a + m.revenue, 0n)),
+            n(ch.months.reduce((a, m) => a + m.prev, 0n)),
+            n(ch.months.reduce((a, m) => a + m.labor, 0n)),
+            n(ch.months.reduce((a, m) => a + m.sub, 0n)),
+            n(ch.months.reduce((a, m) => a + m.material, 0n)),
+            n(ch.months.reduce((a, m) => a + m.overhead, 0n)),
+            n(ch.months.reduce((a, m) => a + m.result, 0n)),
+            pc(
+              ch.months.reduce((a, m) => a + m.result, 0n),
+              ch.months.reduce((a, m) => a + m.revenue, 0n),
+            ),
+          ],
+        ],
+        widths: [14, 14, 14, 14, 14, 14, 14, 14, 9],
+      },
+      {
+        name: 'Kunden',
+        title,
+        header: ['Kunde', 'Objekte', ...amountHead],
+        rows: custs.map(({ rs, a }) => [
+          rs[0]!.customer_id
+            ? `${rs[0]!.customer_no ? `${rs[0]!.customer_no} · ` : ''}${rs[0]!.customer_name}`
+            : 'Neugeschäft',
+          { n: rs.length, fmt: 'int' } as XlsxCell,
+          ...amountRow(a),
+        ]),
+        footer: [['Gesamt', { n: rows.length, fmt: 'int' } as XlsxCell, ...amountRow(all)]],
+        widths: [36, 8, 14, 14, 9, 14, 14, 14, 14, 14, 14, 9],
+      },
+      {
         name: 'Objekte',
-        title: [`Budget ${year} (${d.budget.status === 'freigegeben' ? 'freigegeben' : 'Entwurf'})`],
+        title,
         header: [
           'Nr.',
           'Objekt',
           'Kunde',
-          'Umsatz',
+          ...amountHead,
           'davon laufend/Turnus',
           'Sonder wie Vorjahr',
           'Erhöhung/Anpassung',
-          'Vorjahr Ist',
-          'Stunden',
-          'Lohn inkl. AG',
-          'Nachunternehmer',
-          'Material/Sonst.',
-          'DB I',
-          'Gemeinkosten',
-          'Ergebnis',
         ],
-        rows: objRows,
-        footer: [
-          [
-            'Gesamt',
-            '',
-            '',
-            n(all.revenue),
-            n(all.regular),
-            n(all.extra),
-            n(all.increase + all.adj),
-            n(all.prev),
-            { n: Math.round(all.minutes / 60), fmt: 'int' } as XlsxCell,
-            n(all.labor),
-            n(all.sub),
-            n(all.material + all.adjCost),
-            n(all.db),
-            n(all.overhead),
-            n(all.result),
-          ],
-        ],
-        widths: [10, 34, 28, 14, 14, 14, 14, 14, 9, 14, 14, 14, 14, 14, 14],
-      },
-      {
-        name: 'Monate',
-        header: [
-          'Monat',
-          'Umsatz',
-          'Lohn',
-          'Nachunternehmer',
-          'Material/Sonst.',
-          'DB I',
-          'Gemeinkosten',
-          'Investitionen',
-          'Ergebnis',
-        ],
-        rows: M12.map((i) => {
-          const a = agg(d.rows, [i]);
+        rows: rows.map((r) => {
+          const a = agg([r]);
           return [
-            MON_LONG[i]!,
-            n(a.revenue),
-            n(a.labor),
-            n(a.sub),
-            n(a.material + a.adjCost),
-            n(a.db),
-            n(d.overhead[i]!),
-            n(d.invest[i]!),
-            n(a.db - d.overhead[i]!),
+            r.newBusiness ? 'NEU' : r.site_no,
+            r.name,
+            r.customer_name,
+            ...amountRow(a),
+            n(a.regular),
+            n(a.extra),
+            n(a.increase + a.adj),
           ];
         }),
-        widths: [14, 14, 14, 14, 14, 14, 14, 14, 14],
+        footer: [
+          ['Gesamt', '', '', ...amountRow(all), n(all.regular), n(all.extra), n(all.increase + all.adj)],
+        ],
+        widths: [10, 34, 28, 14, 14, 9, 14, 14, 14, 14, 14, 14, 9, 14, 14, 14],
+      },
+      {
+        name: 'Objekte je Monat',
+        title,
+        header: ['Nr.', 'Objekt', 'Kunde', 'Wert', ...MON, 'Jahr'],
+        rows: rows.flatMap((r) =>
+          (
+            [
+              ['Umsatz', r.revenue],
+              ['Direkte Kosten', r.direct],
+              ['DB I', r.db],
+              ['Ergebnis', r.result],
+            ] as const
+          ).map(([l, v]) => [
+            r.newBusiness ? 'NEU' : r.site_no,
+            r.name,
+            r.customer_name,
+            l,
+            ...v.map(n),
+            n(total(v)),
+          ]),
+        ),
+        widths: [10, 30, 24, 14, ...M12.map(() => 11), 13],
       },
       {
         name: 'Gemeinkosten',
+        title: [`Budget ${year} – Gemeinkosten (gesamt, ohne Filter)`],
         header: ['Kostenart', ...MON, 'Jahr', 'Herkunft'],
         rows: d.costs.map((r) => [r.label, ...r.amounts.map(n), n(total(r.amounts)), r.source ?? '']),
+        footer: [
+          ['Gemeinkosten (verteilt)', ...d.overhead.map(n), n(total(d.overhead)), ''],
+          ['Investitionen (nicht verteilt)', ...d.invest.map(n), n(total(d.invest)), ''],
+        ],
         widths: [40, ...M12.map(() => 11), 14, 40],
       },
     ];
-    return xlsxFile(c, writeXlsx(sheets), `Budget_${year}.xlsx`);
+    return xlsxFile(c, writeXlsx(sheets), `Budget_${year}${filterText ? '_Auswahl' : ''}.xlsx`);
+  });
+
+  // ---------------------------------------------------------------- PDF (Übersicht mit Diagrammen + Tabellen)
+  app.get('/auswertungen/budget/export.pdf', async (c) => {
+    const x = await exportData(c);
+    if (!x) return c.redirect(base(yearOf(c.req.query('jahr'))));
+    const { year, d, rows, filtered, ch, custs, filterText } = x;
+    const all = agg(rows);
+    const overheadSum = ch.months.reduce((a, m) => a + m.overhead, 0n);
+    const result = ch.months.reduce((a, m) => a + m.result, 0n);
+    const invest = total(d.invest);
+    const status = d.budget.status === 'freigegeben' ? 'freigegeben' : 'Entwurf';
+    const subtitle = [
+      `Stand ${status}`,
+      d.budget.computed_at
+        ? `berechnet ${new Date(d.budget.computed_at).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`
+        : '',
+      `Tariferhöhung ${(d.budget.wage_increase_bp / 100).toLocaleString('de-DE')} % ab ${MON_LONG[d.budget.wage_increase_month - 1]}`,
+      filterText && `Filter: ${filterText}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const overview = await budgetOverviewPdf({
+      title: `Budgetplanung ${year}`,
+      subtitle,
+      kpis: [
+        {
+          label: `Umsatz ${year}`,
+          value: eur0(all.revenue),
+          sub: `Vorjahr ${eur0(all.prev)}${all.prev > 0n ? ` (${pct(all.revenue - all.prev, all.prev)})` : ''}`,
+        },
+        {
+          label: 'Direkte Kosten',
+          value: eur0(all.labor + all.sub + all.material + all.adjCost),
+          sub: `Lohn ${eur0(all.labor)} · NU ${eur0(all.sub)}`,
+        },
+        {
+          label: 'Deckungsbeitrag I',
+          value: eur0(all.db),
+          sub: `${pct(all.db, all.revenue)} vom Umsatz`,
+          neg: all.db < 0n,
+        },
+        {
+          label: filtered ? 'Gemeinkosten (Anteil)' : 'Gemeinkosten',
+          value: eur0(overheadSum),
+          sub: `${pct(overheadSum, all.revenue)} vom Umsatz`,
+        },
+        {
+          label: 'Ergebnis',
+          value: eur0(result),
+          sub: `${pct(result, all.revenue)} Marge${!filtered && invest > 0n ? ` · nach Invest. ${eur0(result - invest)}` : ''}`,
+          neg: result < 0n,
+        },
+      ],
+      months: ch.months.map((m) => ({
+        label: m.label,
+        revenue: m.revenue,
+        prev: m.prev,
+        costs: m.labor + m.sub + m.material + m.overhead,
+        result: m.result,
+      })),
+      structure: ch.structure.map((s) => ({
+        label: s.label,
+        cents: s.cents,
+        color: s.label.startsWith('Lohn')
+          ? '#7d1435'
+          : s.label === 'Nachunternehmer'
+            ? '#c2185b'
+            : s.label === 'Material'
+              ? '#e07a5f'
+              : s.label === 'Gemeinkosten'
+                ? '#98c1d9'
+                : '#2e7d4f',
+      })),
+      customers: ch.customers,
+      overhead: filtered ? [] : ch.overhead,
+    });
+    const cols = [
+      { label: 'Bezeichnung', width: 230, wrap: true },
+      { label: 'Umsatz', width: 70, align: 'right' as const },
+      { label: 'Vorjahr', width: 64, align: 'right' as const },
+      { label: 'Lohn inkl. AG', width: 66, align: 'right' as const },
+      { label: 'NU', width: 58, align: 'right' as const },
+      { label: 'Material', width: 56, align: 'right' as const },
+      { label: 'DB I', width: 66, align: 'right' as const },
+      { label: 'Gemeinkosten', width: 66, align: 'right' as const },
+      { label: 'Ergebnis', width: 66, align: 'right' as const },
+      { label: 'Marge', width: 44, align: 'right' as const },
+    ];
+    const red: [number, number, number] = [0.7, 0.15, 0.12];
+    const cells = (label: string, a: Agg, bold = false): PdfRow => [
+      bold ? { text: label, bold: true } : label,
+      bold ? { text: eur0(a.revenue), bold: true } : eur0(a.revenue),
+      a.prev ? eur0(a.prev) : '–',
+      eur0(a.labor),
+      eur0(a.sub),
+      eur0(a.material + a.adjCost),
+      a.db < 0n ? { text: eur0(a.db), color: red } : eur0(a.db),
+      eur0(a.overhead),
+      { text: eur0(a.result), bold: true, ...(a.result < 0n ? { color: red } : {}) },
+      a.result < 0n ? { text: pct(a.result, a.revenue), color: red } : pct(a.result, a.revenue),
+    ];
+    const monthAgg = (i: number): Agg => {
+      const a = agg(rows, [i]);
+      const m = ch.months[i]!;
+      return { ...a, overhead: m.overhead, result: m.result };
+    };
+    const tableRows: PdfRow[] = [
+      { section: 'Monate' },
+      ...M12.map((i) => cells(MON_LONG[i]!, monthAgg(i))),
+      cells('Jahr', { ...all, overhead: overheadSum, result }, true),
+      { section: 'Kunden' },
+      ...custs.map(({ rs, a }) =>
+        cells(
+          rs[0]!.customer_id
+            ? `${rs[0]!.customer_no ? `${rs[0]!.customer_no} · ` : ''}${rs[0]!.customer_name} (${rs.length} ${rs.length === 1 ? 'Objekt' : 'Objekte'})`
+            : `Neugeschäft: ${rs[0]!.name}`,
+          a,
+        ),
+      ),
+      { section: 'Objekte' },
+      ...rows.map((r) =>
+        cells(
+          r.newBusiness ? `Neugeschäft: ${r.name}` : `${r.site_no} · ${r.name} – ${r.customer_name}`,
+          agg([r]),
+        ),
+      ),
+    ];
+    const main = await renderTablePdf({
+      title: `Budgetplanung ${year} – Monate, Kunden, Objekte`,
+      subtitle,
+      columns: cols,
+      rows: tableRows,
+      fontSize: 7.5,
+      footnote:
+        'Planwerte netto. Umsatz aus den Leistungen (monatlich, Turnus, einmalig), Sonderleistungen wie Vorjahr, Preiserhöhung über den Lohnanteil; Lohn laut Einsatzplanung inkl. Arbeitgeberkosten; Gemeinkosten nach Umsatz verteilt.',
+    });
+    const parts = [overview, main];
+    if (!filtered) {
+      const costs = await renderTablePdf({
+        title: `Budgetplanung ${year} – Gemeinkosten`,
+        subtitle,
+        columns: [
+          { label: 'Kostenart', width: 200, wrap: true },
+          ...MON.map((m) => ({ label: m, width: 40, align: 'right' as const })),
+          { label: 'Jahr', width: 58, align: 'right' as const },
+        ],
+        rows: d.costs.map((r) => [
+          r.label,
+          ...r.amounts.map((v) => num0(v)),
+          { text: num0(total(r.amounts)), bold: true },
+        ]),
+        totals: ['Gemeinkosten (verteilt)', ...d.overhead.map((v) => num0(v)), num0(total(d.overhead))],
+        fontSize: 7,
+        footnote: 'Beträge in €. Investitionen sind nicht in den Gemeinkosten und werden nicht verteilt.',
+      });
+      parts.push(costs);
+    }
+    const pdf = await mergePdfs(parts);
+    return c.body(pdf as unknown as ArrayBuffer, 200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Budget_${year}${filterText ? '_Auswahl' : ''}.pdf"`,
+      'Cache-Control': 'private, no-store',
+    });
   });
 
   // ---------------------------------------------------------------- Aktionen

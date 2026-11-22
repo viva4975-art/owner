@@ -5869,3 +5869,13 @@ Testadresse.
   und je Objekt, Abweichungen rot). Excel-Export (Objekte, Monate, Gemeinkosten). `planCosting(..., { cachedLabor })`.
   **Grenzen:** Lohn nur so gut wie die Einsatzplanung des Planjahres (fehlende Einsätze → Anpassung); Werte sind
   Planwerte, keine Buchhaltung. Test `budget.db.test.ts`.
+- 2026-11-22: **Budgetplanung mit Diagrammen und PDF/Excel** (Ahmed: „Diagramme wie bei Rechnungen, Export als PDF und
+  Excel“): neuer erster Reiter **Übersicht** (Standard): Säulen Umsatz je Monat Plan vs. Vorjahr (`StatBars` aus
+  `routes-reports.tsx`, jetzt mit `prevLabel`), gestapelte Säulen Lohn/NU/Material/Gemeinkosten + Ergebnis je Monat
+  (Verlust rot, `StackBars`), Ringdiagramme „Wohin geht der Umsatz?“, „Umsatz nach Art“, „Umsatz je Kunde“,
+  „Gemeinkosten nach Kostenart“ (`ShareCard`), beste/schwächste 6 Objekte. Soll/Ist mit Säulen Ist gegen Plan, Objekt-
+  Detail mit gestapelten Säulen. Alle Filter (Kunde, Objekt, Objektleitung, nur Verlust) gelten für Diagramme und Exporte.
+  **PDF** (`/auswertungen/budget/export.pdf`): Seite 1 Übersicht A4 quer mit Kennzahlen und Diagrammen
+  (`src/pdf/budget-overview.ts`, mit pdf-lib gezeichnet), dann Tabelle Monate/Kunden/Objekte, ohne Filter zusätzlich
+  Gemeinkosten je Monat. **Excel**: Blätter Monate, Kunden, Objekte, Objekte je Monat, Gemeinkosten. Fund: Ergebnis-
+  Kachel ohne Verteilung der Gemeinkosten zog sie nicht ab – jetzt DB I − Gemeinkosten.

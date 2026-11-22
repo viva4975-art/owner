@@ -1423,7 +1423,7 @@ const YearNav = ({ base, year }: { base: string; year: number }) => (
 );
 
 /** Farben für Anteile (Bordeaux zuerst, dann gut unterscheidbare ruhige Töne). */
-const PALETTE = [
+export const PALETTE = [
   '#7d1435',
   '#c2185b',
   '#e07a5f',
@@ -1437,7 +1437,13 @@ const PALETTE = [
 ];
 
 /** Säulen: Zeitraum (Bordeaux-Verlauf) + Vorjahr (hell), Achse mit runden Werten, Werte über den Säulen. */
-const StatBars = ({ rows }: { rows: { label: string; cents: bigint; prev?: bigint }[] }) => {
+export const StatBars = ({
+  rows,
+  prevLabel = 'Vorjahr',
+}: {
+  rows: { label: string; cents: bigint; prev?: bigint }[];
+  prevLabel?: string;
+}) => {
   const W = 960;
   const H = 320;
   const L = 78;
@@ -1503,7 +1509,7 @@ const StatBars = ({ rows }: { rows: { label: string; cents: bigint; prev?: bigin
                 {short(e)}
               </text>
             )}
-            <title>{`${r.label}: ${euro(r.cents)}${hasPrev ? ` · Vorjahr ${euro(r.prev ?? 0n)}` : ''}`}</title>
+            <title>{`${r.label}: ${euro(r.cents)}${hasPrev ? ` · ${prevLabel} ${euro(r.prev ?? 0n)}` : ''}`}</title>
             <text
               x={cx}
               y={H - B + 16}
@@ -1521,7 +1527,7 @@ const StatBars = ({ rows }: { rows: { label: string; cents: bigint; prev?: bigin
 };
 
 /** Ringdiagramm: die größten 8 Anteile farbig, Rest „Sonstige“ grau. */
-const Donut = ({ rows, total }: { rows: { label: string; cents: bigint }[]; total: bigint }) => {
+export const Donut = ({ rows, total }: { rows: { label: string; cents: bigint }[]; total: bigint }) => {
   const pos = rows.filter((r) => r.cents > 0n);
   const sum = total > 0n ? total : pos.reduce((a, r) => a + r.cents, 0n);
   if (sum <= 0n) return null;
@@ -1580,7 +1586,7 @@ const Donut = ({ rows, total }: { rows: { label: string; cents: bigint }[]; tota
 };
 
 /** Anteile: Ringdiagramm + Liste mit farbigen Balken (bei 40 Kunden lesbarer als nur Torte). */
-const ShareCard = ({
+export const ShareCard = ({
   title,
   rows,
   total,

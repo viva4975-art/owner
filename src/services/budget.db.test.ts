@@ -17,6 +17,7 @@ import {
   splitBy,
 } from './budget.js';
 import { DEMO } from './seed.js';
+import { monthlyRevenue } from './statistics.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -196,6 +197,12 @@ describe.skipIf(!available)('Budgetplanung', () => {
     let d = (await budgetData(sql, 2027))!;
     const ab = d.absence;
     expect(ab.present).toBe(ab.workdays - ab.holidays - 42);
+    // Vorjahr gesamt = Umsatz nach Leistungszeitraum wie Statistik
+    const vj = await monthlyRevenue(sql, '2026-01-01', '2026-12-31');
+    for (let i = 0; i < 12; i++)
+      expect(d.rows.reduce((x, r) => x + r.prev[i]!, 0n)).toBe(
+        vj.get(`2026-${String(i + 1).padStart(2, '0')}`) ?? 0n,
+      );
     expect(ab.vacation_bp).toBe(Math.round((30 / ab.present) * 10000));
     expect(ab.sick_bp).toBe(Math.round((12 / ab.present) * 10000));
     const r = d.rows.find((x) => x.site_id === site)!;

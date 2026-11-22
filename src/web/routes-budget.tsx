@@ -374,6 +374,7 @@ const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
   ].filter((k) => k.cents !== 0n);
   const byCust = new Map<string, { label: string; href: string | null; cents: bigint }>();
   for (const r of rows) {
+    if (total(r.revenue) === 0n) continue;
     const k = r.customer_id ?? `neu:${r.key}`;
     const e = byCust.get(k) ?? {
       label: r.customer_id ? r.customer_name : `Neugeschäft: ${r.name}`,
@@ -703,7 +704,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                 {rows.map((r) => (
                   <tr>
                     <td>
-                      {r.newBusiness ? (
+                      {r.key === 'vj:rest' ? (
+                        <span class="mut">{r.name}</span>
+                      ) : r.newBusiness ? (
                         <>
                           <span class="badge info">Neugeschäft</span> <b>{r.name}</b>
                         </>

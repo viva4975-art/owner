@@ -8,6 +8,7 @@ import { absenceStats, countDays } from './absence-stats.js';
 import { revenueLines, siteCosting, SPECIAL_SITE_ID } from './costing.js';
 import { BusinessError } from './errors.js';
 import { getPlanCostRates, planCosting } from './plan-costing.js';
+import { monthlyRevenue } from './statistics.js';
 import { recurringCosts } from './recurring-payments.js';
 import { siteClosureMap } from './site-closures.js';
 
@@ -1181,6 +1182,29 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     vacation_bp: bpOf(vacDays),
     sick_bp: bpOf(sickDays),
   };
+  // Vorjahr gesamt wie Auswertungen → Statistiken (Leistungszeitraum, eigene + übernommene Rechnungen). Was keinem
+  // Objekt im Budget zugeordnet ist (inaktive/herausgenommene Objekte, Rechnungen ohne Objekt, Sonderreinigung),
+  // steht in einer eigenen Zeile – so stimmt „Vorjahr“ in Summen, Diagrammen und PDF mit dem echten Umsatz überein.
+  {
+    const y0 = budget.year - 1;
+    const total = await monthlyRevenue(sql, `${y0}-01-01`, `${y0}-12-31`);
+    const rest = MONTHS.map((i) => {
+      const t = total.get(`${y0}-${String(i + 1).padStart(2, '0')}`) ?? 0n;
+      let have = 0n;
+      for (const r of map.values()) have += r.prev[i]!;
+      return t - have;
+    });
+    if (rest.some((v) => v !== 0n))
+      map.set(
+        'vj:rest',
+        blank('vj:rest', {
+          site_no: '–',
+          name: 'Vorjahr: übrige Rechnungen (inaktive Objekte, ohne Objekt)',
+          customer_name: '–',
+          prev: rest,
+        }),
+      );
+  }
   const rows = [...map.values()];
   for (const r of rows)
     for (const i of MONTHS) {

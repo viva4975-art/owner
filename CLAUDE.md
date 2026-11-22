@@ -5913,3 +5913,8 @@ Testadresse.
   (`budget_adjustments.hours_month/wage_cents/replace_plan`). **Hinweis:** Lohnfortzahlung bei Krankheit nur 6 Wochen
   je Erkrankung (§ 3 EFZG) – der Durchschnitt enthält auch Langzeitkranke, dann Kranktage von Hand niedriger setzen;
   schon in der Planung eingetragene Abwesenheiten stecken im Plan-Lohn und kommen zum Zuschlag dazu (meist wenige).
+- 2026-11-22: **Budget „Vorjahr“ = Umsatz nach Leistungszeitraum wie Statistik** (Ahmed: Oktober Vorjahr 428 T€ statt
+  ~451 T€): Vorjahr zählte nur Rechnungen aktiver Objekte im Budget – inaktive/herausgenommene Objekte, Rechnungen ohne
+  Objekt und Sonderreinigung fehlten. Jetzt Gesamtwert je Monat aus `monthlyRevenue` (Auswertungen → Statistiken,
+  Leistungszeitraum, eigene + übernommene Rechnungen); der Rest steht als Zeile „Vorjahr: übrige Rechnungen (inaktive
+  Objekte, ohne Objekt)“ (nur Vorjahr, kein Plan-Umsatz). Gilt sofort für Seite, Diagramme, PDF und Excel.

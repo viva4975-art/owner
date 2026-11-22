@@ -157,7 +157,11 @@ function monthsOf(from: string, to: string): string[] {
   return out;
 }
 
-export async function planCosting(sql: Sql, period: { from: string; to: string }) {
+export async function planCosting(
+  sql: Sql,
+  period: { from: string; to: string },
+  opts: { cachedLabor?: boolean } = {},
+) {
   const months = monthsOf(period.from, period.to);
   const from = monthRange(period.from).from;
   const to = monthRange(period.to).to;
@@ -324,7 +328,10 @@ export async function planCosting(sql: Sql, period: { from: string; to: string }
   for (const m of months) {
     const { start, end } = monthBounds(m);
     const byEmp = new Map<string, { site: string; minutes: number; gross: bigint }[]>();
-    for (const sh of await laborFromPayroll(sql, start, end, { salaryOnly: true })) {
+    for (const sh of await laborFromPayroll(sql, start, end, {
+      salaryOnly: true,
+      cached: !!opts.cachedLabor,
+    })) {
       const l = byEmp.get(sh.employee_id) ?? [];
       l.push({ site: sh.site_id, minutes: sh.minutes, gross: sh.gross });
       byEmp.set(sh.employee_id, l);

@@ -5845,3 +5845,27 @@ Testadresse.
   verrichten“, einmalige Leistungen in den Entwürfen gelten für `ended_auto` weiter wie aktiv, nur innerhalb Beginn–Ende).
   Wird das Ende verlängert oder entfernt, wird sie automatisch wieder aktiv; von Hand aktiv/inaktiv setzen löscht das
   Kennzeichen. Test in `services-billing.db.test.ts`.
+- 2026-11-22: **Budgetplanung je Jahr** (Ahmed: „jedes Objekt Umsatzberechnung, monatliche und jährliche Sachen, filtern nach
+  Objekt, Kunde, Gesamtsummen, alle Kosten planen“; Niederlassungen später): Auswertungen → **Budgetplanung**
+  (`/auswertungen/budget?jahr=`, Standard Folgejahr, Recht wie Nachkalkulation; ändern Admin/Buchhaltung, Freigeben nur
+  Admin; `src/services/budget.ts`, `src/web/routes-budget.tsx`, Migration `20270201000001`). „Budget anlegen“ →
+  Berechnung im Hintergrund (Seite aktualisiert sich), Stand gespeichert (`app.budget_site_months`):
+  **Umsatz je Objekt/Monat** = laufende Pauschalen (Zyklus anteilig) + Turnus-Leistungen nach Ausführung voll im
+  Fälligkeitsmonat (letzte Ausführung + Zyklus, sonst Beginn) + einmalige mit Beginn im Jahr + **Sonderleistungen wie
+  Vorjahr** (Ist-Umsatz des Vorjahres über den regelmäßigen Leistungen, je Jahr verrechnet → nichts doppelt; nicht bei
+  Objekten, deren Vertrag vor dem Jahr endete) + **Preiserhöhung** über den Lohnkostenanteil ab Monat der Tariferhöhung
+  (nur Leistungen, die vor dem Stichtag beginnen). **Direkte Kosten** wie Plan-Kalkulation: Lohn laut Einsatzplanung/
+  Lohnarten inkl. AG-Kosten × Tariferhöhung ab Monat, NU laut Bestellung, Material % vom Umsatz.
+  **Gemeinkosten** je Kostenart mit Vorschlag: Objektleitung, Büromitarbeiter (interne Objekte), Geschäftsführer aus
+  Einsatzplanung/Lohnarten; Fahrzeuge, Büro & Miete, Versicherungen, IT/Telefon, Steuerberater/Beratung, Werbung,
+  Schulung/Arbeitsschutz, Bank, Sonstiges aus wiederkehrenden Zahlungen des Jahres + Ø Eingangsrechnungen an allgemeinen
+  Kostenstellen der letzten 12 Monate; **Investitionen** von Hand (nicht verteilt, „Ergebnis nach Investitionen“).
+  Beträge änderbar (gleich je Monat, Jahresbetrag oder je Monat), geänderte bleiben beim Neuberechnen („von Hand“,
+  „Vorschlag übernehmen“), eigene Positionen. Gemeinkosten nach Umsatz des Monats auf die Objekte verteilt → DB I und
+  Ergebnis je Objekt. Ansichten **Objekte / Kunden / Monate / Gemeinkosten / Soll-Ist**, Filter Kunde, Objekt,
+  Objektleitung, nur Verlust (rot wie Nachkalkulation). Je Objekt Monatstabelle + **Anpassungen** (Umsatz/Kosten je
+  Monat, z. B. Kündigung, vereinbarte Erhöhung); **Neugeschäft** ohne Objekt (z. B. Ausschreibung ab Juli). Freigabe
+  sperrt das Budget (Wieder öffnen nur Admin). **Soll/Ist** gegen die Nachkalkulation für abgeschlossene Monate (je Monat
+  und je Objekt, Abweichungen rot). Excel-Export (Objekte, Monate, Gemeinkosten). `planCosting(..., { cachedLabor })`.
+  **Grenzen:** Lohn nur so gut wie die Einsatzplanung des Planjahres (fehlende Einsätze → Anpassung); Werte sind
+  Planwerte, keine Buchhaltung. Test `budget.db.test.ts`.

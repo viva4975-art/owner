@@ -5879,3 +5879,7 @@ Testadresse.
   (`src/pdf/budget-overview.ts`, mit pdf-lib gezeichnet), dann Tabelle Monate/Kunden/Objekte, ohne Filter zusätzlich
   Gemeinkosten je Monat. **Excel**: Blätter Monate, Kunden, Objekte, Objekte je Monat, Gemeinkosten. Fund: Ergebnis-
   Kachel ohne Verteilung der Gemeinkosten zog sie nicht ab – jetzt DB I − Gemeinkosten.
+- 2026-11-22: **Fund Budget → Monate durcheinander** (Ahmed): Die per Klick gewählte Sortierung wird je Adresse gemerkt –
+  alle Ansichten der Budgetplanung haben dieselbe Adresse, so wurde z. B. „Objekte nach Umsatz“ auf die Monatstabelle
+  übertragen. Jetzt merkt sich die Sortierung je Ansicht (`?ansicht=`, gilt für alle Seiten), die Monatstabelle ist
+  nicht sortierbar (immer Januar–Dezember).

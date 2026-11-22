@@ -690,7 +690,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       const showOverhead = !filtered;
       body = (
         <div class="table-wrap">
-          <table>
+          <table data-nosort>
             <thead>
               <AmountHead first="Monat" />
             </thead>

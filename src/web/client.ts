@@ -711,7 +711,9 @@ export const CLIENT_JS = String.raw`
     }
     var dataRows = Array.prototype.filter.call(body.rows, function (r) { return !isFixed(r); });
     if (dataRows.length < 2) return;
-    var key = 'vd-sort:' + location.pathname + ':' + ti;
+    // Ansichten auf derselben Adresse (?ansicht=…) haben eigene Tabellen – Sortierung je Ansicht merken
+    var view = new URLSearchParams(location.search).get('ansicht');
+    var key = 'vd-sort:' + location.pathname + (view ? '?' + view : '') + ':' + ti;
     function apply(i, dir) {
       var rows = Array.prototype.slice.call(body.rows);
       var out = [], block = [];

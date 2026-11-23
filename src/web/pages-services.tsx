@@ -88,6 +88,27 @@ const ServiceGroup: FC<{
                     sv.always_unfinished ? 'immer unfertig' : null,
                     sv.attach_timesheet ? 'mit Stundennachweis' : null,
                     sv.auto_invoice ? 'Rechnung nach Unterschrift' : null,
+                    sv.no_bill_months?.length
+                      ? `keine Rechnung im ${sv.no_bill_months
+                          .map(
+                            (m) =>
+                              [
+                                'Jan',
+                                'Feb',
+                                'Mär',
+                                'Apr',
+                                'Mai',
+                                'Jun',
+                                'Jul',
+                                'Aug',
+                                'Sep',
+                                'Okt',
+                                'Nov',
+                                'Dez',
+                              ][m - 1],
+                          )
+                          .join(', ')}`
+                      : null,
                     sv.order_reference ? `Bestellnr. ${sv.order_reference}` : null,
                     target(sv) === 'wie Objekt' ? null : target(sv),
                   ]
@@ -765,6 +786,29 @@ ids.forEach(function(i){var e=document.getElementById(i);if(e){e.addEventListene
             Unterhaltsreinigung). Die Stunden kommen aus der Einsatzplanung; Nachunternehmer unter Objekt →
             Erfasste Zeiten → „Stundennachweis für Kunden“ ergänzen.
           </label>
+        </div>
+
+        <div style="margin-top:10px">
+          <input type="hidden" name="no_bill_months_field" value="1" />
+          <div class="small" style="margin-bottom:4px">
+            <b>Monate ohne Rechnung</b> (z. B. Schule im August) – in diesen Monaten erstellt der Monatslauf
+            keine Rechnung, das Budget rechnet ohne Umsatz
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 12px">
+            {['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'].map(
+              (m, i) => (
+                <label class="chk" style="margin:0">
+                  <input
+                    type="checkbox"
+                    name="no_bill_months"
+                    value={String(i + 1)}
+                    checked={sv?.no_bill_months?.includes(i + 1) ?? false}
+                  />{' '}
+                  {m}
+                </label>
+              ),
+            )}
+          </div>
         </div>
 
         <div class="chk" style="margin-top:6px">

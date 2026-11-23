@@ -194,12 +194,14 @@ export async function planCosting(
         unit_code: string;
         work_days: number[] | null;
         hours_per_day_milli: bigint | null;
+        no_bill_months: number[] | null;
         id: string;
         title: string;
       }[]
     >`
       select ss.id, ss.description as title, ss.site_id, ss.quantity_milli, ss.unit_price_cents, ss.billing_cycle::text as billing_cycle,
-             ss.valid_from::text, ss.valid_to::text, ss.unit_code, ss.work_days, ss.hours_per_day_milli
+             ss.valid_from::text, ss.valid_to::text, ss.unit_code, ss.work_days, ss.hours_per_day_milli,
+             ss.no_bill_months
         from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
        where ss.active and not c.is_internal
          -- nur laufende Pauschalen; Arbeiten „nach Ausführung“ (Glas, Grundreinigung …) zählen erst in der
@@ -272,6 +274,8 @@ export async function planCosting(
     const { start, end } = monthBounds(m);
     for (const sv of services) {
       if (sv.valid_from > end || (sv.valid_to && sv.valid_to < start) || !siteMap.has(sv.site_id)) continue;
+      // Monate ohne Rechnung (z. B. Schule im August) – nur bei monatlicher Abrechnung eindeutig
+      if (sv.billing_cycle === 'monatlich' && sv.no_bill_months?.includes(Number(m.slice(5, 7)))) continue;
       // nach Arbeitstagen: Menge des Monats
       const qty = sv.work_days?.length
         ? BigInt(

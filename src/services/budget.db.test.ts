@@ -85,11 +85,11 @@ describe.skipIf(!available)('Budgetplanung', () => {
     // Lohnkostenanteil 60 % × 3 % ab April = 36,00 € im Monat
     expect(r.increase.slice(0, 3)).toEqual([0n, 0n, 0n]);
     expect(r.increase.slice(3)).toEqual(Array(9).fill(3600n));
-    // Glas halbjährlich ab März: März und September; Grundreinigung einmalig im Mai
+    // Glas halbjährlich ab März: März und September; einmalige Grundreinigung zählt nicht (Ahmed 23.11.)
     expect(r.cycle[2]).toBe(60000n);
     expect(r.cycle[8]).toBe(60000n);
-    expect(r.cycle[4]).toBe(100000n);
-    expect(r.cycle.filter((x) => x !== 0n).length).toBe(3);
+    expect(r.cycle[4]).toBe(0n);
+    expect(r.cycle.filter((x) => x !== 0n).length).toBe(2);
     // Lohn: nur die Reinigungskraft am Objekt (Objektleitung → Gemeinkosten), ab April × 1,03
     expect(r.labor[0]!).toBeGreaterThan(0n);
     expect(r.minutes[0]).toBeGreaterThan(0);

@@ -84,6 +84,8 @@ export interface ServiceForRun {
   hoursPerDay?: Quantity | null;
   /** Schließzeiten des Objekts – Tage zählen bei „nach Arbeitstagen“ nicht */
   closures?: readonly { from: string; to: string }[] | null;
+  /** Monate (1–12) ohne Rechnung, z. B. Schule im August – fällige Zeiträume in diesen Monaten entfallen */
+  noBillMonths?: readonly number[] | null;
 }
 
 /** Arbeitstage zwischen from und to (einschließlich) an den Wochentagen, ohne Feiertage (Bayern). */
@@ -231,6 +233,7 @@ export function monthlyRunLines(
     if (!s.active || s.kind !== 'monthly_flat') return [];
     const p = billingPeriod(s.cycle ?? 'monatlich', s.validFrom, month);
     if (!p || s.validFrom > p.end || (s.validTo && s.validTo < p.start)) return [];
+    if (s.noBillMonths?.includes(Number(month.slice(5, 7)))) return [];
     const quantity = serviceQuantity(s, p.start, p.end);
     if (quantity <= 0n) return [];
     return [

@@ -2787,7 +2787,10 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     // mehrere Wochentage (work_days) → alle Werte; sonst je Feld der letzte
     const all = await c.req.parseBody({ all: true });
     const body = Object.fromEntries(
-      Object.entries(all).map(([k, v]) => [k, Array.isArray(v) && k !== 'work_days' ? v[v.length - 1] : v]),
+      Object.entries(all).map(([k, v]) => [
+        k,
+        Array.isArray(v) && k !== 'work_days' && k !== 'no_bill_months' ? v[v.length - 1] : v,
+      ]),
     ) as Record<string, string | File | (string | File)[]>;
     const parsed = serviceInput.safeParse(body);
     if (!parsed.success) throw new BusinessError(parsed.error.issues.map((i) => i.message).join('\n'));
@@ -2804,6 +2807,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     }
     if (body.attach_timesheet_field === '1') parsed.data.attach_timesheet = body.attach_timesheet === 'on';
     if (body.auto_invoice_field === '1') parsed.data.auto_invoice = body.auto_invoice === 'on';
+    if (body.no_bill_months_field === '1') parsed.data.no_bill_months ??= [];
     await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress, {
       reason: typeof body.change_reason === 'string' ? body.change_reason : null,
       requireReason: true,

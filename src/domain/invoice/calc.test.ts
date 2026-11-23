@@ -127,6 +127,10 @@ describe('Monatslauf', () => {
     expect(l?.detail).toBe('01.10.2026 bis 31.12.2026');
     // endet vor dem Zeitraum → nicht abrechnen
     expect(monthlyRunLines([{ ...q, validTo: '2026-09-30' }], '2026-10')).toHaveLength(0);
+    // Monate ohne Rechnung (Schule im August)
+    const school = { ...base, id: 's', noBillMonths: [8] };
+    expect(monthlyRunLines([school], '2026-08')).toHaveLength(0);
+    expect(monthlyRunLines([school], '2026-09')).toHaveLength(1);
   });
 
   it('Positionstext wie Fortytools', () => {

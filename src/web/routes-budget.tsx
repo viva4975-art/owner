@@ -30,6 +30,7 @@ import {
   startBudgetAuto,
   type BudgetAdjustment,
 } from '../services/budget.js';
+import { BILLING, FREQUENCY } from '../services/subcontractors.js';
 import { BusinessError } from '../services/errors.js';
 import type { AppEnv, Ctx } from './app.js';
 import { centsToInput } from './forms.js';
@@ -697,6 +698,18 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       const adjBySite = new Map<string, BudgetAdjustment[]>();
       for (const a of d.adjustments)
         if (a.site_id) adjBySite.set(a.site_id, [...(adjBySite.get(a.site_id) ?? []), a]);
+      // NU-Bestellungen je Objekt im Jahr (auch Sammelbestellungen) – für „Kosten anzeigen“
+      const nuBySite = new Map<string, NuOrder[]>();
+      for (const o of await sql<(NuOrder & { site_id: string })[]>`
+          select coalesce(ss.site_id, sc.site_id) as site_id, sc.id, sc.number, su.name as supplier,
+                 sc.service_kind as service, sc.frequency, sc.billing, sc.price_cents::bigint as price_cents,
+                 sc.valid_from::text, sc.valid_to::text, (ss.site_id is not null) as sammel
+            from app.subcontracts sc join app.suppliers su on su.id = sc.supplier_id
+            left join app.subcontract_sites ss on ss.subcontract_id = sc.id
+           where sc.status in ('erteilt', 'beendet') and sc.valid_from <= ${`${year}-12-31`}
+             and (sc.valid_to is null or sc.valid_to >= ${`${year}-01-01`})
+           order by sc.number`)
+        nuBySite.set(o.site_id, [...(nuBySite.get(o.site_id) ?? []), o]);
       body = (
         <>
           <div class="table-wrap">
@@ -733,6 +746,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                         total(r.minutes.map(BigInt)) === 0n &&
                         total(r.sub) === 0n && <div class="cost-flag">keine Einsätze/NU geplant</div>}
                       {r.site_id && <AdjNote list={adjBySite.get(r.site_id)} />}
+                      <CostDetail r={r} nu={r.site_id ? nuBySite.get(r.site_id) : undefined} />
                     </td>
                     <AmountCells a={agg([r])} />
                   </tr>
@@ -2497,6 +2511,81 @@ const AdjustmentForm = ({
     </div>
   </form>
 );
+
+interface NuOrder {
+  id: string;
+  number: string | null;
+  supplier: string;
+  service: string | null;
+  frequency: string | null;
+  billing: string | null;
+  price_cents: bigint;
+  valid_from: string;
+  valid_to: string | null;
+  sammel: boolean;
+}
+
+/** Aufklappbar je Objekt: alle Kosten des Jahres nach Art, dazu die NU-Bestellungen (Ahmed 23.11.) */
+const CostDetail = ({ r, nu }: { r: BudgetRow; nu: NuOrder[] | undefined }) => {
+  const hours = r.minutes.reduce((a, b) => a + b, 0) / 60;
+  const items: [string, bigint, (string | undefined)?][] = [
+    [
+      'Lohn eigene Leute',
+      total(r.labor),
+      hours ? `${Math.round(hours).toLocaleString('de-DE')} Std.` : undefined,
+    ],
+    ['Urlaub / Krank', total(r.vacation) + total(r.sick)],
+    ['Nachunternehmer', total(r.sub)],
+    ['Material', total(r.material)],
+    ['Sonstige Kosten (von Hand)', total(r.adjCost)],
+    ['Gemeinkosten-Anteil', total(r.overhead)],
+  ];
+  const shown = items.filter((x) => x[1] !== 0n);
+  if (!shown.length && !nu?.length) return null;
+  return (
+    <details class="small" style="margin-top:4px">
+      <summary>Kosten anzeigen</summary>
+      <table class="keep" data-nostick style="margin-top:4px;font-size:12.5px;min-width:0">
+        <tbody>
+          {shown.map(([l, v, x]) => (
+            <tr>
+              <td>
+                {l}
+                {x && <span class="mut"> · {x}</span>}
+              </td>
+              <td class="r">{euro(v)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td>
+              <b>Kosten gesamt</b>
+            </td>
+            <td class="r">
+              <b>{euro(shown.reduce((a, x) => a + x[1], 0n))}</b>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {nu?.length ? (
+        <div style="margin-top:4px">
+          <div class="mut">Nachunternehmer-Bestellungen:</div>
+          {nu.map((o) => (
+            <div>
+              <a href={`/nachunternehmer/auftraege/${o.id}`}>{o.number ?? 'Bestellung'}</a> · {o.supplier}
+              {o.service ? ` · ${o.service}` : ''} ·{' '}
+              {[FREQUENCY[o.frequency ?? ''] ?? o.frequency, BILLING[o.billing ?? ''] ?? o.billing]
+                .filter(Boolean)
+                .join(', ')}
+              {o.sammel ? ' · Sammelbestellung' : ` · ${euro(BigInt(o.price_cents))}`}
+              {' · '}ab {o.valid_from.split('-').reverse().join('.')}
+              {o.valid_to ? ` bis ${o.valid_to.split('-').reverse().join('.')}` : ''}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  );
+};
 
 /** Kurzinfo der von Hand eingetragenen Anpassungen eines Objekts (Objektliste) */
 const AdjNote = ({ list }: { list: BudgetAdjustment[] | undefined }) =>

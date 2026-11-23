@@ -5942,3 +5942,15 @@ Testadresse.
   „ersetzt die NU-Kosten laut Bestellung in diesen Monaten“ (`budget_adjustments.sub_month/replace_sub`, Migration
   `20270205000001`); „Sonstige Kosten“ nur noch für Material o. ä. Objektliste zeigt unter jedem Objekt die von Hand
   eingetragenen Anpassungen (Umsatz, Stunden × Satz, NU, Kosten je Monat, Monate).
+- 2026-11-23: **Monate ohne Rechnung, Budget nur aus regelmäßigen Leistungen, Kosten je Objekt** (Ahmed):
+  - **Leistung → „Monate ohne Rechnung“** (Häkchen Jan–Dez, z. B. Schule im August; `site_services.no_bill_months`,
+    Migration `20270206000001`): Monatslauf, Abrechnungsvorschau und Umsatz-Vorschau lassen fällige Zeiträume in diesen
+    Monaten aus (`monthlyRunLines`), Plan-Kalkulation bei monatlicher Abrechnung ebenso. Liste zeigt „keine Rechnung im Aug“.
+    Bei Turnus-Leistungen zählt der Monat, in dem die Rechnung fällig wäre.
+  - **Budget rechnet die Leistungen wie die Rechnungen:** Pauschalen voller Betrag im Abrechnungsmonat (monatlich jeden
+    Monat, quartalsweise/jährlich … im Rechnungsmonat statt anteilig), Turnus nach Ausführung im Fälligkeitsmonat,
+    jeweils ohne Monate ohne Rechnung. **Einmalige Leistungen und Regie/je Ausführung zählen nicht mehr.**
+    „Sonderleistungen wie Vorjahr“ bleibt als Schalter unter den Annahmen (enthält Einmal-/Regieumsatz des Vorjahres –
+    wer das nicht will, schaltet ihn ab).
+  - **Budget → Objekte: „Kosten anzeigen“** je Objekt aufklappbar: Lohn (mit Std.), Urlaub/Krank, Nachunternehmer,
+    Material, sonstige Kosten von Hand, Gemeinkosten-Anteil, Summe und die NU-Bestellungen des Jahres (Link).

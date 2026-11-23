@@ -7,7 +7,8 @@ import { sortByRequest } from '../export-sort.js';
  * Spaltenbreiten, fixierte Kopfzeile, Autofilter.
  */
 
-export type XlsxCell = string | number | null | { n: number; fmt: 'd1' | 'pct' | 'int' | 'eur' } | { b: string };
+export type XlsxCell =
+  string | number | null | { n: number; fmt: 'd1' | 'pct' | 'int' | 'eur' } | { b: string };
 
 export interface XlsxSheet {
   name: string;
@@ -67,7 +68,22 @@ function cellXml(ref: string, v: XlsxCell, bold: boolean): string {
   if ('b' in v)
     return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${esc(v.b)}</t></is></c>`;
   if (!Number.isFinite(v.n)) return '';
-  const s = v.fmt === 'eur' ? (bold ? 10 : 9) : v.fmt === 'pct' ? (bold ? 5 : 3) : v.fmt === 'int' ? (bold ? 7 : 6) : bold ? 4 : 2;
+  const s =
+    v.fmt === 'eur'
+      ? bold
+        ? 10
+        : 9
+      : v.fmt === 'pct'
+        ? bold
+          ? 5
+          : 3
+        : v.fmt === 'int'
+          ? bold
+            ? 7
+            : 6
+          : bold
+            ? 4
+            : 2;
   return `<c r="${ref}" s="${s}"><v>${v.n}</v></c>`;
 }
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db/client.js';
-import { countWorkDays, monthBounds } from '../domain/invoice/calc.js';
+import { type BillingCycle, billingPeriod, countWorkDays, monthBounds } from '../domain/invoice/calc.js';
 import { employerCost, isManagingDirector } from '../domain/hr/employer-cost.js';
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { laborFromPayroll } from './costing-labor.js';
@@ -304,11 +304,12 @@ export async function budgetRevenue(
       labor_bp: number | null;
       done_at: string | null;
       done_any: boolean;
+      no_bill_months: number[] | null;
     }[]
   >`
     select ss.id, ss.site_id, ss.kind::text as kind, ss.billing_cycle::text as billing_cycle, ss.quantity_milli,
            ss.unit_price_cents, ss.unit_code, ss.valid_from::text, ss.valid_to::text, ss.work_days,
-           ss.hours_per_day_milli, coalesce(ss.labor_share_bp, st.labor_share_bp) as labor_bp,
+           ss.hours_per_day_milli, coalesce(ss.labor_share_bp, st.labor_share_bp) as labor_bp, ss.no_bill_months,
            (select max(e.date_from)::text from app.service_executions e where e.service_id = ss.id) as done_at,
            exists (select 1 from app.service_executions e where e.service_id = ss.id) as done_any
       from app.site_services ss join app.sites s on s.id = ss.site_id join app.customers c on c.id = s.customer_id
@@ -361,14 +362,17 @@ export async function budgetRevenue(
   for (const sv of services) {
     const r = row(sv.site_id);
     const step = CYCLE_MONTHS[sv.billing_cycle];
+    const skip = (i: number) => !!sv.no_bill_months?.includes(i + 1);
     if (sv.kind === 'monthly_flat' && step) {
-      // laufende Pauschale: je Monat anteilig (Rechnungsbetrag ÷ Monate des Zyklus)
+      // laufende Pauschale wie der Monatslauf (Ahmed 23.11.): voller Rechnungsbetrag im Abrechnungsmonat
+      // (monatlich jeden Monat, quartalsweise … im Monat der Rechnung), ohne „Monate ohne Rechnung“
       for (const i of MONTHS) {
-        const { start, end } = monthBounds(mKey(year, i));
-        if (sv.valid_from > end || (sv.valid_to && sv.valid_to < start)) continue;
-        const share = round(netOf(sv, start, end), BigInt(step));
-        r.flat[i]! += share;
-        addInc(r, i, share, sv);
+        if (skip(i)) continue;
+        const p = billingPeriod(sv.billing_cycle as BillingCycle, sv.valid_from, mKey(year, i));
+        if (!p || sv.valid_from > p.end || (sv.valid_to && sv.valid_to < p.start)) continue;
+        const net = netOf(sv, p.start, p.end);
+        r.flat[i]! += net;
+        addInc(r, i, net, sv);
       }
     } else if (step && step > 1) {
       // nach Ausführung: voller Betrag im Fälligkeitsmonat (letzte Ausführung + Zyklus, sonst Beginn, dann alle n Monate)
@@ -380,16 +384,13 @@ export async function budgetRevenue(
         const i = idx - yIdx;
         const { start, end } = monthBounds(mKey(year, i));
         if (sv.valid_to && sv.valid_to < start) break;
-        if (sv.valid_from > end) continue;
+        if (sv.valid_from > end || skip(i)) continue;
         const net = netOf(sv, start, end);
         r.cycle[i]! += net;
         addInc(r, i, net, sv);
       }
-    } else if (sv.billing_cycle === 'einmalig' && !sv.done_any && sv.valid_from >= yStart) {
-      const i = Number(sv.valid_from.slice(5, 7)) - 1;
-      const { start, end } = monthBounds(mKey(year, i));
-      r.cycle[i]! += netOf(sv, start, end);
     }
+    // einmalige Leistungen und Regie/je Ausführung zählen im Budget nicht (Ahmed 23.11.)
   }
   // Vorjahr (Ist nach Leistungszeitraum) – Vergleich und Grundlage der Sonderleistungen
   const active = new Set(

@@ -449,6 +449,8 @@ export interface RunService {
   hours_per_day_milli?: bigint | null;
   /** Schließzeiten des Objekts (nachgeladen, `siteClosureMap`) */
   closures?: { from: string; to: string }[] | null;
+  /** Monate ohne Rechnung (1–12) */
+  no_bill_months?: number[] | null;
   separate_invoice: boolean;
   /** Bestellnummer des Kunden für diese Leistung */
   order_reference?: string | null;
@@ -731,6 +733,7 @@ export const toRunService = (s: RunService) => ({
   workDays: s.work_days ?? null,
   hoursPerDay: (s.hours_per_day_milli ?? null) as Quantity | null,
   closures: s.closures ?? null,
+  noBillMonths: s.no_bill_months ?? null,
 });
 
 const siteForRun = (s: RunSite) => ({

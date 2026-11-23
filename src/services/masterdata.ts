@@ -395,6 +395,8 @@ export interface SiteService {
   auto_invoice?: boolean;
   work_days: number[] | null;
   hours_per_day_milli: bigint | null;
+  /** Monate ohne Rechnung (1–12), z. B. Schule im August */
+  no_bill_months?: number[] | null;
   invoice_group_id: string | null;
   separate_invoice: boolean;
   order_reference: string | null;
@@ -508,6 +510,14 @@ export const serviceInput = z.object({
   auto_invoice: z
     .preprocess((v) => (typeof v === 'string' ? v === 'on' || v === '1' || v === 'true' : v), z.boolean())
     .optional(),
+  /** Monate ohne Rechnung (1–12); nur gesetzt, wenn das Formular das Feld enthält */
+  no_bill_months: z
+    .preprocess(
+      (v) =>
+        v == null ? undefined : (Array.isArray(v) ? v : [v]).map(Number).filter((n) => n >= 1 && n <= 12),
+      z.array(z.number().int()).optional(),
+    )
+    .optional(),
   /** Menge nach Arbeitstagen (Einheit Tag/Stunde): Wochentage 1–7, Stunden je Tag */
   work_days: z
     .preprocess(
@@ -609,6 +619,13 @@ export async function saveService(
     always_unfinished: input.always_unfinished,
     ...(input.attach_timesheet !== undefined ? { attach_timesheet: input.attach_timesheet } : {}),
     ...(input.auto_invoice !== undefined ? { auto_invoice: input.auto_invoice } : {}),
+    ...(input.no_bill_months !== undefined
+      ? {
+          no_bill_months: input.no_bill_months.length
+            ? [...new Set(input.no_bill_months)].sort((a, b) => a - b)
+            : null,
+        }
+      : {}),
     separate_invoice: input.invoice_target === 'separat',
     invoice_group_id:
       input.invoice_target && /^[0-9a-f-]{36}$/.test(input.invoice_target) ? input.invoice_target : null,

@@ -1,3 +1,4 @@
+import { regionOf } from '../domain/geo/regions.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
 import { dateFromText, importProspects, listProspects, statusFromText } from './prospects.js';
@@ -77,5 +78,24 @@ describe.skipIf(!available)('Akquise importieren', () => {
       (p) => p.company === 'muster gmbh' || p.company === 'Muster GmbH',
     )!;
     expect(m2).toMatchObject({ phone: '089 1234', contact: 'Frau Muster', status: 'interesse_leicht' });
+  });
+
+  it('Region aus der Datei bzw. aus dem Ort', async () => {
+    await importProspects(
+      sql,
+      [
+        ['Firma', 'Ort', 'Region'],
+        ['Region Test A', 'Esslingen', ''],
+        ['Region Test B', 'Augsburg', 'Ingolstadt'],
+      ],
+      { update: false },
+      't',
+    );
+    const ps = await listProspects(sql);
+    const a = ps.find((p) => p.company === 'Region Test A')!;
+    const b = ps.find((p) => p.company === 'Region Test B')!;
+    expect(a.region).toBeNull();
+    expect(regionOf(a)).toBe('Stuttgart');
+    expect(regionOf(b)).toBe('Ingolstadt');
   });
 });

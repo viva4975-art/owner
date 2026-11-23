@@ -22,6 +22,7 @@ import { SheetError, readSheet } from '../domain/sheet/sheet.js';
 import { type Ctx, UUID } from './app.js';
 import { str } from './forms.js';
 import { dateDe } from './layout.js';
+import { REGIONS, regionOf } from '../domain/geo/regions.js';
 
 const PAGE = 50;
 const STATUSES = Object.keys(PROSPECT_STATUS) as ProspectStatus[];
@@ -34,6 +35,18 @@ const dtDe = (d: Date) =>
 const noActivity = (p: Prospect) => p.contact_count === 0 && !isClosed(p.status);
 const matchFilter = (p: Prospect, f: string, isDue: (p: Prospect) => boolean) =>
   f === 'due' ? isDue(p) : f === 'ohne' ? noActivity(p) : f ? p.status === f : true;
+
+/** Region-Filter (Ahmed 23.11.): Name der Region oder „ohne“. */
+const matchRegion = (p: Prospect, r: string) => !r || (r === 'ohne' ? !regionOf(p) : regionOf(p) === r);
+const regionCounts = (ps: Prospect[]) => {
+  const m = new Map<string, number>();
+  for (const p of ps) {
+    const r = regionOf(p) ?? '';
+    m.set(r, (m.get(r) ?? 0) + 1);
+  }
+  const names = [...new Set([...Object.keys(REGIONS), ...[...m.keys()].filter(Boolean)])];
+  return { names: names.sort((a, b) => a.localeCompare(b, 'de')), m };
+};
 
 const Badge = ({ s }: { s: ProspectStatus }) => (
   <span class={`badge ${PROSPECT_STATUS[s].tone}`}>{PROSPECT_STATUS[s].label}</span>
@@ -48,12 +61,14 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
     const today = todayBerlin();
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const f = c.req.query('filter') ?? '';
+    const rg = c.req.query('region') ?? '';
     const isDue = (p: Prospect) => !!p.followup_on && p.followup_on <= today && !isClosed(p.status);
     const rows = (await listProspects(sql))
       .filter(
         (p) =>
           !q || [p.company, p.contact, p.city, p.object].some((v) => (v ?? '').toLowerCase().includes(q)),
       )
+      .filter((p) => matchRegion(p, rg))
       .filter((p) => matchFilter(p, f, isDue));
     const body = toCsv(
       [
@@ -62,6 +77,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         'Telefon',
         'E-Mail',
         'Ort',
+        'Region',
         'Objekt',
         'Quelle',
         'Status',
@@ -79,6 +95,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         p.phone ?? '',
         p.email ?? '',
         p.city ?? '',
+        regionOf(p) ?? '',
         p.object ?? '',
         p.source ?? '',
         PROSPECT_STATUS[p.status]?.label ?? p.status,
@@ -133,10 +150,13 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
     const today = todayBerlin();
     const q = (c.req.query('q') ?? '').trim().toLowerCase();
     const f = c.req.query('filter') ?? '';
+    const rg = c.req.query('region') ?? '';
     const pg = Math.max(1, Number(c.req.query('seite') ?? 1) || 1);
-    const all = (await listProspects(sql)).filter(
+    const searched = (await listProspects(sql)).filter(
       (p) => !q || [p.company, p.contact, p.city, p.object].some((v) => (v ?? '').toLowerCase().includes(q)),
     );
+    const rc = regionCounts(searched);
+    const all = searched.filter((p) => matchRegion(p, rg));
     const n = (s: ProspectStatus) => all.filter((p) => p.status === s).length;
     const overdue = all.filter((p) => dueState(p, today) === 'overdue').length;
     const todayN = all.filter((p) => dueState(p, today) === 'today').length;
@@ -152,6 +172,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
     const link = (o: { filter?: string; seite?: number }) => {
       const p = new URLSearchParams();
       if (q) p.set('q', q);
+      if (rg) p.set('region', rg);
       if (o.filter) p.set('filter', o.filter);
       if (o.seite && o.seite > 1) p.set('seite', String(o.seite));
       const s = p.toString();
@@ -215,6 +236,17 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
             value={q}
             placeholder="Suche nach Firma, Ansprechpartner, Ort…"
           />
+          <select name="region" aria-label="Region" data-nosearch data-autosubmit>
+            <option value="">Alle Regionen ({searched.length})</option>
+            {rc.names.map((r) => (
+              <option value={r} selected={rg === r}>
+                {r} ({rc.m.get(r) ?? 0})
+              </option>
+            ))}
+            <option value="ohne" selected={rg === 'ohne'}>
+              ohne Region ({rc.m.get('') ?? 0})
+            </option>
+          </select>
         </form>
         <details class="card ak-import" id="import" open={c.req.query('import') === '1'}>
           <summary>
@@ -223,10 +255,10 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
           <form method="post" action="/akquise/import" enctype="multipart/form-data" data-noback>
             <p class="small mut" style="margin-top:6px">
               Erste Zeile = Spaltenüberschriften. Erkannt werden: <b>Firma</b> (Pflicht), Ansprechpartner,
-              Telefon, E-Mail, Ort, Objekt, Quelle, Status (z. B. Erstkontakt, Leichtes/Starkes Interesse,
-              Kein Interesse, Gewonnen, Verloren – leer = Erstkontakt), Wiedervorlage (TT.MM.JJJJ), Grund
-              Wiedervorlage, Notiz. Die Datei aus „CSV exportieren“ passt direkt. Gleiche Firma + Ort wird
-              nicht doppelt angelegt.
+              Telefon, E-Mail, Ort, Region (leer = aus dem Ort), Objekt, Quelle, Status (z. B. Erstkontakt,
+              Leichtes/Starkes Interesse, Kein Interesse, Gewonnen, Verloren – leer = Erstkontakt),
+              Wiedervorlage (TT.MM.JJJJ), Grund Wiedervorlage, Notiz. Die Datei aus „CSV exportieren“ passt
+              direkt. Gleiche Firma + Ort wird nicht doppelt angelegt.
             </p>
             <input type="file" name="datei" accept=".csv,.xlsx,text/csv" required aria-label="Datei" />
             <label class="chk" style="margin-top:8px">
@@ -307,6 +339,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
                   </div>
                   <div class="lc-details">
                     {p.city && <span>{p.city}</span>}
+                    {regionOf(p) && regionOf(p) !== p.city && <span class="badge">Region {regionOf(p)}</span>}
                     {p.phone && <span>{p.phone}</span>}
                     {p.object && <span>{p.object}</span>}
                     {noActivity(p) && <span class="badge warn">noch keine Aktivität</span>}
@@ -398,6 +431,21 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
               <div>
                 <label for="ort">Ort</label>
                 <input id="ort" name="ort" value={p?.city ?? ''} />
+              </div>
+              <div>
+                <label for="region">Region</label>
+                <input
+                  id="region"
+                  name="region"
+                  list="regionen"
+                  value={p?.region ?? ''}
+                  placeholder={p ? `automatisch: ${regionOf({ city: p.city }) ?? '–'}` : 'leer = aus dem Ort'}
+                />
+                <datalist id="regionen">
+                  {Object.keys(REGIONS).map((r) => (
+                    <option value={r} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label for="quelle">Quelle</label>
@@ -549,6 +597,7 @@ export function registerProspectRoutes({ app, deps, page, back }: Ctx) {
         phone: str(b, 'tel'),
         email: str(b, 'mail'),
         city: str(b, 'ort'),
+        region: str(b, 'region'),
         source: str(b, 'quelle'),
         object: str(b, 'objekt'),
         status: str(b, 'status') ?? 'erstkontakt',

@@ -5925,3 +5925,10 @@ Testadresse.
   Lesen zurückgesetzt mit Hinweis „Berechnung wurde unterbrochen (Server-Neustart) – bitte neu berechnen“. Berechnung
   bricht nach 15 Min. mit Fehlermeldung ab; automatische Neuberechnung (Seite/stündlich) höchstens alle 30 Min. je Budget
   (`startBudgetAuto`), damit eine scheiternde Berechnung nicht in Schleife läuft. Test in `budget.db.test.ts`.
+- 2026-11-23: **Akquise nach Region filtern** (Ahmed: „Stuttgart, Ingolstadt und so“): neues Feld **Region** am Akquise-Eintrag
+  (`prospects.region`, Migration `20270204000001`, Eingabe mit Vorschlägen); leer = automatisch aus dem Ort erkannt
+  (`src/domain/geo/regions.ts`: Großraum München, Stuttgart, Ingolstadt, Augsburg, Nürnberg, Regensburg mit umliegenden
+  Orten, Rückfall PLZ-Anfang). Liste: Auswahl „Alle Regionen / <Region> (n) / ohne Region“ neben der Suche, Kacheln,
+  Funnel und Status-Chips zählen dann nur diese Region; Region als Schild in der Karte. CSV-Export mit Spalte Region und
+  gleichem Filter, Import liest Spalte „Region“/„Gebiet“. Orte außerhalb der Liste → Region von Hand eintragen
+  (weitere Orte in `REGIONS` ergänzen). Test `regions.test.ts`, `prospects-import.db.test.ts`.

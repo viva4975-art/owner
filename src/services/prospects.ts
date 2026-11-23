@@ -38,6 +38,8 @@ export interface Prospect {
   phone: string | null;
   email: string | null;
   city: string | null;
+  /** eingetragene Region; leer = aus dem Ort erkannt (regionOf) */
+  region: string | null;
   source: string | null;
   object: string | null;
   status: ProspectStatus;
@@ -106,6 +108,8 @@ export interface ProspectInput {
   phone: string | null;
   email: string | null;
   city: string | null;
+  /** undefined = nicht ändern */
+  region?: string | null;
   source: string | null;
   object: string | null;
   status: string;
@@ -132,6 +136,7 @@ export async function saveProspect(sql: Sql, id: string, p: ProspectInput, actor
     status: p.status,
     followup_on: p.followupOn || null,
     followup_reason: clean(p.followupReason),
+    ...(p.region !== undefined ? { region: clean(p.region) } : {}),
   };
   const [cur] = await sql<
     { version: number; status: string }[]
@@ -277,6 +282,7 @@ type ImportField =
   | 'phone'
   | 'email'
   | 'city'
+  | 'region'
   | 'object'
   | 'source'
   | 'status'
@@ -311,6 +317,9 @@ const HEADERS: Record<string, ImportField> = {
   ort: 'city',
   stadt: 'city',
   plzort: 'city',
+  region: 'region',
+  gebiet: 'region',
+  vertriebsgebiet: 'region',
   objekt: 'object',
   quelle: 'source',
   status: 'status',
@@ -428,7 +437,7 @@ export async function importProspects(
     // Aktualisieren: leere Zellen überschreiben nichts (Spalte fehlt oder Feld leer → bisheriger Wert bleibt)
     const [old] = ex
       ? await sql<Record<string, string | null>[]>`
-          select contact, phone, email, source, object, status, followup_on::text as followup_on, followup_reason
+          select contact, phone, email, region, source, object, status, followup_on::text as followup_on, followup_reason
             from app.prospects where id = ${ex.id}`
       : [];
     const keep = (f: ImportField, o: string | null | undefined) => get(r, f) || o || null;
@@ -438,6 +447,7 @@ export async function importProspects(
       phone: keep('phone', old?.phone),
       email: keep('email', old?.email),
       city: city || null,
+      region: keep('region', old?.region),
       source: keep('source', old?.source) ?? 'Import',
       object: keep('object', old?.object),
       status: statusText || !old ? status : (old.status as string),

@@ -5961,3 +5961,5 @@ Testadresse.
   (App Store, `APP_STORE_URL`) und QR Android (Web-App `<PUBLIC_URL>/app`), Anmeldehinweis. **Apple: „Händlerstatus nicht
   bereitgestellt“** → App ist in der EU erst nach Angabe des DSA-Händlerstatus verfügbar (App Store Connect →
   Geschäftlich → Digital Services Act; GmbH = Händler, Anschrift/Telefon/E-Mail werden im Store angezeigt).
+- 2026-11-23: **„Grund der Änderung“ an der Leistung entfernt** (Ahmed): Preis, Menge, Zeitraum lassen sich ohne Grund
+  ändern. Alter und neuer Wert stehen weiter im Protokoll (`audit_log` details `aenderungen`); ersetzt die Pflicht vom 08.11.

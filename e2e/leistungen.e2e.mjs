@@ -118,8 +118,7 @@ check(
 console.log('4. Bearbeiten');
 await p.click(`a:has-text("Glasreinigung E2E ${tag}")`);
 await p.fill('#unit_price', '1.250,00');
-check('Grund der Änderung wird Pflicht', await p.$eval('#change_reason', (e) => e.required));
-await p.fill('#change_reason', 'Nachtrag Kunde (Test)');
+check('kein Feld Grund der Änderung', (await p.$('#change_reason')) === null);
 await p.click('button:has-text("Leistung aktualisieren")');
 await p.waitForLoadState();
 check('Preis geändert', (await body(p)).includes('1.250,00'));

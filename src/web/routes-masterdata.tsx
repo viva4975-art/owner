@@ -2808,10 +2808,7 @@ export function registerMasterdataRoutes(ctx: Ctx) {
     if (body.attach_timesheet_field === '1') parsed.data.attach_timesheet = body.attach_timesheet === 'on';
     if (body.auto_invoice_field === '1') parsed.data.auto_invoice = body.auto_invoice === 'on';
     if (body.no_bill_months_field === '1') parsed.data.no_bill_months ??= [];
-    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress, {
-      reason: typeof body.change_reason === 'string' ? body.change_reason : null,
-      requireReason: true,
-    });
+    await saveService(sql, c.req.param('sid'), id, parsed.data, c.get('actor'), billAddress);
     return back(c, `/objekte/${id}/leistungen`, { ok: 'Leistung gespeichert.' });
   });
 

@@ -257,6 +257,29 @@ describe.skipIf(!available)('Budgetplanung', () => {
         'test',
       ),
     ).rejects.toThrow(/Stundensatz/);
+    // Nachunternehmer von Hand: ersetzt die Bestellung im April, zählt in der Spalte NU
+    await saveAdjustment(
+      sql,
+      b.id,
+      {
+        id: randomUUID(),
+        site_id: site,
+        customer_id: null,
+        label: 'Glasreinigung Sub',
+        from_month: 4,
+        to_month: 4,
+        revenue_month: 0n,
+        cost_month: 0n,
+        sub_month: 50000n,
+        replace_sub: true,
+        note: null,
+      },
+      'test',
+    );
+    d = (await budgetData(sql, 2027))!;
+    const r3 = d.rows.find((x) => x.site_id === site)!;
+    expect(r3.sub[3]).toBe(50000n);
+    expect(r3.adjCost[3]).toBe(0n);
   });
   it('hängende Berechnung (Server-Neustart) wird zurückgesetzt', async () => {
     const b = (await ensureBudget(sql, 2027, 'test'))!;

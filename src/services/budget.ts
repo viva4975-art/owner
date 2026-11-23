@@ -137,6 +137,10 @@ export interface BudgetAdjustment {
   wage_cents: bigint;
   /** Stunden ersetzen die Einsatzplanung des Objekts in diesen Monaten */
   replace_plan: boolean;
+  /** Nachunternehmerkosten je Monat von Hand (Spalte NU) */
+  sub_month: bigint;
+  /** ersetzt die NU-Kosten laut Bestellung in diesen Monaten */
+  replace_sub: boolean;
   note: string | null;
 }
 
@@ -342,7 +346,18 @@ export async function budgetRevenue(
   };
   // Objekte mit laufender (nicht einmaliger) Leistung im Jahr – nur sie bekommen „Sonderleistungen wie Vorjahr“
   // (abgeschlossene Baureinigung o. ä. mit nur einmaligen Leistungen soll nicht im Plan stehen, Ahmed 22.11.)
+  // Ebenso Objekte, an denen im Jahr eigene Leute eingeplant sind oder eine NU-Bestellung läuft (Ahmed 23.11.:
+  // Objekt mit Kosten, aber ohne angelegte regelmäßige Leistung bekam sonst keinen Umsatz wie Vorjahr)
   const running = new Set(services.filter((s) => s.billing_cycle !== 'einmalig').map((s) => s.site_id));
+  for (const x of await sql<{ site_id: string }[]>`
+      select distinct site_id from app.shift_plans
+       where employee_id is not null and valid_from <= ${yEnd} and (valid_until is null or valid_until >= ${yStart})
+      union
+      select distinct coalesce(ss.site_id, sc.site_id) from app.subcontracts sc
+        left join app.subcontract_sites ss on ss.subcontract_id = sc.id
+       where sc.status = 'erteilt' and sc.valid_from <= ${yEnd}
+         and (sc.valid_to is null or sc.valid_to >= ${yStart})`)
+    if (x.site_id) running.add(x.site_id);
   for (const sv of services) {
     const r = row(sv.site_id);
     const step = CYCLE_MONTHS[sv.billing_cycle];
@@ -938,29 +953,43 @@ export async function deleteCostRow(sql: Sql, budgetId: string, rowId: string, a
 export async function saveAdjustment(
   sql: Sql,
   budgetId: string,
-  input: Omit<BudgetAdjustment, 'note' | 'hours_month' | 'wage_cents' | 'replace_plan'> & {
+  input: Omit<
+    BudgetAdjustment,
+    'note' | 'hours_month' | 'wage_cents' | 'replace_plan' | 'sub_month' | 'replace_sub'
+  > & {
     note: string | null;
     hours_month?: number;
     wage_cents?: bigint;
     replace_plan?: boolean;
+    sub_month?: bigint;
+    replace_sub?: boolean;
   },
   actor: string,
 ) {
-  const a = { hours_month: 0, wage_cents: 0n, replace_plan: false, ...input };
+  const a = {
+    hours_month: 0,
+    wage_cents: 0n,
+    replace_plan: false,
+    sub_month: 0n,
+    replace_sub: false,
+    ...input,
+  };
   assertDraft(await budgetById(sql, budgetId));
   if (!a.label.trim()) throw new BusinessError('Bezeichnung fehlt');
   if (a.from_month < 1 || a.to_month > 12 || a.to_month < a.from_month)
     throw new BusinessError('Monate ungültig');
   if (!(a.hours_month >= 0 && a.hours_month <= 100000)) throw new BusinessError('Stunden je Monat ungültig');
   if (a.hours_month > 0 && a.wage_cents <= 0n) throw new BusinessError('Stundensatz fehlt');
-  if (a.revenue_month === 0n && a.cost_month === 0n && !a.hours_month)
-    throw new BusinessError('Umsatz, Kosten oder Stunden je Monat angeben');
+  if (a.sub_month < 0n) throw new BusinessError('Nachunternehmerkosten dürfen nicht negativ sein');
+  if (a.revenue_month === 0n && a.cost_month === 0n && !a.hours_month && a.sub_month === 0n && !a.replace_sub)
+    throw new BusinessError('Umsatz, Kosten, Nachunternehmer oder Stunden je Monat angeben');
   await sql`
     insert into app.budget_adjustments (id, budget_id, site_id, customer_id, label, from_month, to_month,
-      revenue_month, cost_month, hours_month, wage_cents, replace_plan, note, created_by)
+      revenue_month, cost_month, hours_month, wage_cents, replace_plan, sub_month, replace_sub, note, created_by)
     values (${a.id}, ${budgetId}, ${a.site_id}, ${a.customer_id}, ${a.label.trim()}, ${a.from_month}, ${a.to_month},
             ${a.revenue_month}, ${a.cost_month}, ${a.hours_month}, ${a.wage_cents},
-            ${!!a.site_id && a.replace_plan && a.hours_month > 0}, ${a.note}, ${actor})
+            ${!!a.site_id && a.replace_plan && a.hours_month > 0}, ${a.sub_month}, ${!!a.site_id && a.replace_sub},
+            ${a.note}, ${actor})
     on conflict (id) do nothing`;
   await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
             values (${actor}, 'create', 'budget_adjustment', ${a.id}, ${sql.json({ label: a.label, site: a.site_id })})`;
@@ -1071,7 +1100,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
         from app.budget_costs where budget_id = ${budget.id} order by sort, label`,
     sql<BudgetAdjustment[]>`
       select id, site_id, customer_id, label, from_month, to_month, revenue_month, cost_month,
-             hours_month::float8 as hours_month, wage_cents, replace_plan, note
+             hours_month::float8 as hours_month, wage_cents, replace_plan, sub_month, replace_sub, note
         from app.budget_adjustments where budget_id = ${budget.id} order by created_at`,
     sql<
       {
@@ -1098,6 +1127,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     a.revenue_month = BigInt(a.revenue_month);
     a.cost_month = BigInt(a.cost_month);
     a.wage_cents = BigInt(a.wage_cents);
+    a.sub_month = BigInt(a.sub_month);
   }
   const siteMap = new Map(sites.map((s) => [s.id, s]));
   const custName = new Map(sites.map((s) => [s.customer_id, [s.customer_name, s.customer_no] as const]));
@@ -1182,6 +1212,12 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
         r.minutes[i] = 0;
       }
     }
+  // NU-Kosten von Hand, die die Bestellungen ersetzen: NU dieser Monate erst leeren
+  for (const a of adjustments)
+    if (a.site_id && a.replace_sub && !exclMap.has(a.site_id)) {
+      const r = siteRow(a.site_id);
+      for (let i = a.from_month - 1; i < a.to_month; i++) r.sub[i] = 0n;
+    }
   for (const a of adjustments) {
     let r: BudgetRow;
     if (a.site_id && exclMap.has(a.site_id)) continue;
@@ -1204,6 +1240,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     for (let i = a.from_month - 1; i < a.to_month; i++) {
       r.adjRevenue[i]! += a.revenue_month;
       r.adjCost[i]! += a.cost_month;
+      r.sub[i]! += a.sub_month;
       r.labor[i]! += hoursCost;
       r.minutes[i]! += Math.round(a.hours_month * 60);
     }

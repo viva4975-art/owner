@@ -28,6 +28,7 @@ import {
   setSiteExcluded,
   startBudgetCompute,
   startBudgetAuto,
+  type BudgetAdjustment,
 } from '../services/budget.js';
 import { BusinessError } from '../services/errors.js';
 import type { AppEnv, Ctx } from './app.js';
@@ -693,6 +694,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         </>
       );
     } else if (view === 'objekt') {
+      const adjBySite = new Map<string, BudgetAdjustment[]>();
+      for (const a of d.adjustments)
+        if (a.site_id) adjBySite.set(a.site_id, [...(adjBySite.get(a.site_id) ?? []), a]);
       body = (
         <>
           <div class="table-wrap">
@@ -728,6 +732,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                       {total(r.revenue) > 0n &&
                         total(r.minutes.map(BigInt)) === 0n &&
                         total(r.sub) === 0n && <div class="cost-flag">keine Einsätze/NU geplant</div>}
+                      {r.site_id && <AdjNote list={adjBySite.get(r.site_id)} />}
                     </td>
                     <AmountCells a={agg([r])} />
                   </tr>
@@ -811,6 +816,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                         <td class="r">{euro(a.revenue_month)}</td>
                         <td class="r">
                           {euro(a.cost_month)}
+                          {(a.sub_month > 0n || a.replace_sub) && (
+                            <div class="small mut">
+                              NU {euro(a.sub_month)}
+                              {a.replace_sub ? ' (statt Bestellung)' : ''}
+                            </div>
+                          )}
                           {a.hours_month > 0 && (
                             <div class="small mut">
                               + {a.hours_month.toLocaleString('de-DE')} Std. × {euro(a.wage_cents)}
@@ -1721,6 +1732,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                     <td class="r">{euro(x.revenue_month)}</td>
                     <td class="r">
                       {euro(x.cost_month)}
+                      {(x.sub_month > 0n || x.replace_sub) && (
+                        <div class="small mut">
+                          NU {euro(x.sub_month)}
+                          {x.replace_sub ? ' (statt Bestellung)' : ''}
+                        </div>
+                      )}
                       {x.hours_month > 0 && (
                         <div class="small mut">
                           + {x.hours_month.toLocaleString('de-DE')} Std. × {euro(x.wage_cents)}
@@ -2342,6 +2359,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           hours_month: hoursIn,
           wage_cents: hoursIn > 0 ? moneyIn(b.wage) : 0n,
           replace_plan: b.replace_plan === '1',
+          sub_month: moneyIn(b.sub),
+          replace_sub: b.replace_sub === '1',
           note: typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 500) : null,
         },
         c.get('actor'),
@@ -2454,7 +2473,18 @@ const AdjustmentForm = ({
         </label>
       )}
       <label>
-        Sonstige Kosten je Monat € (NU, Material)
+        Nachunternehmer je Monat € (netto)
+        <input name="sub" inputmode="decimal" placeholder="0,00" />
+        <span class="small mut">zählt in der Spalte Nachunternehmer</span>
+      </label>
+      {siteId && (
+        <label class="chk">
+          <input type="checkbox" name="replace_sub" value="1" /> ersetzt die Nachunternehmerkosten laut
+          Bestellung in diesen Monaten (sonst zusätzlich)
+        </label>
+      )}
+      <label>
+        Sonstige Kosten je Monat € (Material o. ä.)
         <input name="cost" inputmode="decimal" placeholder="0,00" />
       </label>
       <label>
@@ -2467,6 +2497,28 @@ const AdjustmentForm = ({
     </div>
   </form>
 );
+
+/** Kurzinfo der von Hand eingetragenen Anpassungen eines Objekts (Objektliste) */
+const AdjNote = ({ list }: { list: BudgetAdjustment[] | undefined }) =>
+  list?.length ? (
+    <div class="small" style="margin-top:4px;color:#64152f">
+      {list.map((a) => {
+        const parts = [
+          a.revenue_month !== 0n && `Umsatz ${euro(a.revenue_month)}`,
+          a.hours_month > 0 &&
+            `${a.hours_month.toLocaleString('de-DE')} Std. × ${euro(a.wage_cents)}${a.replace_plan ? ' (statt Plan)' : ''}`,
+          (a.sub_month > 0n || a.replace_sub) &&
+            `NU ${euro(a.sub_month)}${a.replace_sub ? ' (statt Bestellung)' : ''}`,
+          a.cost_month !== 0n && `Kosten ${euro(a.cost_month)}`,
+        ].filter(Boolean);
+        return (
+          <div>
+            ✎ {a.label}: {parts.join(' · ')} je Monat ({MON[a.from_month - 1]}–{MON[a.to_month - 1]})
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
 
 /** Formular Kostenposition: gleicher Betrag je Monat, Jahresbetrag oder je Monat einzeln */
 const CostForm = ({

@@ -5934,3 +5934,11 @@ Testadresse.
   (weitere Orte in `REGIONS` ergänzen). Test `regions.test.ts`, `prospects-import.db.test.ts`.
 - 2026-11-23: Budget → Gemeinkosten → „Wer steckt dahinter?“: Auswahl „zählt als“ war zu schmal (nur „(“ sichtbar) – Spalte
   jetzt mind. 210 px, Auswahl ohne Suchfeld, Zusatz „(auto)“ statt „(automatisch)“.
+- 2026-11-23: **Budget: Vorjahr bei Objekten ohne regelmäßige Leistung, NU-Kosten von Hand, Anpassungen in der Liste**
+  (Ahmed, Finanzkasse Krumbach: „Kosten ohne Umsatz“, Vj. 4.250 € nicht übernommen): „Sonderleistungen wie Vorjahr“
+  gab es nur für Objekte mit angelegter regelmäßiger Leistung. Jetzt auch für Objekte, an denen im Planjahr eigene
+  Leute eingeplant sind oder eine NU-Bestellung erteilt ist (`budgetRevenue`). Wirkt beim nächsten Neuberechnen.
+  **Anpassung je Objekt/Neugeschäft:** neues Feld „Nachunternehmer je Monat €“ (zählt in der Spalte NU) und Häkchen
+  „ersetzt die NU-Kosten laut Bestellung in diesen Monaten“ (`budget_adjustments.sub_month/replace_sub`, Migration
+  `20270205000001`); „Sonstige Kosten“ nur noch für Material o. ä. Objektliste zeigt unter jedem Objekt die von Hand
+  eingetragenen Anpassungen (Umsatz, Stunden × Satz, NU, Kosten je Monat, Monate).

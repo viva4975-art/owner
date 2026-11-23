@@ -27,6 +27,7 @@ import {
   setPersonCategory,
   setSiteExcluded,
   startBudgetCompute,
+  startBudgetAuto,
 } from '../services/budget.js';
 import { BusinessError } from '../services/errors.js';
 import type { AppEnv, Ctx } from './app.js';
@@ -563,8 +564,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     let autoStarted = false;
     if (draft && !b.computing && (await budgetStale(sql, b)))
       try {
-        void (await startBudgetCompute(sql, b.id, 'automatisch'));
-        autoStarted = true;
+        autoStarted = await startBudgetAuto(sql, b.id);
       } catch {
         /* läuft schon */
       }

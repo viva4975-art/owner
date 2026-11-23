@@ -258,4 +258,13 @@ describe.skipIf(!available)('Budgetplanung', () => {
       ),
     ).rejects.toThrow(/Stundensatz/);
   });
+  it('hängende Berechnung (Server-Neustart) wird zurückgesetzt', async () => {
+    const b = (await ensureBudget(sql, 2027, 'test'))!;
+    await sql`update app.budgets set computing = true, compute_error = null where id = ${b.id}`;
+    const g = (await getBudget(sql, 2027))!;
+    expect(g.computing).toBe(false);
+    expect(g.compute_error).toMatch(/unterbrochen/);
+    const [r] = await sql<{ computing: boolean }[]>`select computing from app.budgets where id = ${b.id}`;
+    expect(r!.computing).toBe(false);
+  });
 });

@@ -150,15 +150,42 @@ export async function listBudgets(sql: Sql) {
     select id, year, status, computed_at::text from app.budgets order by year desc`;
 }
 
+/**
+ * Laufende Berechnungen dieses Server-Prozesses. Die Spalte `computing` allein reicht nicht: Startet der Server mitten in
+ * einer Berechnung neu (automatisches Update), bliebe sie für immer auf „läuft“. Maßgeblich ist daher, ob dieser Prozess
+ * die Berechnung wirklich ausführt; ein liegengebliebenes Kennzeichen wird beim Lesen zurückgesetzt.
+ */
+const running = new Map<string, number>();
+/** letzter automatischer Versuch je Budget (keine Endlosschleife, wenn die Berechnung scheitert) */
+const lastAuto = new Map<string, number>();
+const COMPUTE_TIMEOUT_MS = 15 * 60_000;
+
+async function fixStale(sql: Sql, b: Budget | undefined): Promise<Budget | null> {
+  if (!b) return null;
+  if (b.computing && !running.has(b.id)) {
+    await sql`update app.budgets set computing = false,
+                compute_error = coalesce(compute_error, 'Berechnung wurde unterbrochen (Server-Neustart) – bitte neu berechnen')
+              where id = ${b.id} and computing`;
+    return {
+      ...b,
+      computing: false,
+      compute_error:
+        b.compute_error ?? 'Berechnung wurde unterbrochen (Server-Neustart) – bitte neu berechnen',
+    };
+  }
+  return b;
+}
+
 export async function getBudget(sql: Sql, year: number): Promise<Budget | null> {
   const [b] = await sql<Budget[]>`select ${BUDGET_COLS(sql)} from app.budgets where year = ${year}`;
-  return b ?? null;
+  return fixStale(sql, b);
 }
 
 async function budgetById(sql: Sql, id: string): Promise<Budget> {
   const [b] = await sql<Budget[]>`select ${BUDGET_COLS(sql)} from app.budgets where id = ${id}`;
-  if (!b) throw new BusinessError('Budget nicht gefunden');
-  return b;
+  const f = await fixStale(sql, b);
+  if (!f) throw new BusinessError('Budget nicht gefunden');
+  return f;
 }
 
 /** Budget für ein Jahr anlegen (mit allen Kostenarten), vorhandenes zurückgeben. */
@@ -696,19 +723,36 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
 export async function startBudgetCompute(sql: Sql, id: string, actor: string): Promise<Promise<void>> {
   const b = await budgetById(sql, id);
   assertDraft(b);
-  const [got] = await sql<{ id: string }[]>`
-    update app.budgets set computing = true, compute_error = null
-     where id = ${id} and (not computing or updated_at < now() - interval '20 minutes') returning id`;
-  if (!got) throw new BusinessError('Berechnung läuft bereits');
-  return computeBudget(sql, id, actor)
+  if (running.has(id)) throw new BusinessError('Berechnung läuft bereits');
+  running.set(id, Date.now());
+  await sql`update app.budgets set computing = true, compute_error = null where id = ${id}`;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error('Berechnung dauerte länger als 15 Minuten und wurde abgebrochen')),
+      COMPUTE_TIMEOUT_MS,
+    );
+  });
+  return Promise.race([computeBudget(sql, id, actor), timeout])
     .catch(async (e: unknown) => {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('Budget-Berechnung', msg);
       await sql`update app.budgets set compute_error = ${msg.slice(0, 500)} where id = ${id}`.catch(() => {});
     })
-    .finally(() =>
-      sql`update app.budgets set computing = false where id = ${id}`.catch(() => {}).then(() => {}),
-    );
+    .finally(() => {
+      clearTimeout(timer);
+      running.delete(id);
+      return sql`update app.budgets set computing = false where id = ${id}`.catch(() => {}).then(() => {});
+    });
+}
+
+/** Automatisch neu rechnen – höchstens alle 30 Minuten je Budget (scheitert die Berechnung, nicht in Schleife). */
+export async function startBudgetAuto(sql: Sql, id: string): Promise<boolean> {
+  const last = lastAuto.get(id) ?? 0;
+  if (running.has(id) || Date.now() - last < 30 * 60_000) return false;
+  lastAuto.set(id, Date.now());
+  void (await startBudgetCompute(sql, id, 'automatisch'));
+  return true;
 }
 
 // --------------------------------------------------------------------------------------------- Gemeinkosten/Anpassungen
@@ -829,13 +873,12 @@ export async function budgetStale(sql: Sql, b: Budget): Promise<boolean> {
 /** Stündlich: Budgets (Entwurf) für dieses und kommende Jahre neu rechnen, wenn sich Grundlagen geändert haben. */
 export async function refreshStaleBudgets(sql: Sql, thisYear: number): Promise<number> {
   const list = await sql<{ year: number }[]>`
-    select year from app.budgets where status = 'entwurf' and year >= ${thisYear} and not computing`;
+    select year from app.budgets where status = 'entwurf' and year >= ${thisYear}`;
   let n = 0;
   for (const { year } of list) {
     const b = await getBudget(sql, year);
     if (!b || !(await budgetStale(sql, b))) continue;
-    await await startBudgetCompute(sql, b.id, 'automatisch').catch(() => null);
-    n++;
+    if (await startBudgetAuto(sql, b.id).catch(() => false)) n++;
   }
   return n;
 }

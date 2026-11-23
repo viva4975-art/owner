@@ -5918,3 +5918,10 @@ Testadresse.
   Objekt und Sonderreinigung fehlten. Jetzt Gesamtwert je Monat aus `monthlyRevenue` (Auswertungen → Statistiken,
   Leistungszeitraum, eigene + übernommene Rechnungen); der Rest steht als Zeile „Vorjahr: übrige Rechnungen (inaktive
   Objekte, ohne Objekt)“ (nur Vorjahr, kein Plan-Umsatz). Gilt sofort für Seite, Diagramme, PDF und Excel.
+- 2026-11-23: **Fund Budget „Berechnung läuft“ seit gestern** (Ahmed): Startete der Server während einer Berechnung neu
+  (automatisches Update alle 10 Min.), blieb `budgets.computing` für immer auf „läuft“ – der Knopf „Neu berechnen“ war
+  ausgeblendet, die automatische Neuberechnung übersprang das Budget. Jetzt merkt sich der Server-Prozess seine laufenden
+  Berechnungen (`running` in `budget.ts`); steht „läuft“ in der Datenbank, ohne dass der Prozess rechnet, wird es beim
+  Lesen zurückgesetzt mit Hinweis „Berechnung wurde unterbrochen (Server-Neustart) – bitte neu berechnen“. Berechnung
+  bricht nach 15 Min. mit Fehlermeldung ab; automatische Neuberechnung (Seite/stündlich) höchstens alle 30 Min. je Budget
+  (`startBudgetAuto`), damit eine scheiternde Berechnung nicht in Schleife läuft. Test in `budget.db.test.ts`.

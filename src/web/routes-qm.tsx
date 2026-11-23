@@ -554,6 +554,7 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             ['/qm/nu-auftrag', 'building', 'NU-Auftrag', 'beim Büro anfragen'],
             ['/qm/nu-unterschrift', 'doc', 'NU unterschreiben', 'Bestellung am Handy unterschreiben lassen'],
             ['/arbeitsscheine', 'times', 'Arbeitsschein', 'erstellen, unterschreiben'],
+            ['/app-aushang', 'doc', 'App-Aushang', 'QR-Code zum Installieren zeigen'],
           ]}
         />
         {/* Abmelden direkt in der App (gemeinsam genutzte Tablets; Bedientest 10.10.) */}

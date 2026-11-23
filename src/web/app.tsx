@@ -63,6 +63,7 @@ import { registerWordTemplateRoutes } from './routes-word-templates.js';
 import { registerLegacyInvoiceRoutes } from './routes-legacy-invoices.js';
 import { registerFirstAidRoutes } from './routes-first-aid.js';
 import { registerTeamRoutes } from './routes-team.js';
+import { registerAppPosterRoutes } from './routes-app-poster.js';
 import { inboxCount, registerInboxRoutes } from './routes-inbox.js';
 import { registerHrRequiredRoutes } from './routes-hr-required.js';
 import { registerSubcontractorRoutes } from './routes-subcontractors.js';
@@ -673,6 +674,7 @@ export function createApp(deps: Deps) {
   registerHrRequiredRoutes(ctx);
   registerFirstAidRoutes(ctx);
   registerTeamRoutes(ctx);
+  registerAppPosterRoutes(ctx);
   registerInboxRoutes(ctx);
   registerNuBillingRoutes(ctx);
   registerBudgetRoutes(ctx);

@@ -40,6 +40,8 @@ const RULES: [RegExp, Role[]][] = [
   [/^\/personal\/export/, HR],
   [/^\/bewerber\/stellen\/[0-9a-f-]{36}\/plakat$/, ALL],
   [/^\/stellen$/, ALL],
+  // Aushang „App installieren“ (QR-Codes) – für alle
+  [/^\/app-aushang(\.pdf|\.jpg)?$/, ALL],
   [/^\/bewerber(\/|$)/, HR],
   // Objektleitung: Fehlende Unterlagen ihrer Leute (ohne Stammdaten; Ahmed 19.10.)
   [/^\/personal\/unterlagen(\.csv|\.pdf)?$/, [...HR, 'objektleitung']],

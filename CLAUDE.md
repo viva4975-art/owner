@@ -5954,3 +5954,10 @@ Testadresse.
     wer das nicht will, schaltet ihn ab).
   - **Budget → Objekte: „Kosten anzeigen“** je Objekt aufklappbar: Lohn (mit Std.), Urlaub/Krank, Nachunternehmer,
     Material, sonstige Kosten von Hand, Gemeinkosten-Anteil, Summe und die NU-Bestellungen des Jahres (Link).
+- 2026-11-23: **Aushang „App installieren“ mit QR-Codes** (Ahmed, App-Store-Link der nicht gelisteten App
+  `https://apps.apple.com/.../id6823292857`): Seite `/app-aushang` (Verwaltung → „App installieren (QR-Aushang)“, in der
+  Verwaltungs-App unter Formulare „App-Aushang“, alle Rollen) mit Vorschau, Links und Download **PDF (A4)** und **JPEG**
+  (`src/services/app-poster.ts`, mit sharp gezeichnet, PDF = Bild ganzseitig): Bordeaux-Kopf mit Logo, QR iPhone
+  (App Store, `APP_STORE_URL`) und QR Android (Web-App `<PUBLIC_URL>/app`), Anmeldehinweis. **Apple: „Händlerstatus nicht
+  bereitgestellt“** → App ist in der EU erst nach Angabe des DSA-Händlerstatus verfügbar (App Store Connect →
+  Geschäftlich → Digital Services Act; GmbH = Händler, Anschrift/Telefon/E-Mail werden im Store angezeigt).

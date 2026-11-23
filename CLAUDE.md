@@ -5932,3 +5932,5 @@ Testadresse.
   Funnel und Status-Chips zählen dann nur diese Region; Region als Schild in der Karte. CSV-Export mit Spalte Region und
   gleichem Filter, Import liest Spalte „Region“/„Gebiet“. Orte außerhalb der Liste → Region von Hand eintragen
   (weitere Orte in `REGIONS` ergänzen). Test `regions.test.ts`, `prospects-import.db.test.ts`.
+- 2026-11-23: Budget → Gemeinkosten → „Wer steckt dahinter?“: Auswahl „zählt als“ war zu schmal (nur „(“ sichtbar) – Spalte
+  jetzt mind. 210 px, Auswahl ohne Suchfeld, Zusatz „(auto)“ statt „(automatisch)“.

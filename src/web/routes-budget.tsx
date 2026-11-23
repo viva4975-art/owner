@@ -196,7 +196,7 @@ const PersonTable = ({
             <th class="r">Lohn/Gehalt</th>
             <th class="r">AG-Kosten</th>
             <th class="r">Kosten</th>
-            <th>zählt als</th>
+            <th style="min-width:210px">zählt als</th>
           </tr>
         </thead>
         <tbody>
@@ -217,11 +217,17 @@ const PersonTable = ({
                 {canChange ? (
                   <form method="post" action={`/auswertungen/budget/${year}/person/${p.employee_id}`}>
                     <input type="hidden" name="zurueck" value={back} />
-                    <select name="kategorie" data-autosubmit aria-label="zählt als">
+                    <select
+                      name="kategorie"
+                      data-autosubmit
+                      data-nosearch
+                      aria-label="zählt als"
+                      style="min-width:200px;width:auto"
+                    >
                       {(['lead', 'office', 'gf', 'none'] as const).map((k) => (
                         <option value={k} selected={p.category === k}>
                           {CAT_LABEL[k]}
-                          {k === p.auto_category ? ' (automatisch)' : ''}
+                          {k === p.auto_category ? ' (auto)' : ''}
                         </option>
                       ))}
                     </select>

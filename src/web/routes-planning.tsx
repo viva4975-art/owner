@@ -25,7 +25,7 @@ import {
   plannedAtSites,
   applicationDate,
 } from '../services/absences.js';
-import { maxAbsentPerSite, siteAbsenceDays } from '../services/leave-overlap.js';
+import { maxAbsentPerSite, siteAbsenceDays, siteOverlaps } from '../services/leave-overlap.js';
 import { SiteOptions } from './site-options.js';
 import { isOpen, leaveWarnings, warningText } from '../services/leave-warnings.js';
 import { listEmployees } from '../services/employees.js';
@@ -575,9 +575,20 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const today0 = todayBerlin();
     const sc0 = await olScope(c, addDays(today0, -30), addDays(today0, 365));
     const open = (await listAbsences(sql, { status: ['beantragt'] })).filter((a) => inOl(sc0, a.employee_id));
+    const ov = await siteOverlaps(sql, {
+      from: today0,
+      to: addDays(today0, 90),
+      siteIds: c.get('sites') ?? null,
+    });
     const tabs: Tab[] = [
       { key: 'offen', label: 'Offene Anträge', href: '/urlaub', count: open.length },
       { key: 'kalender', label: 'Kalender', href: '/urlaub/kalender' },
+      {
+        key: 'ueberschneidungen',
+        label: 'Überschneidungen',
+        href: '/urlaub/ueberschneidungen',
+        count: ov.length,
+      },
       { key: 'alle', label: 'Alle', href: '/urlaub/alle' },
     ];
     return page(
@@ -612,6 +623,110 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             action="/urlaub"
           />
         </div>
+      </>,
+    );
+  });
+
+  // Überschneidungen (Ahmed 24.11.): Objekte, an denen mehrere Eingeplante gleichzeitig fehlen
+  app.get('/urlaub/ueberschneidungen', async (c) => {
+    const today = todayBerlin();
+    const tage = [30, 60, 90, 180].includes(Number(c.req.query('tage'))) ? Number(c.req.query('tage')) : 90;
+    const ab = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('ab') ?? '') ? c.req.query('ab')! : today;
+    const bis = addDays(ab, tage);
+    const max = await maxAbsentPerSite(sql);
+    const list = await siteOverlaps(sql, { from: ab, to: bis, siteIds: c.get('sites') ?? null });
+    const kindTxt = (a: { kind: AbsenceKind; status: string }) =>
+      `${ABSENCE_LABEL[a.kind]}${a.status === 'beantragt' ? ', beantragt' : ''}`;
+    return urlaubShell(
+      c,
+      'ueberschneidungen',
+      <>
+        <form
+          method="get"
+          class="ls-bar"
+          style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px"
+        >
+          <label>
+            ab
+            <input type="date" name="ab" value={ab} />
+          </label>
+          <label>
+            Zeitraum
+            <select name="tage">
+              {[30, 60, 90, 180].map((t) => (
+                <option value={String(t)} selected={t === tage}>
+                  {t} Tage
+                </option>
+              ))}
+            </select>
+          </label>
+          <button class="btn sec sm">Anzeigen</button>
+        </form>
+        <p class="muted" style="margin:0 0 12px">
+          Objekte, an denen im Zeitraum {dateDe(ab)}–{dateDe(bis)} mindestens 2 dort eingeplante Personen
+          gleichzeitig abwesend sind (beantragt oder genehmigt, auch krank). Schließzeiten des Objekts (z. B.
+          Schulferien) und Feiertage zählen nicht – da ist niemand eingeplant.
+          {max !== null &&
+            ` Rot = mehr als ${max} gleichzeitig (Grenze unter Zeiterfassung → Einstellungen).`}
+        </p>
+        {list.length === 0 ? (
+          <div class="empty">Keine Überschneidungen im Zeitraum.</div>
+        ) : (
+          <div class="card" style="padding:0">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Objekt</th>
+                  <th>Zeitraum</th>
+                  <th class="r">gleichzeitig</th>
+                  <th>Abwesend</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.flatMap((o) =>
+                  o.ranges.map((r, i) => {
+                    const over = max !== null && r.absent.length > max;
+                    return (
+                      <tr style={over ? 'background:#fbe0e0' : 'background:#fdf6e0'}>
+                        <td>
+                          {i === 0 && (
+                            <>
+                              <a href={`/objekte/${o.siteId}`}>
+                                <b>{o.siteName}</b>
+                              </a>
+                              <div class="muted" style="font-size:12px">
+                                {o.siteNo} · {o.customerName}
+                              </div>
+                            </>
+                          )}
+                        </td>
+                        <td style="white-space:nowrap">
+                          {r.from === r.to ? dateDe(r.from) : `${dateDe(r.from)} – ${dateDe(r.to)}`}
+                          <div class="muted" style="font-size:12px">
+                            {anz(r.days, 'Einsatztag', 'Einsatztage')}
+                          </div>
+                        </td>
+                        <td class="r" style={over ? 'color:#a4161a;font-weight:700' : 'font-weight:600'}>
+                          {r.absent.length} von {r.planned}
+                        </td>
+                        <td>{r.absent.map((a) => `${a.name} (${kindTxt(a)})`).join(', ')}</td>
+                        <td>
+                          <a
+                            class="btn sec sm"
+                            href={`/urlaub/kalender?monat=${r.from.slice(0, 7)}&objekt=${o.siteId}`}
+                          >
+                            Kalender
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  }),
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </>,
     );
   });

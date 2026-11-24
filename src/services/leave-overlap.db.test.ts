@@ -4,7 +4,8 @@ import type { Sql } from '../db/client.js';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import { addDays, holidayName, isoWeekday } from '../domain/time/holidays.js';
 import { decideAbsence, requestAbsence } from './absences.js';
-import { saveMaxAbsentPerSite, siteAbsenceDays } from './leave-overlap.js';
+import { saveMaxAbsentPerSite, siteAbsenceDays, siteOverlaps } from './leave-overlap.js';
+import { addSiteClosure } from './site-closures.js';
 import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 import { saveShiftPlan } from './time.js';
@@ -105,5 +106,21 @@ describe.skipIf(!available)('Gleichzeitig abwesend je Objekt (Datenbank)', () =>
     await req(emps[2]!, { start: addDays(d3, 7), end: addDays(d3, 7) }).catch((e: { code?: string }) => {
       expect(e.code).not.toBe('leave_overlap');
     });
+  });
+
+  it('Übersicht Überschneidungen: ab 2 gleichzeitig, nicht an Schließtagen', async () => {
+    const ov = await siteOverlaps(sql, { from: day, to: day });
+    const o = ov.find((x) => x.siteId === DEMO.siteSchool);
+    expect(o?.ranges[0]?.absent.length).toBe(3);
+    // Objekt an dem Tag geschlossen → keine Überschneidung
+    await addSiteClosure(
+      sql,
+      { id: randomUUID(), siteId: DEMO.siteSchool, from: day, to: day, note: 'Ferien' },
+      'buero',
+    );
+    let d3 = addDays(day, 1);
+    while (isoWeekday(d3) >= 6 || holidayName(d3)) d3 = addDays(d3, 1);
+    const ov2 = await siteOverlaps(sql, { from: day, to: d3 });
+    expect(ov2.find((x) => x.siteId === DEMO.siteSchool)).toBeUndefined();
   });
 });

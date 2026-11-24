@@ -170,3 +170,113 @@ export async function assertLeaveOverlap(
     'leave_overlap',
   );
 }
+
+export interface SiteOverlap {
+  siteId: string;
+  siteName: string;
+  siteNo: string;
+  customerName: string;
+  /** zusammenhängende Tage mit gleicher Besetzung der Abwesenden */
+  ranges: {
+    from: string;
+    to: string;
+    days: number;
+    planned: number;
+    absent: { employeeId: string; name: string; kind: AbsenceKind; status: string }[];
+  }[];
+  /** größte Zahl gleichzeitig Abwesender */
+  peak: number;
+}
+
+const overlapCache = new Map<string, { at: number; v: SiteOverlap[] }>();
+
+/**
+ * Übersicht (Ahmed 24.11.): Objekte, an denen mindestens `min` eingeplante Personen gleichzeitig abwesend sind.
+ * Schließzeiten des Objekts (z. B. Schulferien) und Feiertage zählen nicht – an diesen Tagen ist niemand eingeplant.
+ */
+export async function siteOverlaps(
+  sql: Sql,
+  p: { from: string; to: string; siteIds?: readonly string[] | null; min?: number },
+): Promise<SiteOverlap[]> {
+  const min = p.min ?? 2;
+  const key = `${p.from}|${p.to}|${min}|${p.siteIds ? [...p.siteIds].sort().join(',') : '*'}`;
+  const hit = overlapCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  const abs = await sql<
+    { employee_id: string; name: string; kind: AbsenceKind; status: string; s: string; e: string }[]
+  >`
+    select a.employee_id, e.first_name || ' ' || e.last_name as name, a.kind, a.status,
+           a.start_date::text as s, a.end_date::text as e
+      from app.absences a join app.employees e on e.id = a.employee_id
+     where a.status in ('beantragt', 'genehmigt') and a.start_date <= ${p.to} and a.end_date >= ${p.from}
+     order by a.start_date`;
+  const out: SiteOverlap[] = [];
+  if (abs.length >= min) {
+    const absentIds = [...new Set(abs.map((a) => a.employee_id))];
+    // nur Objekte, an denen mindestens `min` der Abwesenden einen Einsatz haben
+    const cand = await sql<{ site_id: string; site_name: string; site_no: string; customer_name: string }[]>`
+      select p.site_id, s.name as site_name, s.site_no, c.name as customer_name
+        from app.shift_plans p join app.sites s on s.id = p.site_id join app.customers c on c.id = s.customer_id
+       where p.employee_id = any(${absentIds}::uuid[]) and s.active
+         and p.valid_from <= ${p.to} and (p.valid_until is null or p.valid_until >= ${p.from})
+         ${p.siteIds ? sql`and p.site_id = any(${[...p.siteIds]}::uuid[])` : sql``}
+       group by p.site_id, s.name, s.site_no, c.name
+      having count(distinct p.employee_id) >= ${min}`;
+    for (const site of cand) {
+      const shifts = await plannedShifts(sql, {
+        from: p.from,
+        to: p.to,
+        siteId: site.site_id,
+        originalAssignee: true,
+      });
+      const byDay = new Map<string, Set<string>>();
+      for (const s of shifts) {
+        if (s.holiday || !s.plan.employee_id) continue;
+        if (!byDay.has(s.date)) byDay.set(s.date, new Set());
+        byDay.get(s.date)!.add(s.plan.employee_id);
+      }
+      const ranges: SiteOverlap['ranges'] = [];
+      let peak = 0;
+      for (const [date, emps] of [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+        const seen = new Set<string>();
+        const absent = abs
+          .filter((a) => emps.has(a.employee_id) && a.s <= date && a.e >= date)
+          .filter((a) => (seen.has(a.employee_id) ? false : (seen.add(a.employee_id), true)))
+          .map((a) => ({ employeeId: a.employee_id, name: a.name, kind: a.kind, status: a.status }));
+        if (absent.length < min) continue;
+        peak = Math.max(peak, absent.length);
+        const sig = absent
+          .map((a) => `${a.employeeId}:${a.kind}:${a.status}`)
+          .sort()
+          .join('|');
+        const last = ranges[ranges.length - 1];
+        const lastSig = last?.absent
+          .map((a) => `${a.employeeId}:${a.kind}:${a.status}`)
+          .sort()
+          .join('|');
+        // gleiche Abwesende ohne Lücke an Einsatztagen dazwischen → ein Zeitraum (Wochenenden ohne Einsatz überbrückt)
+        const gapFree = last && [...byDay.keys()].filter((d) => d > last.to && d < date).length === 0;
+        if (last && lastSig === sig && gapFree) {
+          last.to = date;
+          last.days += 1;
+          last.planned = Math.max(last.planned, emps.size);
+        } else ranges.push({ from: date, to: date, days: 1, planned: emps.size, absent });
+      }
+      if (ranges.length)
+        out.push({
+          siteId: site.site_id,
+          siteName: site.site_name,
+          siteNo: site.site_no,
+          customerName: site.customer_name,
+          ranges,
+          peak,
+        });
+    }
+  }
+  out.sort(
+    (a, b) => a.ranges[0]!.from.localeCompare(b.ranges[0]!.from) || a.siteName.localeCompare(b.siteName),
+  );
+  overlapCache.set(key, { at: Date.now(), v: out });
+  if (overlapCache.size > 50) overlapCache.delete(overlapCache.keys().next().value!);
+  return out;
+}

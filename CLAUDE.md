@@ -6009,3 +6009,11 @@ Testadresse.
   Filter Kunde und Objekt (nur Leute, die im Zeitraum dort eingeplant sind) und je Objekt oben eine Zeile „abwesend /
   eingeplant“ je Tag, gelb = Grenze erreicht, rot = überschritten. **Planungstafel:** Filter Kunde/Objekt (Einsätze und
   Abwesende nur dieser Objekte). Test `leave-overlap.db.test.ts`.
+- 2026-11-24: **Übersicht „Überschneidungen“** (Ahmed: „separat aufzeigen, wenn 2 gleichzeitig in einem Objekt Urlaub haben,
+  außer bei Schließzeiten“): Urlaub & Abwesenheiten → Reiter **Überschneidungen (n)** (`/urlaub/ueberschneidungen`,
+  `siteOverlaps` in `leave-overlap.ts`, 60 s zwischengespeichert): ab Datum, 30/60/90/180 Tage (Standard heute + 90); je
+  Objekt die Zeiträume, in denen mindestens 2 dort eingeplante Personen gleichzeitig fehlen (beantragt/genehmigt, alle
+  Arten), „n von m“, Namen mit Art, Link zum Urlaubskalender mit Objektfilter; rot = über der Grenze aus Zeiterfassung →
+  Einstellungen. Schließzeiten des Objekts und Feiertage zählen nicht (an diesen Tagen ist niemand eingeplant). Zähler im
+  Reiter = Objekte mit Überschneidung in den nächsten 90 Tagen; Objektleitung nur ihre Objekte. Test in
+  `leave-overlap.db.test.ts`.

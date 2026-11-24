@@ -447,6 +447,7 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
       approved,
       replaceVacation: b.replace_vacation === '1',
       allowNoLeave: b.urlaub_ohne_anspruch === '1',
+      allowOverlap: b.urlaub_ueberschneidung === '1',
       appliedOn: todayBerlin(),
     });
     return c.redirect(
@@ -466,7 +467,14 @@ export function registerQmTeamRoutes({ app, deps }: Ctx) {
     const id = c.req.param('id');
     const mine = (await openRequests(c)).find((a) => a.id === id);
     if (!mine) return c.redirect('/qm/team?ok=Bereits%20entschieden.', 303);
-    await decideAbsence(sql, id, status, c.get('actor'), b.urlaub_ohne_anspruch === '1');
+    await decideAbsence(
+      sql,
+      id,
+      status,
+      c.get('actor'),
+      b.urlaub_ohne_anspruch === '1',
+      b.urlaub_ueberschneidung === '1',
+    );
     return c.redirect(
       `/qm/team?ok=${encodeURIComponent(status === 'genehmigt' ? 'Genehmigt.' : 'Abgelehnt.')}`,
       303,

@@ -5997,3 +5997,15 @@ Testadresse.
   daran nichts; das Finanzamt rechnet 19 % aus dem Preis heraus (Preis gilt als brutto), mit dem Steuerberater klären.
   Gegenüber Privatkäufern ist der Gewährleistungsausschluss einer GmbH unwirksam (§ 476 BGB) – im Streitfall gilt die
   gesetzliche Gewährleistung; nur gegenüber Unternehmen sicher.
+- 2026-11-24: **Gleichzeitig abwesend je Objekt** (Ahmed: „zwei am Objekt gleichzeitig im Urlaub sofort sehen, dem dritten
+  nicht gewähren; Filter Kunde/Objekt“): `src/services/leave-overlap.ts`, Migration `20270209000001`
+  (`time_settings.leave_max_absent`, Standard 2, Zeiterfassung → Einstellungen „Gleichzeitig abwesend je Objekt“, auch aus).
+  Grundlage Einsatzplanung: wer an dem Tag am Objekt eingeplant ist (auch wenn schon vertreten). Abwesend = beantragt oder
+  genehmigt, jede Art. **Rückfrage statt Sperre** beim Eintragen (Büro/Objektleitung, sofort genehmigt), Ändern und
+  Genehmigen von Urlaub/unbezahlt/sonstiges, wenn an einem Objekt der Person dann mehr als n gleichzeitig fehlen: Seite
+  „Trotzdem genehmigen / eintragen?“ mit Objekt, Tagen und Namen → „Ja, trotzdem“ (`urlaub_ueberschneidung=1`,
+  Fehlercode `leave_overlap`, gleiche Rückfrage-Seite wie „kein Resturlaub“ in `app.tsx`). Krankheit nie gesperrt;
+  Anträge aus der Mitarbeiter-App werden erst beim Genehmigen geprüft (auch Eingang/Startseite). **Urlaubskalender:**
+  Filter Kunde und Objekt (nur Leute, die im Zeitraum dort eingeplant sind) und je Objekt oben eine Zeile „abwesend /
+  eingeplant“ je Tag, gelb = Grenze erreicht, rot = überschritten. **Planungstafel:** Filter Kunde/Objekt (Einsätze und
+  Abwesende nur dieser Objekte). Test `leave-overlap.db.test.ts`.

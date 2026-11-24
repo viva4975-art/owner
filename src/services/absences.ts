@@ -6,6 +6,7 @@ import { LEAVE_DAYS_5DAY } from '../domain/time/leave.js';
 import { BusinessError } from './errors.js';
 import { uuidOf } from './fortytools-export-import.js';
 import { leaveOpening } from './leave-import.js';
+import { assertLeaveOverlap } from './leave-overlap.js';
 import { plannedShifts } from './time.js';
 
 /** Zwischenspeicher der Urlaubs-Warnungen (leave-warnings.ts) – bei jeder Urlaubsänderung verwerfen. */
@@ -333,6 +334,8 @@ export async function requestAbsence(
     autoSchool?: boolean;
     /** Antragsdatum (JJJJ-MM-TT), leer = nicht erfasst */
     appliedOn?: string | null;
+    /** trotz zu vieler gleichzeitig Abwesender am Objekt eintragen (nach Rückfrage) */
+    allowOverlap?: boolean;
   },
 ) {
   checkAppliedOn(p.appliedOn);
@@ -352,6 +355,11 @@ export async function requestAbsence(
   if (p.kind === 'urlaub') {
     const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
     if (!dup && !p.allowNoLeave) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
+  }
+  if (p.approved && !p.autoSchool && !p.allowOverlap) {
+    const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
+    if (!dup)
+      await assertLeaveOverlap(sql, { employeeId: p.employeeId, kind: p.kind, start: p.start, end: p.end });
   }
   const changed: string[] = [];
   await sql.begin(async (tx) => {
@@ -449,6 +457,7 @@ export async function updateAbsence(
     note: string | null;
     expectedVersion: number | null;
     allowNoLeave?: boolean;
+    allowOverlap?: boolean;
     /** undefined = unverändert, '' / null = leeren */
     appliedOn?: string | null;
   },
@@ -466,6 +475,18 @@ export async function updateAbsence(
   if (p.end < p.start) throw new BusinessError('„bis“ liegt vor „von“');
   if (p.halfDay && p.start !== p.end) throw new BusinessError('Halber Tag nur für einen einzelnen Tag');
   if (!(p.kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
+  if (
+    a.status === 'genehmigt' &&
+    !p.allowOverlap &&
+    (p.start < a.start_date || p.end > a.end_date || p.kind !== a.kind)
+  )
+    await assertLeaveOverlap(sql, {
+      employeeId: a.employee_id,
+      kind: p.kind,
+      start: p.start,
+      end: p.end,
+      excludeAbsenceId: id,
+    });
   if (p.kind === 'urlaub' && !p.allowNoLeave) {
     // Rest + bisherige Tage dieser Abwesenheit (sie sind im Rest schon abgezogen, falls Urlaub)
     for (let y = Number(p.start.slice(0, 4)); y <= Number(p.end.slice(0, 4)); y++) {
@@ -525,6 +546,7 @@ export async function decideAbsence(
   status: 'genehmigt' | 'abgelehnt' | 'storniert',
   actor: string,
   allowNoLeave = false,
+  allowOverlap = false,
 ) {
   const [a] = await sql<Absence[]>`select * from app.absences where id = ${id}`;
   if (!a) throw new BusinessError('Abwesenheit nicht gefunden');
@@ -538,6 +560,14 @@ export async function decideAbsence(
   // Genehmigen nur mit ausreichendem Urlaubsanspruch (der Antrag ist im Rest schon als „beantragt“ abgezogen)
   if (status === 'genehmigt' && a.kind === 'urlaub' && !allowNoLeave)
     await assertLeaveLeft(sql, a.employee_id, a.start_date, a.end_date, a.half_day, true);
+  if (status === 'genehmigt' && a.status === 'beantragt' && !allowOverlap)
+    await assertLeaveOverlap(sql, {
+      employeeId: a.employee_id,
+      kind: a.kind,
+      start: a.start_date,
+      end: a.end_date,
+      excludeAbsenceId: id,
+    });
   if (!allowed[a.status].includes(status))
     throw new BusinessError(
       `„${ABSENCE_STATUS_LABEL[a.status]}“ kann nicht zu „${ABSENCE_STATUS_LABEL[status]}“ werden`,

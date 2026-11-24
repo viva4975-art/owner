@@ -23,6 +23,7 @@ import { canAccess } from './permissions.js';
 import { arr } from './forms.js';
 import { calRange, type CalView } from './pages-site-calendar.js';
 import { dateDe } from './layout.js';
+import { SiteOptions } from './site-options.js';
 import { freeMovement } from '../services/hr-required-docs.js';
 
 /*
@@ -191,7 +192,43 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         select employee_id, kind, start_date, end_date from app.absences
          where status = 'genehmigt' and start_date <= ${r.to} and end_date >= ${r.from}`,
     ]);
-    const shifts = scope ? allShifts.filter((s) => scope.includes(s.plan.site_id)) : allShifts;
+    // Filter Kunde/Objekt (Ahmed 24.11.)
+    const siteOpts = (
+      await sql<
+        {
+          id: string;
+          site_no: string;
+          name: string;
+          customer_id: string;
+          customer_name: string;
+          street: string | null;
+          city: string | null;
+        }[]
+      >`select s.id, s.site_no, s.name, s.customer_id, c.name as customer_name, s.street, s.city
+          from app.sites s join app.customers c on c.id = s.customer_id
+         where s.active order by c.name, s.site_no`
+    ).filter((s) => !scope || scope.includes(s.id));
+    const kunde = /^[0-9a-f-]{36}$/.test(q.kunde ?? '') ? q.kunde! : '';
+    const objekt = /^[0-9a-f-]{36}$/.test(q.objekt ?? '') ? q.objekt! : '';
+    const siteSel = objekt
+      ? new Set([objekt])
+      : kunde
+        ? new Set(siteOpts.filter((s) => s.customer_id === kunde).map((s) => s.id))
+        : null;
+    const shifts = allShifts.filter(
+      (s) => (!scope || scope.includes(s.plan.site_id)) && (!siteSel || siteSel.has(s.plan.site_id)),
+    );
+    // bei Filter: Abwesende nur, wenn sie an diesen Objekten eingeplant sind
+    const atSel = siteSel
+      ? new Set(
+          (
+            await sql<{ id: string }[]>`
+            select distinct employee_id as id from app.shift_plans
+             where site_id = any(${[...siteSel]}::uuid[]) and employee_id is not null
+               and valid_from <= ${r.to} and (valid_until is null or valid_until >= ${r.from})`
+          ).map((x) => x.id),
+        )
+      : null;
     const siteOf = new Map(sites.map((s) => [s.id, s]));
     const phoneOf = new Map(
       emps.map((e) => [
@@ -214,7 +251,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
     // Zeilen: Mitarbeitende mit Einsätzen/Abwesenheit im Zeitraum (oder ausdrücklich gewählt)
     const busy = new Set([
       ...shifts.map((s) => s.plan.employee_id).filter(Boolean),
-      ...absences.map((a) => a.employee_id),
+      ...absences.map((a) => a.employee_id).filter((id) => !atSel || atSel.has(id)),
     ]);
     const visible = emps.filter(
       (e) =>
@@ -249,6 +286,8 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
         ansicht: view === 'woche' ? null : view,
         datum: date === today ? null : date,
         gruppe: group || null,
+        kunde: kunde || null,
+        objekt: objekt || null,
         alle: q.alle === '1' ? '1' : null,
         ...over,
       };
@@ -307,6 +346,7 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
             </a>
           </span>
           <input type="hidden" name="ansicht" value={view} />
+          {q.alle === '1' && <input type="hidden" name="alle" value="1" />}
           <input
             type="date"
             name="datum"
@@ -322,6 +362,31 @@ export function registerPlanningBoardRoutes({ app, deps, page, back }: Ctx) {
               </a>
             ))}
           </span>
+          <select
+            name="kunde"
+            onchange="this.form.objekt.value='';this.form.submit()"
+            aria-label="Kunde"
+            style="width:auto;max-width:220px"
+          >
+            <option value="">Alle Kunden</option>
+            {[...new Map(siteOpts.map((x) => [x.customer_id, x.customer_name])).entries()].map(([id, n]) => (
+              <option value={id} selected={id === kunde}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <select
+            name="objekt"
+            onchange="this.form.submit()"
+            aria-label="Objekt"
+            style="width:auto;max-width:260px"
+          >
+            <option value="">Alle Objekte</option>
+            <SiteOptions
+              sites={siteOpts.filter((x) => !kunde || x.customer_id === kunde)}
+              selected={objekt}
+            />
+          </select>
           <a class="toggle" href={self({ alle: q.alle === '1' ? null : '1' })}>
             <span class={`sw${q.alle === '1' ? ' on' : ''}`} /> auch ohne Einsatz
           </a>

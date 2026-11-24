@@ -54,6 +54,7 @@ import { EmployeeCalendarView } from './pages-employee-calendar.js';
 import { employeeCalendarData } from './employee-calendar-data.js';
 import { linkedEmployee } from '../services/users.js';
 import { absentBetween } from '../services/absences.js';
+import { maxAbsentPerSite, saveMaxAbsentPerSite } from '../services/leave-overlap.js';
 import { ANOMALY_DAYS, reviewAnomalies, timeAnomalies } from '../services/time-anomalies.js';
 
 const versionOf = (v: unknown) => (typeof v === 'string' && v !== '' ? Number(v) : null);
@@ -1189,6 +1190,7 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
 
   app.get('/zeiterfassung/einstellungen', async (c) => {
     const s = await getTimeSettings(sql);
+    const maxAbsent = await maxAbsentPerSite(sql);
     const [autoCfg] = await sql<{ days: number | null; since: string | null }[]>`
       select auto_confirm_days as days, auto_confirm_since::text as since from app.time_settings`;
     const modes = await sql<{ id: string; name: string; personnel_no: string; time_mode: string }[]>`
@@ -1274,6 +1276,33 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
         </form>
         <form
           method="post"
+          action="/zeiterfassung/einstellungen/gleichzeitig"
+          class="card"
+          style="max-width:720px"
+        >
+          <h3 style="margin-top:0">Gleichzeitig abwesend je Objekt</h3>
+          <label for="max_absent">Höchstens … Personen eines Objekts gleichzeitig abwesend</label>
+          <select id="max_absent" name="n" style="max-width:220px" data-nosearch>
+            <option value="">keine Warnung</option>
+            {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+              <option value={String(n)} selected={maxAbsent === n}>
+                {n} {n === 1 ? 'Person' : 'Personen'}
+              </option>
+            ))}
+          </select>
+          <p class="small mut">
+            Beim Eintragen oder Genehmigen von Urlaub, unbezahlt oder sonstiger Freistellung prüft die App
+            alle Objekte, an denen die Person in dem Zeitraum eingeplant ist. Wären dort an einem Tag mehr
+            Personen abwesend (beantragt oder genehmigt, Krankheit zählt mit), kommt eine Rückfrage mit den
+            Namen und Tagen – „Ja, trotzdem“ trägt ein. Krankmeldungen werden nie gesperrt. Im Urlaubskalender
+            zeigt der Filter „Objekt“ die Engpass-Tage rot.
+          </p>
+          <div class="formfoot">
+            <button class="btn">Speichern</button>
+          </div>
+        </form>
+        <form
+          method="post"
           action="/zeiterfassung/einstellungen/plan-als-ist"
           class="card"
           style="max-width:720px"
@@ -1344,6 +1373,15 @@ export function registerTimeRoutes({ app, deps, page, back, shells }: Ctx) {
       await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
                 values (${c.get('actor')}, 'time_mode', 'employees', null, ${sql.json({ changed: n })})`;
     return back(c, '/zeiterfassung/einstellungen', { ok: `Gespeichert (${n} geändert).` });
+  });
+
+  app.post('/zeiterfassung/einstellungen/gleichzeitig', async (c) => {
+    const b = await c.req.parseBody();
+    const n = typeof b.n === 'string' && b.n ? Number(b.n) : null;
+    await saveMaxAbsentPerSite(sql, n, c.get('actor'));
+    return back(c, '/zeiterfassung/einstellungen', {
+      ok: n ? `Warnung ab ${n + 1} gleichzeitig Abwesenden je Objekt.` : 'Warnung ausgeschaltet.',
+    });
   });
 
   app.post('/zeiterfassung/einstellungen/plan-als-ist', async (c) => {

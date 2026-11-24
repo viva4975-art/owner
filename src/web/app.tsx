@@ -554,35 +554,65 @@ export function createApp(deps: Deps) {
         status,
       );
     }
-    if (err instanceof BusinessError && err.code === 'no_leave' && c.req.method === 'POST') {
-      // Kein Resturlaub: nicht ablehnen, sondern nachfragen (Ahmed 11.10.) – „Ja“ sendet dasselbe Formular erneut
-      // mit urlaub_ohne_anspruch=1.
+    if (
+      err instanceof BusinessError &&
+      (err.code === 'no_leave' || err.code === 'leave_overlap') &&
+      c.req.method === 'POST'
+    ) {
+      // Kein Resturlaub (Ahmed 11.10.) bzw. zu viele gleichzeitig am Objekt abwesend (Ahmed 24.11.): nicht ablehnen,
+      // sondern nachfragen – „Ja“ sendet dasselbe Formular erneut mit dem passenden Freigabe-Feld.
+      const overlap = err.code === 'leave_overlap';
+      const flag = overlap ? 'urlaub_ueberschneidung' : 'urlaub_ohne_anspruch';
       return (async () => {
         const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
-        const fields = Object.entries(body).filter(
-          ([k, v]) => typeof v === 'string' && k !== 'urlaub_ohne_anspruch',
-        ) as [string, string][];
+        const fields = Object.entries(body).filter(([k, v]) => typeof v === 'string' && k !== flag) as [
+          string,
+          string,
+        ][];
         const ref = c.req.header('referer');
         const backTo = ref ? new URL(ref).pathname + new URL(ref).search : '/';
+        const lines = overlap ? err.message.split(' – ').slice(1).join(' – ').split(' · ') : [];
         return c.html(
           '<!doctype html>' +
             String(
-              <Layout title="Kein Urlaub mehr verfügbar" nav="" env={env.APP_ENV}>
-                <div class="card" style="max-width:640px;border-left:4px solid var(--err)">
-                  <h2 style="margin-top:0">Wirklich Urlaub eintragen?</h2>
-                  <p>{err.message}.</p>
-                  <p class="small mut">
-                    Es steht nicht genug Urlaub zur Verfügung. Wird trotzdem eingetragen, geht das
-                    Urlaubskonto ins Minus (Vorgriff auf künftigen Anspruch) – das wird im Protokoll vermerkt.
-                    Alternative: als „Unbezahlt frei“ eintragen.
-                  </p>
+              <Layout
+                title={overlap ? 'Zu viele gleichzeitig abwesend' : 'Kein Urlaub mehr verfügbar'}
+                nav=""
+                env={env.APP_ENV}
+              >
+                <div class="card" style="max-width:680px;border-left:4px solid var(--err)">
+                  {overlap ? (
+                    <>
+                      <h2 style="margin-top:0">Trotzdem genehmigen / eintragen?</h2>
+                      <p>{err.message.split(' – ')[0]}:</p>
+                      <ul>
+                        {lines.map((l) => (
+                          <li>{l}</li>
+                        ))}
+                      </ul>
+                      <p class="small mut">
+                        Grenze unter Zeiterfassung → Einstellungen („Gleichzeitig abwesend je Objekt“). Wird
+                        trotzdem eingetragen, steht das im Protokoll – Vertretung rechtzeitig planen.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 style="margin-top:0">Wirklich Urlaub eintragen?</h2>
+                      <p>{err.message}.</p>
+                      <p class="small mut">
+                        Es steht nicht genug Urlaub zur Verfügung. Wird trotzdem eingetragen, geht das
+                        Urlaubskonto ins Minus (Vorgriff auf künftigen Anspruch) – das wird im Protokoll
+                        vermerkt. Alternative: als „Unbezahlt frei“ eintragen.
+                      </p>
+                    </>
+                  )}
                   <form method="post" action={c.req.path + (new URL(c.req.url).search || '')}>
                     {fields.map(([k, v]) => (
                       <input type="hidden" name={k} value={v} />
                     ))}
-                    <input type="hidden" name="urlaub_ohne_anspruch" value="1" />
+                    <input type="hidden" name={flag} value="1" />
                     <div class="actions">
-                      <button class="btn">Ja, trotzdem eintragen</button>
+                      <button class="btn">Ja, trotzdem</button>
                       <a class="btn sec" href={backTo}>
                         Abbrechen
                       </a>

@@ -25,6 +25,8 @@ import {
   plannedAtSites,
   applicationDate,
 } from '../services/absences.js';
+import { maxAbsentPerSite, siteAbsenceDays } from '../services/leave-overlap.js';
+import { SiteOptions } from './site-options.js';
 import { isOpen, leaveWarnings, warningText } from '../services/leave-warnings.js';
 import { listEmployees } from '../services/employees.js';
 import { BusinessError } from '../services/errors.js';
@@ -61,6 +63,10 @@ const ABS_CLASS: Record<AbsenceKind, string> = {
   sonstiges: '',
 };
 const UK_CSS = `
+.uk tr.uk-site td{font-size:11px;font-weight:600;text-align:center;color:#5b5b63;background:#fafafa}
+.uk tr.uk-site td.uk-name{text-align:left}
+.uk tr.uk-site td.uk-full{background:#fdf3d6;color:#7a5a00}
+.uk tr.uk-site td.uk-over{background:#fbe0e0;color:#a4161a}
 .uk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .uk-nav{display:flex;align-items:center;gap:8px}.uk-nav b{min-width:130px;text-align:center;font-size:17px}
 .uk-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
@@ -639,6 +645,39 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     // Aktueller Monat: Anzeige bis Ende des Folgemonats, Start beim heutigen Tag (frühere Tage nach links scrollen)
     const viewTo =
       month === todayBerlin().slice(0, 7) ? addDays(`${addDays(to, 32).slice(0, 7)}-01`, -1) : to;
+    // Filter Kunde/Objekt (Ahmed 24.11.): nur Leute, die im Zeitraum dort eingeplant sind, + Engpass-Zeile je Objekt
+    const olSites = c.get('sites');
+    const siteList = (
+      await sql<
+        {
+          id: string;
+          site_no: string;
+          name: string;
+          customer_id: string;
+          customer_name: string;
+          street: string | null;
+          city: string | null;
+        }[]
+      >`
+        select s.id, s.site_no, s.name, s.customer_id, c.name as customer_name, s.street, s.city
+          from app.sites s join app.customers c on c.id = s.customer_id
+         where s.active and not coalesce(c.is_internal, false)
+         order by c.name, s.site_no`
+    ).filter((s) => !olSites || olSites.includes(s.id));
+    const kunde = /^[0-9a-f-]{36}$/.test(c.req.query('kunde') ?? '') ? c.req.query('kunde')! : '';
+    const objekt = /^[0-9a-f-]{36}$/.test(c.req.query('objekt') ?? '') ? c.req.query('objekt')! : '';
+    const selSites = objekt
+      ? siteList.filter((s) => s.id === objekt)
+      : kunde
+        ? siteList.filter((s) => s.customer_id === kunde)
+        : [];
+    const maxAbsent = await maxAbsentPerSite(sql);
+    const siteDays = await Promise.all(
+      selSites
+        .slice(0, 40)
+        .map(async (s) => ({ site: s, days: await siteAbsenceDays(sql, s.id, from, viewTo) })),
+    );
+    const plannedAt = new Set(siteDays.flatMap((x) => x.days.flatMap((d) => d.plannedIds)));
     const [allEmps0, allAbs0, sc] = await Promise.all([
       listEmployees(sql, { status: 'aktiv' }),
       listAbsences(sql, {
@@ -654,6 +693,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     const emps = allEmps.filter(
       (e) =>
         (!q || `${e.last_name} ${e.first_name} ${e.personnel_no}`.toLowerCase().includes(q)) &&
+        (!selSites.length || plannedAt.has(e.id)) &&
         (!onlyAbsent || abs.some((a) => a.employee_id === e.id)),
     );
     const days: string[] = [];
@@ -694,6 +734,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       off,
       totals,
       label,
+      kunde,
+      objekt,
+      siteList,
+      siteDays,
+      maxAbsent,
     };
   };
   const qsOf = (d: Awaited<ReturnType<typeof calendarData>>, monat = d.month) => {
@@ -702,6 +747,8 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     if (d.q) p.set('q', d.q);
     if (!d.onlyAbsent) p.set('alle', '1');
     if (!d.withRequested) p.set('beantragt', '0');
+    if (d.kunde) p.set('kunde', d.kunde);
+    if (d.objekt) p.set('objekt', d.objekt);
     return p.toString();
   };
   const fmtDays = (n: number | undefined) => (n ? String(n).replace('.', ',') : '');
@@ -772,6 +819,23 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         <form method="get" class="uk-filter">
           <input type="hidden" name="monat" value={d.month} />
           <input name="q" value={d.q} placeholder="Name oder Pers.-Nr." aria-label="Suche" />
+          <select name="kunde" onchange="this.form.objekt.value='';this.form.submit()" aria-label="Kunde">
+            <option value="">Alle Kunden</option>
+            {[...new Map(d.siteList.map((x) => [x.customer_id, x.customer_name])).entries()].map(
+              ([id, n]) => (
+                <option value={id} selected={id === d.kunde}>
+                  {n}
+                </option>
+              ),
+            )}
+          </select>
+          <select name="objekt" onchange="this.form.submit()" aria-label="Objekt">
+            <option value="">Alle Objekte</option>
+            <SiteOptions
+              sites={d.siteList.filter((x) => !d.kunde || x.customer_id === d.kunde)}
+              selected={d.objekt}
+            />
+          </select>
           <select name="art" onchange="this.form.submit()" aria-label="Art" data-nosearch>
             <option value="">Alle Arten</option>
             {(Object.keys(ABSENCE_LABEL) as AbsenceKind[]).map((k) => (
@@ -857,6 +921,37 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                   </tr>
                 </thead>
                 <tbody>
+                  {d.siteDays.map(({ site, days: sd }) => {
+                    const byDate = new Map(sd.map((x) => [x.date, x]));
+                    return (
+                      <tr class="uk-site">
+                        <td class="uk-name">
+                          <a href={`/objekte/${site.id}`}>{site.name}</a>
+                          <span class="mut small"> abwesend / eingeplant</span>
+                        </td>
+                        {viewDays.map((x) => {
+                          const v = byDate.get(x);
+                          const n = v?.absent.length ?? 0;
+                          const over = d.maxAbsent !== null && n > d.maxAbsent;
+                          const full = d.maxAbsent !== null && n === d.maxAbsent;
+                          return (
+                            <td
+                              class={`${off(x) ? 'off' : ''}${x === today ? ' today' : ''}${over ? ' uk-over' : full ? ' uk-full' : ''}`}
+                              title={
+                                v
+                                  ? `${n} von ${v.planned} abwesend${n ? `: ${v.absent.map((a) => a.name).join(', ')}` : ''}`
+                                  : 'niemand eingeplant'
+                              }
+                            >
+                              {v && n ? `${n}/${v.planned}` : ''}
+                            </td>
+                          );
+                        })}
+                        <td />
+                        <td />
+                      </tr>
+                    );
+                  })}
                   {emps.map((e) => {
                     const t = totals(e.id);
                     return (
@@ -911,6 +1006,8 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         <p class="small mut">
           Der Kalender beginnt beim heutigen Tag (dunkel markiert) – frühere Tage nach links scrollen. Tage =
           Arbeitstage ohne Wochenende/Feiertag. Balken anklicken = Abwesenheit ändern.
+          {d.siteDays.length > 0 &&
+            ` Oberste Zeile(n) je Objekt: abwesend / eingeplant an dem Tag – gelb = Grenze erreicht, rot = mehr als ${d.maxAbsent ?? '–'} gleichzeitig (Einstellung unter Zeiterfassung → Einstellungen).`}
         </p>
         <style dangerouslySetInnerHTML={{ __html: UK_CSS }} />
       </>,
@@ -1017,6 +1114,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       approved: true,
       replaceVacation: b.replace_vacation === '1',
       allowNoLeave: b.urlaub_ohne_anspruch === '1',
+      allowOverlap: b.urlaub_ueberschneidung === '1',
       appliedOn: typeof b.applied_on === 'string' ? b.applied_on : null,
     });
     return back(c, redirect(employeeId), {
@@ -1165,6 +1263,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         note: typeof b.note === 'string' && b.note.trim() ? b.note.trim() : null,
         expectedVersion: typeof b.version === 'string' && b.version ? Number(b.version) : null,
         allowNoLeave: b.urlaub_ohne_anspruch === '1',
+        allowOverlap: b.urlaub_ueberschneidung === '1',
         ...(typeof b.applied_on === 'string' ? { appliedOn: b.applied_on } : {}),
       },
       c.get('actor'),
@@ -1191,6 +1290,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       status as 'genehmigt',
       c.get('actor'),
       b.urlaub_ohne_anspruch === '1',
+      b.urlaub_ueberschneidung === '1',
     );
     const ref = c.req.header('referer');
     return back(c, ref ? new URL(ref).pathname : '/urlaub', { ok: `Abwesenheit ${status}.` });

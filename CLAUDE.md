@@ -5983,3 +5983,9 @@ Testadresse.
   - **Geschäftsführer** (Tag oder laut Firmendaten) bekommen in Stundenliste & Lohnarten, Lohnexport, Nach-/Plan-
     Kalkulation keine Zuschläge mehr – weder Mehrarbeit noch Nacht/Sonn-/Feiertag (`payrollMonth`). Vorher fehlte der
     Ausschluss beim Lohn; nur die Arbeitgeberkosten waren schon ausgenommen. Test `rest-gf.db.test.ts`.
+- 2026-11-24: **Lohnarten übersichtlicher** (Ahmed, 5 Punkte; Bildschirm, CSV und PDF gleich – `lohnCols` in
+  `routes-timesheet.tsx`): vorne Spalte **Stundenlohn** (Tarif: „Tariflohn 1 · 15,00 €“, individuell: Betrag, ohne
+  Vergütung „–“, Festgehalt leer); **Festgehalt ohne Stunden** (nur Gehalt/Abzug, Stunden zählen auch nicht in den
+  Summen); **Sonntag + Feiertagsarbeit in einer Spalte „Sonn-/Feiertag“** (gleicher Satz; hohe Feiertage bleiben
+  getrennt); **Zuschläge in € entfallen** (Zuschlagsstunden stehen drin); **„Bezahlt gesamt“ als letzte Spalte**.
+  Lohnexport (CSV Lohnprogramm/Lexware) unverändert – dort bleiben Zuschläge als Beträge.

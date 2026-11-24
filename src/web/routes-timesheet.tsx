@@ -304,14 +304,16 @@ ${sheetTableHtml(s)}${sigHtml}
     const fillPlan = !noCut;
     // als Stand für die Korrektur im Folgemonat festgehalten (Monatsende = ganzer Monat Ist/Plan)
     const cutoff = fillPlan ? to : null;
-    const [all, sigs, pay, siteLinks, sites] = await Promise.all([
+    const [all, sigs, pay, siteLinks, sites, levels] = await Promise.all([
       listEmployees(sql),
       signaturesOfMonth(sql, month),
       payrollMonth(sql, month, undefined, { fillPlan }),
       sql<{ employee_id: string; site_id: string }[]>`select employee_id, site_id from app.employee_sites`,
       sql<{ id: string; site_no: string; name: string; customer_name: string }[]>`
         select s.id, s.site_no, s.name, s.street, s.city, c.name as customer_name from app.sites s join app.customers c on c.id = s.customer_id where s.active order by s.name`,
+      sql<{ id: string; name: string }[]>`select id, name from app.wage_levels`,
     ]);
+    const levelName = new Map(levels.map((l) => [l.id, l.name]));
     const emps = filterEmps(all, siteLinks, { from, to, q, art, site });
     const siteName = sites.find((x) => x.id === site)?.name ?? '';
     const sheets = await Promise.all(
@@ -330,7 +332,19 @@ ${sheetTableHtml(s)}${sigHtml}
             ? 'unterschrieben'
             : 'geaendert'
           : 'offen';
-        return { e, s, sg, state, p: payOf.get(e.id) };
+        const p = payOf.get(e.id);
+        // Lohn je Person für die Lohnarten (Ahmed 24.11.): Tariflohn mit Lohngruppe bzw. eigener Stundenlohn;
+        // bei Festgehalt leer (steht in der Spalte Gehalt)
+        const cents = p?.wage_cents ?? e.hourly_wage_cents;
+        const wage =
+          e.pay_model === 'festgehalt'
+            ? ''
+            : cents == null
+              ? '–'
+              : e.pay_model === 'tarif' && e.wage_level_id
+                ? `${levelName.get(e.wage_level_id) ?? 'Tarif'} · ${euro(BigInt(cents))}`
+                : euro(BigInt(cents));
+        return { e, s, sg, state, p, wage };
       })
       .filter(
         (x) =>
@@ -389,11 +403,6 @@ ${sheetTableHtml(s)}${sigHtml}
   };
   const surchargeMin = (p: { minutes: Record<string, number> } | undefined) =>
     p ? SURCHARGES.reduce((a, k) => a + p.minutes[k]!, 0) : 0;
-  const surchargeEur = (p: { surchargeCents: Record<string, bigint> } | undefined) =>
-    p
-      ? SURCHARGES.reduce((a, k) => a + p.surchargeCents[k]!, 0n) +
-        ((p as { overtimeCents?: bigint }).overtimeCents ?? 0n)
-      : 0n;
 
   app.get('/zeiterfassung/stundenzettel', async (c) => {
     const d = await listData(c);
@@ -732,7 +741,7 @@ ${absenceCss(
                   <th>Pers.-Nr.</th>
                   <th>Mitarbeiter</th>
                   {lc.map((col) => (
-                    <th class="r">
+                    <th class={col.kind === 'txt' ? undefined : 'r'}>
                       {col.abs && <span class={`absdot ${col.abs}`} />}
                       {col.label}
                     </th>
@@ -849,19 +858,8 @@ ${absenceCss(
                       <>
                         {lc.map((col) => (
                           <td
-                            class={`r${col.abs && lohnText(col, col.val(x)) ? ` abscell ${col.abs}` : ''}`}
-                            style={
-                              infoOnly(x, col)
-                                ? 'color:var(--bad)'
-                                : col.key === 'gesamt'
-                                  ? 'font-weight:700'
-                                  : undefined
-                            }
-                            title={
-                              infoOnly(x, col)
-                                ? 'Festgehalt – Stunden nur zur Info, bezahlt wird das Gehalt'
-                                : undefined
-                            }
+                            class={`${col.kind === 'txt' ? '' : 'r'}${col.abs && lohnText(col, col.val(x)) ? ` abscell ${col.abs}` : ''}`}
+                            style={col.key === 'gesamt' ? 'font-weight:700' : undefined}
                           >
                             {lohnText(col, col.val(x))}
                           </td>
@@ -969,14 +967,16 @@ ${absenceCss(
   type Row = Awaited<ReturnType<typeof listData>>['rows'][number];
   // Lohnarten kurz und knapp (Ahmed 29.10.): nur Lohnarten, die im Monat vorkommen, eine Summe „Bezahlt gesamt“.
   // Werte aus der Lohnberechnung (je Einsatz Ist, sonst Plan) – nicht aus der Stundenliste (die zeigt nur Ist).
-  // Festgehalt: Grundstunden nur zur Info (rot), nicht in der Summe – bezahlt wird das Gehalt.
+  // Festgehalt: nur Gehalt/Abzug, keine Stunden.
+  // Ahmed 24.11.: Lohn je Person vorne, Sonntag + Feiertag zusammen (gleicher Satz), keine Zuschläge in €, Gesamt am
+  // Ende, bei Festgehalt keine Stunden (nur Gehalt/Abzug).
   type LCol = {
     key: string;
     label: string;
-    kind: 'h' | 'eur';
+    kind: 'h' | 'eur' | 'txt';
     abs?: AbsenceKind;
     neg?: boolean;
-    val: (x: Row) => number | bigint;
+    val: (x: Row) => number | bigint | string;
   };
   const LBASE: HourType[] = ['normal', 'aushilfslohn', 'urlaub', 'krank', 'feiertag_lfz'];
   const LSHORT: Record<HourType, string> = {
@@ -986,41 +986,41 @@ ${absenceCss(
     krank: 'Krank',
     feiertag_lfz: 'Feiertag',
     nacht: 'Nacht',
-    sonntag: 'Sonntag',
-    feiertag: 'Feiertagsarbeit',
+    sonntag: 'Sonn-/Feiertag',
+    feiertag: 'Sonn-/Feiertag',
     feiertag_hoch: 'Hohe Feiertage',
     mehrarbeit: 'Mehrarbeit',
   };
+  const isSalary = (x: Row) => !!x.p?.salary;
+  const mins = (x: Row, k: HourType) => (isSalary(x) ? 0 : (x.p?.minutes[k] ?? 0));
   const lohnCols = (rows: Row[]): LCol[] => {
     const any = (f: (x: Row) => boolean) => rows.some(f);
     const cols: LCol[] = [];
-    for (const k of HOUR_TYPES)
-      if (any((x) => (x.p?.minutes[k] ?? 0) > 0))
+    if (any((x) => !!x.wage))
+      cols.push({ key: 'lohn', label: 'Stundenlohn', kind: 'txt', val: (x) => x.wage });
+    for (const k of HOUR_TYPES) {
+      if (k === 'feiertag') continue; // steckt in „Sonn-/Feiertag“
+      const keys: HourType[] = k === 'sonntag' ? ['sonntag', 'feiertag'] : [k];
+      const v = (x: Row) => keys.reduce((a, kk) => a + mins(x, kk), 0);
+      if (any((x) => v(x) > 0))
         cols.push({
           key: k,
           label: LSHORT[k],
           kind: 'h',
           ...(k === 'urlaub' || k === 'krank' ? { abs: k } : {}),
-          val: (x) => x.p?.minutes[k] ?? 0,
+          val: v,
         });
-    cols.push({
-      key: 'gesamt',
-      label: 'Bezahlt gesamt',
-      kind: 'h',
-      val: (x) => LBASE.reduce((a, k) => a + (x.p?.minutes[k] ?? 0), 0),
-    });
-    if (any((x) => surchargeEur(x.p) > 0n))
-      cols.push({ key: 'zuschlag', label: 'Zuschläge €', kind: 'eur', val: (x) => surchargeEur(x.p) });
-    if (any((x) => !!x.p?.salary))
-      cols.push({ key: 'gehalt', label: 'Gehalt €', kind: 'eur', val: (x) => x.p?.salary?.cents ?? 0n });
-    if (any((x) => (x.p?.unpaidMinutes ?? 0) > 0))
+    }
+    if (any((x) => !isSalary(x) && (x.p?.unpaidMinutes ?? 0) > 0))
       cols.push({
         key: 'unbezahlt',
         label: 'Unbezahlt',
         kind: 'h',
         abs: 'unbezahlt',
-        val: (x) => x.p?.unpaidMinutes ?? 0,
+        val: (x) => (isSalary(x) ? 0 : (x.p?.unpaidMinutes ?? 0)),
       });
+    if (any((x) => isSalary(x)))
+      cols.push({ key: 'gehalt', label: 'Gehalt €', kind: 'eur', val: (x) => x.p?.salary?.cents ?? 0n });
     if (any((x) => (x.p?.unpaidDeductionCents ?? 0n) > 0n))
       cols.push({
         key: 'abzug',
@@ -1030,21 +1030,28 @@ ${absenceCss(
         abs: 'unbezahlt',
         val: (x) => x.p?.unpaidDeductionCents ?? 0n,
       });
+    cols.push({
+      key: 'gesamt',
+      label: 'Bezahlt gesamt',
+      kind: 'h',
+      val: (x) => LBASE.reduce((a, k) => a + mins(x, k), 0),
+    });
     return cols;
   };
-  /** Festgehalt: Grundstunden und Summe nur zur Info */
-  const infoOnly = (x: Row, c: LCol) =>
-    !!x.p?.salary && (c.key === 'gesamt' || (LBASE as string[]).includes(c.key));
-  const lohnText = (c: LCol, v: number | bigint) =>
-    c.kind === 'eur'
-      ? (v as bigint) > 0n
-        ? `${c.neg ? '− ' : ''}${euro(v as bigint)}`
-        : ''
-      : h(v as number);
-  const lohnTotal = (rows: Row[], c: LCol) =>
-    c.kind === 'eur'
-      ? rows.reduce((a, x) => a + (c.val(x) as bigint), 0n)
-      : rows.reduce((a, x) => a + (infoOnly(x, c) ? 0 : (c.val(x) as number)), 0);
+  const lohnText = (c: LCol, v: number | bigint | string) =>
+    c.kind === 'txt'
+      ? String(v)
+      : c.kind === 'eur'
+        ? (v as bigint) > 0n
+          ? `${c.neg ? '− ' : ''}${euro(v as bigint)}`
+          : ''
+        : h(v as number);
+  const lohnTotal = (rows: Row[], c: LCol): number | bigint | string =>
+    c.kind === 'txt'
+      ? ''
+      : c.kind === 'eur'
+        ? rows.reduce((a, x) => a + (c.val(x) as bigint), 0n)
+        : rows.reduce((a, x) => a + (c.val(x) as number), 0);
   const empLabel = (x: Row) =>
     `${EMPLOYMENT_TYPES[x.e.employment_type]}${x.p?.salary ? ' · Festgehalt' : ''}`;
 
@@ -1114,25 +1121,29 @@ ${absenceCss(
     'Abzug unbezahlt €': 'unbezahlt',
   };
   // Lohnarten als PDF wie am Bildschirm: nur vorkommende Lohnarten, eine Gesamtzeile (Ahmed 29.10.)
-  const RED: [number, number, number] = [0.7, 0.15, 0.12];
   const lohnPdf = async (d: Awaited<ReturnType<typeof listData>>) => {
     const lc = lohnCols(d.rows);
     const fixed = [44, 114, 94];
     // Beträge brauchen mehr Platz als Stunden („12.345,67“), der Rest wird auf die Stundenspalten verteilt
     const eurW = 66;
-    const nEur = lc.filter((c) => c.kind === 'eur').length;
+    const nEur = lc.filter((c) => c.kind !== 'h').length;
     const hW = Math.max(
       40,
       Math.min(
         78,
-        Math.floor((786 - fixed.reduce((a, b) => a + b, 0) - nEur * eurW) / Math.max(1, lc.length - nEur)),
+        Math.floor(
+          (786 -
+            fixed.reduce((a, b) => a + b, 0) -
+            lc.reduce((a, c) => a + (c.kind === 'txt' ? 100 : c.kind === 'eur' ? eurW : 0), 0)) /
+            Math.max(1, lc.length - nEur),
+        ),
       ),
     );
     const pdfLabel = (c: LCol) =>
       ({
         normal: 'Normal',
         gesamt: 'Gesamt',
-        feiertag: 'Feiertag Arb.',
+        sonntag: 'Sonn-/Feiert.',
         feiertag_hoch: 'Hohe Feiert.',
         feiertag_lfz: 'Feiertag LFZ',
       })[c.key] ?? c.label;
@@ -1145,8 +1156,8 @@ ${absenceCss(
         { label: 'Beschäftigung', width: fixed[2]! },
         ...lc.map((c) => ({
           label: pdfLabel(c),
-          width: c.kind === 'eur' ? eurW : hW,
-          align: 'right' as const,
+          width: c.kind === 'txt' ? 100 : c.kind === 'eur' ? eurW : hW,
+          align: c.kind === 'txt' ? ('left' as const) : ('right' as const),
         })),
       ],
       rows: d.rows.map((x) => [
@@ -1158,7 +1169,6 @@ ${absenceCss(
           if (!text) return '';
           return {
             text,
-            ...(infoOnly(x, c) ? { color: RED } : {}),
             ...(c.abs ? { fill: rgb01(ABSENCE_COLORS[c.abs].tint) } : {}),
             ...(c.key === 'gesamt' ? { bold: true } : {}),
           };
@@ -1167,8 +1177,8 @@ ${absenceCss(
       totals: ['', 'Gesamt', '', ...lc.map((c) => lohnText(c, lohnTotal(d.rows, c)))],
       fontSize: 8.5,
       footnote:
-        'Lohnarten für die Lohnabrechnung (je Einsatz die erfasste Zeit, sonst die geplante). Zuschläge nach RTV laut Einstellungen. ' +
-        'Rot = Festgehalt: Stunden nur zur Info, bezahlt wird das Gehalt; nicht in der Gesamtzeile. Vertraulich – Personaldaten.',
+        'Lohnarten für die Lohnabrechnung (je Einsatz die erfasste Zeit, sonst die geplante). Zuschlagsstunden (Nacht, Sonn-/Feiertag, ' +
+        'Mehrarbeit) zusätzlich zu den bezahlten Stunden, Sätze laut Einstellungen. Festgehalt: nur Gehalt, keine Stunden. Vertraulich – Personaldaten.',
     });
     return new Response(pdf, {
       headers: {

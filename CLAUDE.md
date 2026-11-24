@@ -5963,3 +5963,10 @@ Testadresse.
   Geschäftlich → Digital Services Act; GmbH = Händler, Anschrift/Telefon/E-Mail werden im Store angezeigt).
 - 2026-11-23: **„Grund der Änderung“ an der Leistung entfernt** (Ahmed): Preis, Menge, Zeitraum lassen sich ohne Grund
   ändern. Alter und neuer Wert stehen weiter im Protokoll (`audit_log` details `aenderungen`); ersetzt die Pflicht vom 08.11.
+- 2026-11-24: **Einsatzkalender: vertretene Einsätze bleiben sichtbar** (Ahmed: „wieso werden die Einsätze nicht mehr
+  angezeigt?“ – Urlaub 09.–27.11., ab 17.11. keine Einsätze mehr im Kalender): Ist für einen Tag eine Vertretung,
+  ein Nachunternehmer oder Ausfall eingetragen (z. B. über „Einsätze für abwesende Mitarbeiter“), lief der Einsatz bisher
+  nur noch beim Vertreter bzw. fiel weg. Jetzt zeigt der Kalender der abwesenden Person ihn an Abwesenheitstagen weiter
+  in der Farbe der Abwesenheit mit „Urlaub · vertreten durch …“ / „Nachunternehmer …“ / „Einsatz entfällt“
+  (`employeeCalendarData`, `PlannedShift.cover`); die Stunden zählen unter „Erfasst → Urlaub/Krank“ wie in Stundenliste und
+  Lohnarten. Test in `absence-sync.db.test.ts`.

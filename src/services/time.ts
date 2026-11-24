@@ -831,6 +831,8 @@ export interface PlannedShift {
     original: string;
     version: number;
   };
+  /** Kalender der abwesenden Person: Einsatz wird an diesem Tag vertreten (Name, Nachunternehmer bzw. Ausfall) */
+  cover?: string;
 }
 
 interface ShiftException {

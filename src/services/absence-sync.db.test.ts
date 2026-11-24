@@ -10,6 +10,7 @@ import { DEMO } from './seed.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 import { saveShiftPlan } from './time.js';
 import { monthRange } from './timesheet.js';
+import { employeeCalendarData } from '../web/employee-calendar-data.js';
 
 const available = await dbAvailable();
 
@@ -100,6 +101,11 @@ describe.skipIf(!available)('Urlaub/Krank-Stunden folgen dem Einsatzplan (Datenb
     expect(h.reduce((a, x) => a + x.minutes, 0)).toBe(1020);
     const rows = await payrollMonth(sql, month, emp, { fillPlan: true });
     expect(rows[0]!.minutes.krank).toBe(1020);
+    // Kalender der kranken Person zeigt den vertretenen Einsatz weiter (Ahmed 24.11.)
+    const cal = await employeeCalendarData(sql, emp, { datum: mon, ansicht: 'woche' });
+    const covered = cal.shifts.find((x) => x.date === addDays(mon, 1));
+    expect(covered?.absence).toBe('krank');
+    expect(covered?.cover).toBe('vertreten durch Test 3102');
   });
 
   it('von Hand geänderte Stunden bleiben', async () => {

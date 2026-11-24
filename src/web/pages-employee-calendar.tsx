@@ -36,7 +36,7 @@ const stateOf = (s: PlannedShift, today: string): State => {
   if (s.absence)
     return {
       cls: `abs ${absKind(s.absence)}`,
-      label: ABSENCE_LABEL[s.absence as AbsenceKind] ?? 'abwesend',
+      label: `${ABSENCE_LABEL[s.absence as AbsenceKind] ?? 'abwesend'}${s.cover ? ` · ${s.cover}` : ''}`,
       clock: false,
     };
   const e = s.entry;

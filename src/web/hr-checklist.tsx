@@ -57,6 +57,9 @@ export const EmployeeActions: FC<{
                 ))}
               </select>
             </form>
+            <a href={`${base}/ruhend`}>
+              <Icon name="pause" size={15} /> Ruhen eintragen (von–bis)
+            </a>
             <a href={`${base}#austritt`} class="danger">
               <Icon name="alert" size={15} /> Austritt erfassen
             </a>

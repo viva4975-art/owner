@@ -162,7 +162,30 @@ export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from
  * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
  * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = wie der nächstgelegene geplante Monat, ganz ohne Einsatz 5).
  */
+/** Arbeitstage/Woche für den Urlaubsanspruch; im Ruhenszeitraum 0 (kein Urlaub, BAG 9 AZR 315/17, Ahmed 24.11.) */
 export async function leaveDaysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
+  const segs = await leaveDaysPeriodsRaw(sql, employeeId, from, to);
+  if (!segs.length) return segs;
+  const rest = await sql<{ start_date: string; end_date: string }[]>`
+    select start_date::text, end_date::text from app.employee_rest_periods
+     where employee_id = ${employeeId} and start_date <= ${to} and end_date >= ${from} order by start_date`;
+  if (!rest.length) return segs;
+  const out: { from: string; to: string; days: number }[] = [];
+  for (const g of segs) {
+    let cur = g.from;
+    for (const r of rest) {
+      if (r.end_date < cur || r.start_date > g.to) continue;
+      if (r.start_date > cur) out.push({ from: cur, to: addDays(r.start_date, -1), days: g.days });
+      const e = r.end_date < g.to ? r.end_date : g.to;
+      out.push({ from: r.start_date > cur ? r.start_date : cur, to: e, days: 0 });
+      cur = addDays(e, 1);
+    }
+    if (cur <= g.to) out.push({ from: cur, to: g.to, days: g.days });
+  }
+  return out;
+}
+
+async function leaveDaysPeriodsRaw(sql: Sql | Tx, employeeId: string, from: string, to: string) {
   if (from > to) return [];
   const [e] = await sql<
     { days_auto: boolean }[]

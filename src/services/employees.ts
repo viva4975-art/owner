@@ -17,6 +17,8 @@ const optDate = z.preprocess(emptyToNull, z.iso.date().nullable().default(null))
 export interface Employee {
   /** Status wie Blink (neue Oberfläche), leer = aktiv */
   hr_stage?: string | null;
+  /** Arbeitsverhältnis ruht heute (Zeitraum unter employee_rest_periods) */
+  resting?: boolean;
   id: string;
   personnel_no: string;
   first_name: string;
@@ -298,7 +300,9 @@ export async function listEmployees(
       site_names: string[] | null;
     })[]
   >`
-    select e.*, p.residence_permit_until, p.work_permit_until::text, p.street, p.postal_code, p.city,
+    select e.*, exists (select 1 from app.employee_rest_periods r where r.employee_id = e.id
+                          and current_date between r.start_date and r.end_date) as resting,
+           p.residence_permit_until, p.work_permit_until::text, p.street, p.postal_code, p.city,
            p.birth_date::text, p.nationality,
            -- nur aktuelle Objekte: aktives Objekt mit laufendem oder künftigem Einsatz (Ahmed 10.10.)
            (select count(distinct sp.site_id)::int from app.shift_plans sp join app.sites s on s.id = sp.site_id
@@ -361,7 +365,10 @@ export async function countWithoutShift(sql: Sql, siteIds: string[] | null = nul
 }
 
 export async function getEmployee(sql: Sql, id: string) {
-  const [e] = await sql<Employee[]>`select * from app.employees where id = ${id}`;
+  const [e] = await sql<Employee[]>`
+    select e.*, exists (select 1 from app.employee_rest_periods r where r.employee_id = e.id
+                          and current_date between r.start_date and r.end_date) as resting
+      from app.employees e where e.id = ${id}`;
   if (!e) return undefined;
   const [p] = await sql<EmployeePrivate[]>`select * from app.employee_private where employee_id = ${id}`;
   const sites = await sql<{ id: string; site_no: string; name: string }[]>`

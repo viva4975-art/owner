@@ -1,3 +1,4 @@
+import { isManagingDirector } from '../domain/hr/employer-cost.js';
 import type { Sql } from '../db/client.js';
 import {
   DEFAULT_RATES,
@@ -255,15 +256,19 @@ export async function payrollMonth(
       monthly_salary_cents: bigint | null;
       entry_date: string;
       exit_date: string | null;
+      full_name: string;
     }[]
   >`
     select e.id, e.personnel_no, e.last_name || ', ' || e.first_name as name, app.effective_wage_cents(e) as wage_cents,
            e.pay_model, e.regular_sunday_work, e.employment_type::text, e.tags, e.monthly_salary_cents,
-           e.entry_date::text, e.exit_date::text
+           e.entry_date::text, e.exit_date::text, e.first_name || ' ' || e.last_name as full_name
       from app.employees e
      where e.entry_date <= ${to} and (e.exit_date is null or e.exit_date >= ${from})
        and ${employeeId ? sql`e.id = ${employeeId}` : sql`true`}
      order by e.last_name, e.first_name`;
+  // Geschäftsführer (Tag oder laut Firmendaten): keine Zuschläge, auch keine Mehrarbeit (Ahmed 24.11.) – Organ der GmbH,
+  // ArbZG und Rahmentarifvertrag gelten nicht
+  const [co] = await sql<{ md: string | null }[]>`select managing_director as md from app.company limit 1`;
   const [entries, absHours, kinds] = await Promise.all([
     listEntries(sql, { from, to, ...(employeeId ? { employeeId } : {}) }),
     listAbsenceHours(sql, { from, to, ...(employeeId ? { employeeId } : {}) }),
@@ -495,6 +500,10 @@ export async function payrollMonth(
       }
     }
     m.mehrarbeit = overtime.get(e.id) ?? 0;
+    if (isManagingDirector(e.tags, { name: e.full_name, managingDirector: co?.md })) {
+      m.mehrarbeit = 0;
+      for (const k of SURCHARGES) m[k] = 0;
+    }
     m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
     for (const [sid, min] of holidaySite.get(e.id) ?? []) site(sid, min);
     let unpaid = 0;

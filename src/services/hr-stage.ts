@@ -24,22 +24,17 @@ export const HR_STAGE = {
 } as const;
 export type HrStage = keyof typeof HR_STAGE;
 /** von Hand wählbar (gekündigt/ausgeschieden kommen aus dem Austrittsdatum) */
-export const HR_STAGE_SELECTABLE: HrStage[] = [
-  'bewerber',
-  'einstellung',
-  'vertrag',
-  'aktiv',
-  'ruhend',
-  'freigestellt',
-];
+export const HR_STAGE_SELECTABLE: HrStage[] = ['bewerber', 'einstellung', 'vertrag', 'aktiv', 'freigestellt'];
 
 export function stageOf(
-  e: { status: string; exit_date: string | null; hr_stage?: string | null },
+  e: { status: string; exit_date: string | null; hr_stage?: string | null; resting?: boolean },
   today = todayBerlin(),
 ): HrStage {
   if (e.status === 'ausgetreten' || (e.exit_date && e.exit_date < today)) return 'ausgeschieden';
   if (e.hr_stage === 'freigestellt') return 'freigestellt';
   if (e.exit_date) return 'gekuendigt';
+  // „Ruhend“ nur noch mit Zeitraum (Ahmed 24.11.) – ergibt sich aus employee_rest_periods
+  if (e.resting) return 'ruhend';
   return (e.hr_stage as HrStage | null) ?? 'aktiv';
 }
 

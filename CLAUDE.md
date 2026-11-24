@@ -5970,3 +5970,16 @@ Testadresse.
   in der Farbe der Abwesenheit mit „Urlaub · vertreten durch …“ / „Nachunternehmer …“ / „Einsatz entfällt“
   (`employeeCalendarData`, `PlannedShift.cover`); die Stunden zählen unter „Erfasst → Urlaub/Krank“ wie in Stundenliste und
   Lohnarten. Test in `absence-sync.db.test.ts`.
+- 2026-11-24: **Ruhend nur mit Zeitraum, Geschäftsführer ohne Zuschläge** (Ahmed):
+  - Mitarbeiter → Aktionen → **„Ruhen eintragen (von–bis)“** (`/personal/:id/ruhend`, auch Link unter Urlaub & Krank;
+    Admin/Personal; `src/services/rest-periods.ts`, Tabelle `app.employee_rest_periods`, Migration `20270207000001`).
+    Im Zeitraum wird „Unbezahlt frei“ (genehmigt, feste ID) eingetragen → kein Lohn (Festgehalt: Abzug), keine Kosten in
+    Nach-/Plan-Kalkulation und Budget; eingeplante Einsätze erscheinen unter „Einsätze für abwesende Mitarbeiter“.
+    Kein Urlaubsanspruch im Zeitraum (`leaveDaysPeriods`: 0 Tage; BAG 19.03.2019, 9 AZR 315/17). Abwesenheiten im
+    Zeitraum oder überlappendes Ruhen werden abgelehnt; Löschen entfernt die Abwesenheit mit (Protokoll). Status
+    „Ruhend“ ergibt sich aus dem Zeitraum (heute darin) und ist nicht mehr frei wählbar; früher von Hand gesetztes
+    „ruhend“ bleibt sichtbar, wirkt aber nicht auf Kosten – Zeitraum nachtragen. **Rechtlich:** Ruhen ohne Entgelt nur mit
+    Vereinbarung (bzw. gesetzlich, z. B. Elternzeit); > 1 Monat ohne Entgelt → SV-Abmeldung (§ 7 Abs. 3 SGB IV).
+  - **Geschäftsführer** (Tag oder laut Firmendaten) bekommen in Stundenliste & Lohnarten, Lohnexport, Nach-/Plan-
+    Kalkulation keine Zuschläge mehr – weder Mehrarbeit noch Nacht/Sonn-/Feiertag (`payrollMonth`). Vorher fehlte der
+    Ausschluss beim Lohn; nur die Arbeitgeberkosten waren schon ausgenommen. Test `rest-gf.db.test.ts`.

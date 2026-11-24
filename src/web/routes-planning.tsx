@@ -1330,6 +1330,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />
             </div>
           </div>
+          {canExtra && (
+            <p class="small">
+              <a href={`/personal/${e.id}/ruhend`}>Arbeitsverhältnis ruht (von–bis) eintragen …</a>
+            </p>
+          )}
           {(canExtra || extras.length > 0) && (
             <div class="card" id="zusatzurlaub">
               <h3>Zusätzlicher Urlaub</h3>

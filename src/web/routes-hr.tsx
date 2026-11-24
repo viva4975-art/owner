@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { listWordTemplates } from '../services/word-templates.js';
 import { WordTemplateBox } from './routes-word-templates.js';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
+import { addRestPeriod, deleteRestPeriod, listRestPeriods } from '../services/rest-periods.js';
 import { parseEuro } from '../domain/money/money.js';
 import {
   DOC_CATEGORIES,
@@ -710,6 +711,103 @@ export function registerHrRoutes(ctx: Ctx) {
       );
     }),
   );
+
+  // Arbeitsverhältnis ruht – mit Zeitraum, im Zeitraum keine Kosten (Ahmed 24.11.)
+  app.get(`/personal/:id{${UUID}}/ruhend`, (c) =>
+    shells.employee!(c, 'abwesenheiten', async (head) => {
+      ccGuard(c);
+      const list = await listRestPeriods(sql, head.id);
+      const today = todayBerlin();
+      return (
+        <div class="card" style="max-width:900px">
+          <h3 style="margin-top:0">Arbeitsverhältnis ruht</h3>
+          <p class="small mut" style="margin-top:-4px">
+            Im Zeitraum wird „Unbezahlt frei“ eingetragen: kein Lohn (bei Festgehalt Abzug), keine Kosten in
+            Nach-, Plan-Kalkulation und Budget, kein Urlaubsanspruch. Eingeplante Einsätze erscheinen unter
+            „Einsätze für abwesende Mitarbeiter“ (Vertretung nötig).
+          </p>
+          <form method="post" action={`/personal/${head.id}/ruhend`}>
+            <input type="hidden" name="new_id" value={randomUUID()} />
+            <div class="grid">
+              <label for="rh-from">Ruht von</label>
+              <input id="rh-from" type="date" name="from" value={today} required />
+              <label for="rh-to">Ruht bis</label>
+              <input id="rh-to" type="date" name="to" required />
+              <label for="rh-reason">Grund</label>
+              <input
+                id="rh-reason"
+                name="reason"
+                maxlength={300}
+                placeholder="z. B. Elternzeit, Schulferien, Sonderurlaub"
+              />
+            </div>
+            <div class="form-foot">
+              <button class="btn">Ruhen eintragen</button>
+            </div>
+          </form>
+          <h4>Eingetragene Zeiträume</h4>
+          {list.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>Zeitraum</th>
+                  <th>Grund</th>
+                  <th>Eingetragen</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((r) => (
+                  <tr>
+                    <td>
+                      {formatDateDe(r.start_date)} – {formatDateDe(r.end_date)}
+                      {r.start_date <= today && r.end_date >= today && (
+                        <span class="badge warn"> ruht heute</span>
+                      )}
+                    </td>
+                    <td>{r.reason ?? '–'}</td>
+                    <td class="small mut">{r.created_by}</td>
+                    <td class="r">
+                      <form method="post" action={`/personal/${head.id}/ruhend/${r.id}/loeschen`}>
+                        <button
+                          class="btn sm danger"
+                          data-confirm="Ruhenszeitraum löschen? Die Abwesenheit „Unbezahlt frei“ wird mit entfernt."
+                        >
+                          Löschen
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p class="empty">Kein Ruhenszeitraum eingetragen.</p>
+          )}
+        </div>
+      );
+    }),
+  );
+  app.post(`/personal/:id{${UUID}}/ruhend`, async (c) => {
+    ccGuard(c);
+    const b = await c.req.parseBody();
+    const id = c.req.param('id');
+    await addRestPeriod(sql, {
+      id: String(b.new_id ?? '') || randomUUID(),
+      employeeId: id,
+      start: String(b.from ?? ''),
+      end: String(b.to ?? ''),
+      reason: String(b.reason ?? '').trim() || null,
+      actor: c.get('actor'),
+    });
+    return back(c, `/personal/${id}/ruhend`, { ok: 'Ruhenszeitraum eingetragen.' });
+  });
+  app.post(`/personal/:id{${UUID}}/ruhend/:rid{${UUID}}/loeschen`, async (c) => {
+    ccGuard(c);
+    const id = c.req.param('id');
+    await deleteRestPeriod(sql, c.req.param('rid'), id, c.get('actor'));
+    return back(c, `/personal/${id}/ruhend`, { ok: 'Ruhenszeitraum gelöscht.' });
+  });
 
   // Bestätigung witterungsbedingter Arbeitsausfall (Ahmed 12.11.2026)
   app.get(`/personal/:id{${UUID}}/witterung`, (c) =>

@@ -19,6 +19,7 @@ export const TAX_MODES = {
   ig: 'Steuerfrei – innergemeinschaftliche Lieferung an ein Unternehmen in einem anderen EU-Land',
   export: 'Steuerfrei – Ausfuhr in ein Land außerhalb der EU',
   frei28: 'Steuerfrei nach § 4 Nr. 28 UStG (nur bei ausschließlich steuerfreier Nutzung)',
+  ohne: 'Ohne Umsatzsteuer – Kaufpreis ist Endpreis, keine USt ausgewiesen',
 } as const;
 export type TaxMode = keyof typeof TAX_MODES;
 
@@ -28,6 +29,7 @@ const TAX_NOTE: Record<TaxMode, string> = {
   ig: 'Steuerfreie innergemeinschaftliche Lieferung (§ 4 Nr. 1 Buchst. b i. V. m. § 6a UStG).',
   export: 'Steuerfreie Ausfuhrlieferung (§ 4 Nr. 1 Buchst. a i. V. m. § 6 UStG).',
   frei28: 'Steuerfreie Lieferung nach § 4 Nr. 28 UStG.',
+  ohne: 'Im Kaufpreis ist keine Umsatzsteuer enthalten; Umsatzsteuer wird nicht gesondert ausgewiesen.',
 };
 
 export const DOCS = {
@@ -40,7 +42,7 @@ export const DOCS = {
 } as const;
 
 export const WARRANTY = {
-  ausgeschlossen: 'Gekauft wie gesehen – Gewährleistung ausgeschlossen (nur an Unternehmer)',
+  ausgeschlossen: 'Ohne Gewährleistung und ohne Garantie („gekauft wie gesehen“)',
   einjahr: 'Gewährleistung auf 1 Jahr verkürzt (Privatkäufer, gesondert vereinbart)',
   gesetzlich: 'Gesetzliche Gewährleistung (2 Jahre)',
 } as const;
@@ -243,10 +245,6 @@ export function checkSale(v: Vehicle, i: SaleInput, today = todayBerlin()) {
   if (i.taxMode === 'export' && i.registration !== 'abgemeldet')
     throw new BusinessError(
       'Ausfuhr: Das Fahrzeug wird abgemeldet übergeben (Zulassung „abgemeldet“ wählen)',
-    );
-  if (i.warranty === 'ausgeschlossen' && i.buyerType === 'privat')
-    throw new BusinessError(
-      'An Privatpersonen darf die Gewährleistung nicht ausgeschlossen werden (§ 476 BGB) – „auf 1 Jahr verkürzt“ oder „gesetzlich“ wählen',
     );
   const km = i.mileage.replace(/[.\s]/g, '');
   if (!/^\d{1,7}$/.test(km)) throw new BusinessError('Kilometerstand bei Übergabe bitte als ganze Zahl');
@@ -563,7 +561,7 @@ export async function renderSalePdf(
     doc.section('§ 3 Sachmängelhaftung (Gewährleistung)');
     if (d0.warranty === 'ausgeschlossen')
       P(
-        'Das Fahrzeug wird verkauft wie besichtigt und probegefahren („gekauft wie gesehen“) – unter Ausschluss jeglicher Sachmängelhaftung (Gewährleistung).',
+        'Das Fahrzeug wird verkauft wie besichtigt und probegefahren („gekauft wie gesehen“) – unter Ausschluss jeglicher Sachmängelhaftung (Gewährleistung) und ohne jede Garantie.',
         { bold: true },
       );
     else if (d0.warranty === 'einjahr')
@@ -719,7 +717,11 @@ export async function renderSalePdf(
       {
         sum: [
           '',
-          d0.taxMode === 'ust19' ? 'Umsatzsteuer 19 %' : 'Umsatzsteuer 0 % (steuerfrei)',
+          d0.taxMode === 'ust19'
+            ? 'Umsatzsteuer 19 %'
+            : d0.taxMode === 'ohne'
+              ? 'ohne Umsatzsteuer'
+              : 'Umsatzsteuer 0 % (steuerfrei)',
           '',
           eur(sign * p.amounts.vat),
         ],

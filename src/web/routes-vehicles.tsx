@@ -530,7 +530,7 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
       priceIs: one('price_is') === 'netto' ? 'netto' : 'brutto',
       taxMode: (one('tax_mode') ?? 'ust19') as SaleInput['taxMode'],
       payment: (one('payment') ?? 'ueberweisung') as SaleInput['payment'],
-      warranty: (one('warranty') ?? 'einjahr') as SaleInput['warranty'],
+      warranty: (one('warranty') ?? 'ausgeschlossen') as SaleInput['warranty'],
       registration: (one('registration') ?? 'abgemeldet') as SaleInput['registration'],
       reregisterDays: one('reregister_days'),
       note: one('note'),
@@ -732,11 +732,11 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
             </div>
             <div>
               <label for="war">Gewährleistung</label>
-              {sel('warranty', WARRANTY, 'einjahr', 'war')}
+              {sel('warranty', WARRANTY, 'ausgeschlossen', 'war')}
               <div class="small mut">
-                An Privatpersonen darf eine GmbH die Gewährleistung nicht ausschließen, nur auf 1 Jahr
-                verkürzen – und nur, wenn das gesondert vereinbart wird (§ 476 BGB; eigene Unterschrift im
-                Vertrag).
+                Achtung: Verkauft eine GmbH an eine Privatperson, ist ein Ausschluss der Gewährleistung
+                unwirksam (§ 476 BGB) – im Streitfall gilt die gesetzliche Gewährleistung. Sicher ist der
+                Ausschluss nur gegenüber Unternehmen.
               </div>
             </div>
           </div>
@@ -775,7 +775,8 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
                 von privat ohne Vorsteuer gekauft wurde. Ohne Steuer nur: an ein Unternehmen in einem anderen
                 EU-Land mit USt-IdNr. (Gelangensbestätigung aufbewahren), Ausfuhr außerhalb der EU
                 (Ausfuhrnachweis) oder § 4 Nr. 28 UStG (bei uns praktisch nie). Differenzbesteuerung gibt es
-                nur für Händler.
+                nur für Händler. „Ohne Umsatzsteuer“ ist möglich, aber das Finanzamt kann 19 % aus dem Preis
+                herausrechnen (Preis gilt dann als brutto) – vorher mit dem Steuerberater klären.
               </div>
             </div>
             <div>
@@ -931,7 +932,6 @@ export function registerVehicleRoutes({ app, deps, page, back }: Ctx) {
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var t=document.getElementById('bt'),w=document.getElementById('war');if(!t||!w)return;
-t.addEventListener('change',function(){if(t.value==='unternehmen')w.value='ausgeschlossen';else if(w.value==='ausgeschlossen')w.value='einjahr';w.dispatchEvent(new Event('change',{bubbles:true}));});
 var m=document.getElementById('tm'),r=document.getElementById('reg'),c=document.getElementById('bc'),xd=document.getElementById('xd');
 if(m)m.addEventListener('change',function(){if(m.value!=='export')return;if(r){r.value='abgemeldet';r.dispatchEvent(new Event('change',{bubbles:true}));}
 if(xd&&!xd.value&&c&&c.value&&c.value.toUpperCase()!=='DE')xd.value=c.value.toUpperCase();});})();`,

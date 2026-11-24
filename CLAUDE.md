@@ -5989,3 +5989,11 @@ Testadresse.
   Summen); **Sonntag + Feiertagsarbeit in einer Spalte „Sonn-/Feiertag“** (gleicher Satz; hohe Feiertage bleiben
   getrennt); **Zuschläge in € entfallen** (Zuschlagsstunden stehen drin); **„Bezahlt gesamt“ als letzte Spalte**.
   Lohnexport (CSV Lohnprogramm/Lexware) unverändert – dort bleiben Zuschläge als Beträge.
+- 2026-11-24: **Fahrzeugverkauf ohne Umsatzsteuer und ohne Gewährleistung/Garantie** (Ahmed): Umsatzsteuer neu
+  „Ohne Umsatzsteuer – Kaufpreis ist Endpreis“ (`tax_mode 'ohne'`, Migration `20270208000001`), ohne Export-/EU-Angaben;
+  Vertrag und Rechnung ohne USt-Ausweis mit Satz „keine Umsatzsteuer enthalten“. Gewährleistung „Ohne Gewährleistung und
+  ohne Garantie („gekauft wie gesehen“)“ ist Standard und jetzt auch an Privatpersonen wählbar (Sperre entfernt, nur
+  Hinweis). **Risiken:** Der Verkauf eines Firmenfahrzeugs durch die GmbH ist umsatzsteuerpflichtig – „ohne“ ändert
+  daran nichts; das Finanzamt rechnet 19 % aus dem Preis heraus (Preis gilt als brutto), mit dem Steuerberater klären.
+  Gegenüber Privatkäufern ist der Gewährleistungsausschluss einer GmbH unwirksam (§ 476 BGB) – im Streitfall gilt die
+  gesetzliche Gewährleistung; nur gegenüber Unternehmen sicher.

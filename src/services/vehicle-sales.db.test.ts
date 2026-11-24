@@ -98,14 +98,8 @@ describe.skipIf(!available)('Fahrzeugverkauf (Datenbank)', () => {
   const cfg = () => ({ dir, maxBytes: 50_000_000 });
 
   it('Prüfungen, Abschluss, Storno', async () => {
-    await expect(
-      completeVehicleSale(
-        sql,
-        cfg(),
-        { id: randomUUID(), vehicleId: vid, input: input({ warranty: 'ausgeschlossen' }) },
-        't',
-      ),
-    ).rejects.toThrow(/§ 476/);
+    // ohne Umsatzsteuer: Preis = Endpreis, keine USt (Ahmed 24.11.)
+    expect(saleAmounts(600000n, 'brutto', 'ohne')).toEqual({ net: 600000n, vat: 0n, gross: 600000n });
     await expect(
       completeVehicleSale(
         sql,

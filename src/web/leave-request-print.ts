@@ -87,7 +87,7 @@ export async function leaveRequestsHtml(
     const col = ABSENCE_COLORS[a.kind];
     const isLeave = a.kind === 'urlaub';
     const days = isLeave
-      ? await leaveDaysOf(sql, a.employee_id, a.start_date, a.end_date, a.half_day)
+      ? await leaveDaysOf(sql, a.employee_id, a.start_date, a.end_date, a.half_day, a.hours_days)
       : absenceDays(a);
     let konto = '';
     if (isLeave) {

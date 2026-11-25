@@ -379,11 +379,89 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
 
   // ------------------------------------------------------------------ Urlaub & Abwesenheiten
 
+  /** Objekte für „Stunden ohne Einsatz“ (auch interne wie Büro); Objektleitung nur ihre */
+  const absenceSites = async (c: Context<AppEnv>) => {
+    const ol = c.get('sites');
+    return (
+      await sql<
+        {
+          id: string;
+          site_no: string;
+          name: string;
+          customer_name: string;
+          street: string | null;
+          city: string | null;
+        }[]
+      >`select s.id, s.site_no, s.name, c.name as customer_name, s.street, s.city
+          from app.sites s join app.customers c on c.id = s.customer_id
+         where s.active order by c.name, s.site_no`
+    ).filter((s) => !ol || ol.includes(s.id));
+  };
+  const hoursText = (min: number) => String(Math.round((min / 60) * 100) / 100).replace('.', ',');
+
+  /** „Stunden ohne Einsatz“ (Ahmed 25.11.): Wochenstunden ÷ Tage/Woche, Objekt/Kostenstelle; Vorschlag aus Stammdaten */
+  const HoursFields: FC<{
+    sites: Awaited<ReturnType<typeof absenceSites>>;
+    on?: boolean;
+    weekly?: string | null;
+    days?: string | null;
+    siteId?: string | null;
+    disabled?: boolean;
+  }> = ({ sites, on, weekly, days, siteId, disabled }) => (
+    <div style="margin-top:10px">
+      <div class="chk">
+        <input
+          type="checkbox"
+          id="hours_mode"
+          name="hours_mode"
+          value="wochen"
+          data-reveal="#abs-wk"
+          checked={!!on}
+          disabled={disabled}
+        />
+        <label for="hours_mode">
+          Stunden ohne Einsatz – nach Wochenstunden und Tagen je Woche statt nach Einsatzplan
+        </label>
+      </div>
+      <div id="abs-wk" class="grid" hidden={!on} style="margin-top:6px">
+        <div>
+          <label for="hours_weekly">Wochenstunden</label>
+          <input id="hours_weekly" name="hours_weekly" inputmode="decimal" value={weekly ?? ''} required />
+          <div class="small mut">Vorschlag aus den Stammdaten (Vertrag), änderbar</div>
+        </div>
+        <div>
+          <label for="hours_days">Tage je Woche</label>
+          <select id="hours_days" name="hours_days" required>
+            {['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6'].map((v) => (
+              <option value={v} selected={Number(v) === Number(days ?? 5)}>
+                {v.replace('.', ',')}
+              </option>
+            ))}
+          </select>
+          <div class="small mut">zählt Mo, Di, … der Reihe nach (3 Tage = Mo–Mi), ohne Feiertage</div>
+        </div>
+        <div>
+          <label for="abs_site_id">Objekt / Kostenstelle</label>
+          <select id="abs_site_id" name="site_id">
+            <option value="">– ohne Objekt –</option>
+            <SiteOptions sites={sites} selected={siteId} />
+          </select>
+          <div class="small mut">Kosten der Stunden in der Nachkalkulation</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const HOURS_PREFILL_JS = `(function(){var sel=document.getElementById('employee_id');var w=document.getElementById('hours_weekly'),d=document.getElementById('hours_days');if(!sel||!w||!d)return;sel.addEventListener('change',function(){var o=sel.options[sel.selectedIndex];if(!o)return;var wh=o.getAttribute('data-wh'),dp=o.getAttribute('data-dpw');if(wh)w.value=wh;if(dp){var best=null;for(var i=0;i<d.options.length;i++){if(Number(d.options[i].value)===Number(dp))best=d.options[i].value;}if(best)d.value=best;}});})();`;
+
   const AbsenceForm: FC<{
-    employees?: { id: string; name: string }[];
+    employees?: { id: string; name: string; weekly?: string | null; days?: string | null }[];
     employeeId?: string;
     action: string;
-  }> = ({ employees, employeeId, action }) => (
+    sites: Awaited<ReturnType<typeof absenceSites>>;
+    weekly?: string | null;
+    days?: string | null;
+  }> = ({ employees, employeeId, action, sites, weekly, days }) => (
     <form method="post" action={action} class="card">
       <h3>Abwesenheit erfassen</h3>
       <input type="hidden" name="id" value={randomUUID()} />
@@ -395,7 +473,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
             <select id="employee_id" name="employee_id" required>
               <option value="">– bitte wählen –</option>
               {employees.map((e) => (
-                <option value={e.id}>{e.name}</option>
+                <option value={e.id} data-wh={e.weekly ?? ''} data-dpw={e.days ?? ''}>
+                  {e.name}
+                </option>
               ))}
             </select>
           </div>
@@ -434,14 +514,17 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           Bei Krankheit: eingetragenen Urlaub an diesen Tagen durch Krank ersetzen (§ 9 BUrlG)
         </label>
       </div>
+      <HoursFields sites={sites} weekly={weekly ?? null} days={days ?? null} />
       <div style="margin-top:10px">
         <label for="note">Notiz (z. B. AU liegt vor)</label>
         <input id="note" name="note" />
       </div>
       <p class="small mut">
         Vom Büro erfasste Abwesenheiten gelten sofort als genehmigt und automatisch für die geplanten Einsätze
-        (geplante Stunden; unbezahlt frei = unbezahlt). Abweichende Stunden danach unter „Stunden je Einsatz“.
+        (geplante Stunden; unbezahlt frei = unbezahlt). Ohne Einsatz (z. B. Urlaubsausgleich nach Ende der
+        Einsätze): „Stunden ohne Einsatz“ ankreuzen. Abweichende Stunden danach unter „Stunden je Einsatz“.
       </p>
+      {employees && <script dangerouslySetInnerHTML={{ __html: HOURS_PREFILL_JS }} />}
       <div class="formfoot">
         <button class="btn">Erfassen</button>
       </div>
@@ -489,6 +572,12 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 {dateDe(a.start_date)}
                 {a.end_date !== a.start_date && ` – ${dateDe(a.end_date)}`}
                 {a.half_day && ' (halb)'}
+                {a.hours_days != null && a.hours_weekly_minutes ? (
+                  <div class="small mut">
+                    ohne Einsatz: {hoursText(a.hours_weekly_minutes)} Std./Woche auf{' '}
+                    {String(Number(a.hours_days)).replace('.', ',')} Tage
+                  </div>
+                ) : null}
               </td>
               <td class="r" data-l="Arbeitstage">
                 {String(a.days).replace('.', ',')}
@@ -612,6 +701,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     ]);
     const open = open0.filter((a) => inOl(sc, a.employee_id));
     const emps = emps0.filter((e) => inOl(sc, e.id));
+    const absSites = await absenceSites(c);
     return urlaubShell(
       c,
       'offen',
@@ -619,8 +709,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         <AbsenceTable rows={open} />
         <div style="max-width:640px;margin-top:16px">
           <AbsenceForm
-            employees={emps.map((e) => ({ id: e.id, name: `${e.last_name}, ${e.first_name}` }))}
+            employees={emps.map((e) => ({
+              id: e.id,
+              name: `${e.last_name}, ${e.first_name}`,
+              weekly: e.weekly_hours ? String(Number(e.weekly_hours)).replace('.', ',') : null,
+              days: e.days_per_week ?? null,
+            }))}
             action="/urlaub"
+            sites={absSites}
           />
         </div>
       </>,
@@ -1210,8 +1306,26 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     });
   });
 
+  /** Formular → Stunden ohne Einsatz (null = nach Einsatzplan) */
+  const hoursOf = (b: Record<string, unknown>) => {
+    if (b.hours_mode !== 'wochen') return { hours: null, siteId: null };
+    const wh = Number(String(b.hours_weekly ?? '').replace(',', '.'));
+    if (!(wh > 0)) throw new BusinessError('Bitte Wochenstunden angeben');
+    const site = String(b.site_id ?? '');
+    return {
+      hours: { weeklyMinutes: Math.round(wh * 60), days: Number(b.hours_days) },
+      siteId: /^[0-9a-f-]{36}$/.test(site) ? site : null,
+    };
+  };
+  const assertAbsSite = async (c: Context<AppEnv>, siteId: string | null) => {
+    if (siteId && !(await absenceSites(c)).some((s) => s.id === siteId))
+      throw new BusinessError('Objekt nicht gefunden');
+  };
+
   const createAbsence = async (c: Context<AppEnv>, redirect: (employeeId: string) => string) => {
     const b = await c.req.parseBody();
+    const hrs = hoursOf(b);
+    await assertAbsSite(c, hrs.siteId);
     const employeeId = String(b.employee_id ?? '');
     if (!/^[0-9a-f-]{36}$/.test(employeeId)) throw new BusinessError('Bitte Mitarbeiter wählen');
     await assertOlEmployee(c, employeeId);
@@ -1231,6 +1345,8 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
       allowNoLeave: b.urlaub_ohne_anspruch === '1',
       allowOverlap: b.urlaub_ueberschneidung === '1',
       appliedOn: typeof b.applied_on === 'string' ? b.applied_on : null,
+      hours: hrs.hours,
+      siteId: hrs.siteId,
     });
     return back(c, redirect(employeeId), {
       ok:
@@ -1255,6 +1371,10 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     if (!a) return c.notFound();
     await assertOlEmployee(c, a.employee_id);
     const editable = ['beantragt', 'genehmigt'].includes(a.status);
+    const editSites = await absenceSites(c);
+    const [editEmp] = await sql<{ weekly: string | null; days: string | null }[]>`
+      select replace(trim(trailing '.' from trim(trailing '0' from weekly_hours::text)), '.', ',') as weekly,
+             days_per_week::text as days from app.employees where id = ${a.employee_id}`;
     const ret = c.req.query('zurueck')
       ? safeReturn(c.req.query('zurueck'))
       : `/urlaub/person/${a.employee_id}`;
@@ -1336,6 +1456,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               <input id="note" name="note" value={a.note ?? ''} disabled={!editable} />
             </div>
           </div>
+          <HoursFields
+            sites={editSites}
+            on={a.hours_days != null}
+            weekly={a.hours_weekly_minutes ? hoursText(a.hours_weekly_minutes) : (editEmp?.weekly ?? null)}
+            days={a.hours_days != null ? String(a.hours_days) : (editEmp?.days ?? null)}
+            siteId={a.site_id ?? null}
+            disabled={!editable}
+          />
           <div class="formfoot">
             <a class="btn sec" href={ret}>
               Abbrechen
@@ -1367,10 +1495,14 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     if (!cur) return c.notFound();
     await assertOlEmployee(c, cur.employee_id);
     const b = await c.req.parseBody();
+    const hrs = hoursOf(b);
+    await assertAbsSite(c, hrs.siteId);
     await updateAbsence(
       sql,
       id,
       {
+        hours: hrs.hours,
+        siteId: hrs.siteId,
         kind: String(b.kind) as AbsenceKind,
         start: String(b.start ?? ''),
         end: String(b.end ?? ''),
@@ -1414,6 +1546,9 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
   app.get(`/personal/:id{${UUID}}/abwesenheiten`, (c) =>
     shells.employee!(c, 'abwesenheiten', async (e) => {
       const year = Number(todayBerlin().slice(0, 4));
+      const absSites = await absenceSites(c);
+      const [stamm] = await sql<{ weekly: string | null; days: string | null }[]>`
+        select weekly_hours::text as weekly, days_per_week::text as days from app.employees where id = ${e.id}`;
       const exitQ = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('austritt') ?? '')
         ? c.req.query('austritt')
         : undefined;
@@ -1542,7 +1677,13 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
           <div class="cols">
             <AbsenceTable rows={list} showEmployee={false} />
             <div id="erfassen">
-              <AbsenceForm employeeId={e.id} action={`/personal/${e.id}/abwesenheiten`} />
+              <AbsenceForm
+                employeeId={e.id}
+                action={`/personal/${e.id}/abwesenheiten`}
+                sites={absSites}
+                weekly={stamm?.weekly ? String(Number(stamm.weekly)).replace('.', ',') : null}
+                days={stamm?.days ?? null}
+              />
             </div>
           </div>
           {canExtra && (

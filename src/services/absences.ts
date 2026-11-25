@@ -47,6 +47,11 @@ export interface Absence {
   version: number;
   /** Antragsdatum (Datum der Unterschrift auf dem Urlaubsantrag), leer = nicht erfasst */
   applied_on?: string | null;
+  /** „Stunden ohne Einsatz“: Wochenstunden in Minuten und Tage je Woche (leer = nach Einsatzplan) */
+  hours_weekly_minutes?: number | null;
+  hours_days?: string | number | null;
+  /** Objekt/Kostenstelle für Stunden ohne Einsatz */
+  site_id?: string | null;
 }
 export type AbsenceRow = Absence & { employee_name: string; personnel_no: string; days: number };
 
@@ -87,6 +92,32 @@ type AbsenceHourRow = {
   paid: boolean;
 };
 
+/**
+ * „Stunden ohne Einsatz“ (Ahmed 25.11.): Tage im Zeitraum nach Tagen/Woche – Mo, Di, … der Reihe nach (bei 3 Tagen
+ * Mo–Mi, bei 2,5 Mo, Di + halber Mi), ohne Feiertage. Ergebnis je Tag 1 bzw. 0,5.
+ */
+export function weeklyModeDays(
+  from: string,
+  to: string,
+  daysPerWeek: number,
+): { date: string; part: number }[] {
+  const out: { date: string; part: number }[] = [];
+  const full = Math.floor(daysPerWeek);
+  const half = daysPerWeek - full >= 0.5;
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    if (holidayName(d)) continue;
+    const wd = isoWeekday(d);
+    if (wd <= full) out.push({ date: d, part: 1 });
+    else if (half && wd === full + 1) out.push({ date: d, part: 0.5 });
+  }
+  return out;
+}
+
+const weeklyOf = (a: Pick<Absence, 'hours_weekly_minutes' | 'hours_days'>) =>
+  a.hours_days != null && Number(a.hours_days) > 0 && Number(a.hours_weekly_minutes) > 0
+    ? { minutes: Number(a.hours_weekly_minutes), days: Number(a.hours_days) }
+    : null;
+
 /** Soll-Stunden einer genehmigten Abwesenheit je Einsatz und Tag nach dem heutigen Einsatzplan. */
 function expectedAbsenceRows(
   a: Absence & { weekly_hours: string | null },
@@ -94,6 +125,20 @@ function expectedAbsenceRows(
 ): AbsenceHourRow[] {
   const paid = ABSENCE_PAID[a.kind];
   const half = (m: number) => (a.half_day ? Math.round(m / 2) : m);
+  const wk = weeklyOf(a);
+  if (wk) {
+    const perDay = Math.round(wk.minutes / wk.days);
+    return weeklyModeDays(a.start_date, a.end_date, wk.days).map((x) => ({
+      id: uuidOf(`abs-h:${a.id}:${x.date}:-`),
+      absence_id: a.id,
+      employee_id: a.employee_id,
+      work_date: x.date,
+      shift_plan_id: null,
+      site_id: a.site_id ?? null,
+      minutes: Math.min(960, half(Math.round(perDay * x.part))),
+      paid,
+    }));
+  }
   const mine = shifts.filter(
     (s) =>
       s.plan.employee_id === a.employee_id &&
@@ -125,7 +170,7 @@ function expectedAbsenceRows(
         employee_id: a.employee_id,
         work_date: d,
         shift_plan_id: null,
-        site_id: null,
+        site_id: a.site_id ?? null,
         minutes: half(perDay),
         paid,
       });
@@ -259,9 +304,18 @@ export async function addAbsenceDay(
  * Urlaubswoche kostet dann weniger Tage). 5-Tage-Woche: Mo–Fr ohne Feiertage. Weniger Tage: die Wochentage, an denen
  * die Person eingeplant ist (ohne Feiertage); ohne Planung anteilig Mo–Fr × Tage ÷ 5 (auf halbe Tage).
  */
-export async function leaveDaysOf(sql: Sql, employeeId: string, from: string, to: string, halfDay: boolean) {
+export async function leaveDaysOf(
+  sql: Sql,
+  employeeId: string,
+  from: string,
+  to: string,
+  halfDay: boolean,
+  weeklyDays?: number | string | null,
+) {
   if (from > to) return 0;
   if (halfDay) return 0.5;
+  if (weeklyDays != null && Number(weeklyDays) > 0)
+    return weeklyModeDays(from, to, Number(weeklyDays)).reduce((s, x) => s + x.part, 0);
   let sum = 0;
   for (const seg of await leaveDaysPeriods(sql, employeeId, from, to)) {
     if (seg.days >= 5) {
@@ -305,7 +359,9 @@ export async function listAbsences(
   const out = rows.map((r) => ({ ...r, days: absenceDays(r) })) as AbsenceRow[];
   // Abwesenheit nur an Tagen außerhalb Mo–Fr (z. B. Samstag mit Einsatz, Ahmed 09.11.): Tage mit geplantem Einsatz zählen
   for (const r of out)
-    if (r.days === 0 && !r.half_day)
+    if (weeklyOf(r))
+      r.days = await leaveDaysOf(sql, r.employee_id, r.start_date, r.end_date, r.half_day, r.hours_days);
+    else if (r.days === 0 && !r.half_day)
       r.days = await leaveDaysOf(sql, r.employee_id, r.start_date, r.end_date, false);
   return out;
 }
@@ -336,9 +392,15 @@ export async function requestAbsence(
     appliedOn?: string | null;
     /** trotz zu vieler gleichzeitig Abwesender am Objekt eintragen (nach Rückfrage) */
     allowOverlap?: boolean;
+    /** Stunden ohne Einsatz: Wochenstunden (Minuten) ÷ Tage/Woche statt Einsatzplan */
+    hours?: { weeklyMinutes: number; days: number } | null;
+    /** Objekt/Kostenstelle für Stunden ohne Einsatz */
+    siteId?: string | null;
   },
 ) {
   checkAppliedOn(p.appliedOn);
+  checkHours(p.hours);
+  const wd = p.hours?.days ?? null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end))
     throw new BusinessError('Datum ungültig', 'bad_date');
   if (p.end < p.start) throw new BusinessError('„bis“ liegt vor „von“', 'bad_range');
@@ -347,14 +409,15 @@ export async function requestAbsence(
   if (!(p.kind in ABSENCE_LABEL)) throw new BusinessError('Art ungültig');
   if (
     p.kind === 'urlaub' &&
-    absenceDays({ start_date: p.start, end_date: p.end, half_day: p.halfDay }) === 0 &&
-    (await leaveDaysOf(sql, p.employeeId, p.start, p.end, p.halfDay)) === 0
+    (wd != null || absenceDays({ start_date: p.start, end_date: p.end, half_day: p.halfDay }) === 0) &&
+    (await leaveDaysOf(sql, p.employeeId, p.start, p.end, p.halfDay, wd)) === 0
   ) {
     throw new BusinessError('Im Zeitraum liegen keine Arbeitstage', 'no_workdays');
   }
   if (p.kind === 'urlaub') {
     const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
-    if (!dup && !p.allowNoLeave) await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false);
+    if (!dup && !p.allowNoLeave)
+      await assertLeaveLeft(sql, p.employeeId, p.start, p.end, p.halfDay, false, wd);
   }
   if (p.approved && !p.autoSchool && !p.allowOverlap) {
     const [dup] = await sql`select 1 from app.absences where id = ${p.id}`;
@@ -412,10 +475,10 @@ export async function requestAbsence(
       );
     await tx`
       insert into app.absences (id, employee_id, kind, start_date, end_date, half_day, status, note, requested_by,
-                                decided_by, decided_at, auto_school, applied_on)
+                                decided_by, decided_at, auto_school, applied_on, hours_weekly_minutes, hours_days, site_id)
       values (${p.id}, ${p.employeeId}, ${p.kind}, ${p.start}, ${p.end}, ${p.halfDay}, ${p.approved ? 'genehmigt' : 'beantragt'},
               ${p.note}, ${p.actor}, ${p.approved ? p.actor : null}, ${p.approved ? tx`now()` : null}, ${p.autoSchool ?? false},
-              ${p.appliedOn || null})`;
+              ${p.appliedOn || null}, ${p.hours?.weeklyMinutes ?? null}, ${p.hours?.days ?? null}, ${p.siteId || null})`;
     if (p.allowNoLeave && p.kind === 'urlaub' && !p.autoSchool)
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${p.actor}, 'create', 'absence', ${p.id}, ${tx.json({ urlaub_ohne_anspruch: true })})`;
@@ -423,6 +486,14 @@ export async function requestAbsence(
   if (p.kind === 'urlaub') invalidateLeaveWarnings();
   if (p.approved) await applyAbsenceHours(sql, p.id);
   for (const v of changed) await applyAbsenceHours(sql, v);
+}
+
+function checkHours(h: { weeklyMinutes: number; days: number } | null | undefined) {
+  if (!h) return;
+  if (!Number.isInteger(h.weeklyMinutes) || h.weeklyMinutes < 1 || h.weeklyMinutes > 4800)
+    throw new BusinessError('Wochenstunden zwischen 0 und 80');
+  if (!(h.days > 0 && h.days <= 7) || Math.round(h.days * 2) !== h.days * 2)
+    throw new BusinessError('Tage je Woche zwischen 0,5 und 7 (halbe Tage möglich)');
 }
 
 function checkAppliedOn(v: string | null | undefined) {
@@ -460,10 +531,14 @@ export async function updateAbsence(
     allowOverlap?: boolean;
     /** undefined = unverändert, '' / null = leeren */
     appliedOn?: string | null;
+    /** undefined = unverändert, null = nach Einsatzplan */
+    hours?: { weeklyMinutes: number; days: number } | null;
+    siteId?: string | null;
   },
   actor: string,
 ) {
   checkAppliedOn(p.appliedOn);
+  checkHours(p.hours);
   const a = await getAbsence(sql, id);
   if (!a) throw new BusinessError('Abwesenheit nicht gefunden');
   if (!['beantragt', 'genehmigt'].includes(a.status))
@@ -493,11 +568,14 @@ export async function updateAbsence(
       const clip = (s: string, e: string) =>
         [s > `${y}-01-01` ? s : `${y}-01-01`, e < `${y}-12-31` ? e : `${y}-12-31`] as const;
       const [ns, ne] = clip(p.start, p.end);
-      const need = await leaveDaysOf(sql, a.employee_id, ns, ne, p.halfDay);
+      const newWd = p.hours === undefined ? a.hours_days : (p.hours?.days ?? null);
+      const need = await leaveDaysOf(sql, a.employee_id, ns, ne, p.halfDay, newWd);
       if (!need) continue;
       const [os, oe] = clip(a.start_date, a.end_date);
       const old =
-        a.kind === 'urlaub' && os <= oe ? await leaveDaysOf(sql, a.employee_id, os, oe, a.half_day) : 0;
+        a.kind === 'urlaub' && os <= oe
+          ? await leaveDaysOf(sql, a.employee_id, os, oe, a.half_day, a.hours_days)
+          : 0;
       const bal = await leaveBalance(sql, a.employee_id, y);
       if (bal.rest + old < need)
         throw new BusinessError(
@@ -516,11 +594,13 @@ export async function updateAbsence(
     if (overlap) throw new BusinessError('Für diesen Zeitraum gibt es schon eine andere Abwesenheit');
     await tx`update app.absences set kind = ${p.kind}, start_date = ${p.start}, end_date = ${p.end},
                half_day = ${p.halfDay}, note = ${p.note}
-               ${p.appliedOn === undefined ? tx`` : tx`, applied_on = ${p.appliedOn || null}`} where id = ${id}`;
+               ${p.appliedOn === undefined ? tx`` : tx`, applied_on = ${p.appliedOn || null}`}
+               ${p.hours === undefined ? tx`` : tx`, hours_weekly_minutes = ${p.hours?.weeklyMinutes ?? null}, hours_days = ${p.hours?.days ?? null}`}
+               ${p.siteId === undefined ? tx`` : tx`, site_id = ${p.siteId || null}`} where id = ${id}`;
     await tx`delete from app.absence_hours where absence_id = ${id}`;
     await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
              values (${actor}, 'update', 'absence', ${id},
-                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note, applied_on: a.applied_on ?? null }, ...(p.allowNoLeave && p.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
+                     ${tx.json({ vorher: { kind: a.kind, start: a.start_date, end: a.end_date, half_day: a.half_day, note: a.note, applied_on: a.applied_on ?? null, hours_weekly_minutes: a.hours_weekly_minutes ?? null, hours_days: a.hours_days ?? null, site_id: a.site_id ?? null }, ...(p.allowNoLeave && p.kind === 'urlaub' ? { urlaub_ohne_anspruch: true } : {}) })})`;
   });
   invalidateLeaveWarnings();
   await applyAbsenceHours(sql, id);
@@ -559,7 +639,7 @@ export async function decideAbsence(
   if (a.status === status) return;
   // Genehmigen nur mit ausreichendem Urlaubsanspruch (der Antrag ist im Rest schon als „beantragt“ abgezogen)
   if (status === 'genehmigt' && a.kind === 'urlaub' && !allowNoLeave)
-    await assertLeaveLeft(sql, a.employee_id, a.start_date, a.end_date, a.half_day, true);
+    await assertLeaveLeft(sql, a.employee_id, a.start_date, a.end_date, a.half_day, true, a.hours_days);
   if (status === 'genehmigt' && a.status === 'beantragt' && !allowOverlap)
     await assertLeaveOverlap(sql, {
       employeeId: a.employee_id,
@@ -589,11 +669,12 @@ export async function assertLeaveLeft(
   end: string,
   halfDay: boolean,
   included: boolean,
+  weeklyDays?: number | string | null,
 ) {
   for (let y = Number(start.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) {
     const s = start > `${y}-01-01` ? start : `${y}-01-01`;
     const t = end < `${y}-12-31` ? end : `${y}-12-31`;
-    const days = await leaveDaysOf(sql, employeeId, s, t, halfDay);
+    const days = await leaveDaysOf(sql, employeeId, s, t, halfDay, weeklyDays);
     if (!days) continue;
     const bal = await leaveBalance(sql, employeeId, y);
     const left = bal.rest + (included ? days : 0);
@@ -735,6 +816,7 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
       a.start_date < yStart ? yStart : a.start_date,
       a.end_date > until ? until : a.end_date,
       a.half_day,
+      a.hours_days,
     );
   let taken = 0;
   let requested = 0;

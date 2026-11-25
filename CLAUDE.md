@@ -6017,3 +6017,14 @@ Testadresse.
   Einstellungen. Schließzeiten des Objekts und Feiertage zählen nicht (an diesen Tagen ist niemand eingeplant). Zähler im
   Reiter = Objekte mit Überschneidung in den nächsten 90 Tagen; Objektleitung nur ihre Objekte. Test in
   `leave-overlap.db.test.ts`.
+- 2026-11-25: **Abwesenheit „Stunden ohne Einsatz“** (Ahmed: „Urlaub ausgleichen, wenn die Einsätze beendet sind; Wochenstunden
+  mit Tagesanzahl, Vorschlag aus Vertrag/Stammdaten, Kostenstelle/Objekt“): Abwesenheit erfassen/ändern → Häkchen „Stunden
+  ohne Einsatz“ → Wochenstunden (vorbelegt aus den Stammdaten, beim Mitarbeiterwechsel neu), Tage je Woche (0,5–6, vorbelegt
+  aus den Stammdaten), Objekt/Kostenstelle (optional, auch interne wie Büro; Objektleitung nur ihre). Dann werden die Stunden
+  nicht nach Einsatzplan gerechnet, sondern Wochenstunden ÷ Tage je Tag auf Mo, Di, … der Reihe nach (3 Tage = Mo–Mi, 2,5 =
+  Mo, Di + halber Mi), ohne Feiertage (`weeklyModeDays` in `absences.ts`); die Stunden laufen auf das gewählte Objekt
+  (Nachkalkulation). Urlaubstage zählen genauso (Urlaubskonto, Anspruchsprüfung, gedruckter Antrag, Liste). Spalten
+  `absences.hours_weekly_minutes/hours_days/site_id` (Migration `20270210000001`); auch ohne Häkchen gilt das Objekt für die
+  Stunden, wenn kein Einsatz geplant ist. **Rechtlich:** Urlaubsabgeltung nach Ende des Arbeitsverhältnisses (§ 7 Abs. 4
+  BUrlG) ist eine Geldzahlung im Lohnprogramm – das hier ist bezahlter Urlaub während des noch laufenden Arbeitsverhältnisses.
+  Test `absence-weekly.db.test.ts`.

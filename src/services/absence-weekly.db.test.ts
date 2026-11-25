@@ -113,4 +113,30 @@ describe.skipIf(!available)('Abwesenheit Stunden ohne Einsatz (Datenbank)', () =
     );
     expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(9);
   });
+
+  it('automatisch anteilig je Monat: 5 Monate 3 Tage + 1 Monat 5 Tage = 10 (Ahmed 25.11.)', async () => {
+    const id = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, exit_date, hourly_wage_cents, weekly_hours, employment_type, days_auto)
+              values (${id}, '3957', 'Test', 'Anteilig', '2026-06-01', '2026-11-30', 1500, 15, 'teilzeit', true)`;
+    const plan = (weekdays: number[], from: string, until: string | null) =>
+      saveShiftPlan(
+        sql,
+        randomUUID(),
+        {
+          employeeId: id,
+          siteId: DEMO.siteSchool,
+          weekdays,
+          startTime: '06:00',
+          endTime: '09:00',
+          breakMinutes: 0,
+          validFrom: from,
+          validUntil: until,
+          note: null,
+        },
+        't',
+      );
+    await plan([1, 3, 5], '2026-06-01', '2026-10-31');
+    await plan([1, 2, 3, 4, 5], '2026-11-01', null);
+    expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(10);
+  });
 });

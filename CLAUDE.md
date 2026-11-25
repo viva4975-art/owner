@@ -6037,3 +6037,10 @@ Testadresse.
   ein falsches Datum korrigieren). **Ahmed: beim betroffenen Mitarbeiter „Stunden/Tage gültig ab“ = 11.05.2026 eintragen
   und speichern.** **Rechtliches Risiko bleibt:** 9 Tage unterschreiten den gesetzlichen Mindesturlaub (4 Wochen × 3 = 12,
   § 5 Abs. 1, § 13 BUrlG – Eintritt vor 01.07., Austritt in der 2. Jahreshälfte). Test in `absence-weekly.db.test.ts`.
+- 2026-11-25: **Urlaub „automatisch aus der Einsatzplanung“ anteilig je Monat** (Ahmed: „5 Monate mit 3 Tagen = 7,5, ein
+  Monat mit 5 Tagen = 2,5, zusammen 10 – so überall“): Arbeitstage/Woche eines Monats = Durchschnitt über die Tage des
+  Monats der an diesem Tag geltenden Wochentage mit Einsatz (`monthDaysPerWeek` in `employee-hours.ts`; alle n Wochen
+  = 1/n, monatlich ≈ ¼). Vorher zählten alle Wochentage aller Einsätze, die irgendwann im Monat galten – ein Wechsel
+  (bis 15. Mo/Mi/Fr, danach Di/Do) ergab 5 statt ≈ 2,5. Tage vor dem ersten bzw. nach dem letzten Einsatz und Monate
+  ohne Einsatz zählen wie der nächste geplante Monat. Anspruch weiter je voller Beschäftigungsmonat 30 × Tage ÷ 5 ÷ 12,
+  auf halbe Tage gerundet. Test in `absence-weekly.db.test.ts`.

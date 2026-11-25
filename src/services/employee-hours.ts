@@ -159,6 +159,49 @@ export async function plannedDaysPerWeek(sql: Sql | Tx, employeeId: string, from
 }
 
 /**
+ * Arbeitstage/Woche eines Monats für den Urlaub (Ahmed 25.11.: anteilig): je Kalendertag die an diesem Tag geltenden
+ * Wochentage mit Einsatz (alle n Wochen = 1/n, monatlich ≈ ¼), Durchschnitt über die Tage des Monats. So zählt ein
+ * Wechsel der Wochentage mitten im Monat nur anteilig (bis 15. Mo/Mi/Fr, danach Di/Do = ≈ 2,5 statt 5).
+ */
+export async function monthDaysPerWeek(sql: Sql | Tx, employeeId: string, from: string, to: string) {
+  const rows = await sql<
+    {
+      weekday: number;
+      recurrence: string | null;
+      every: number | null;
+      valid_from: string;
+      valid_until: string | null;
+    }[]
+  >`
+    select weekday, recurrence, every, valid_from::text, valid_until::text from app.shift_plans
+     where employee_id = ${employeeId} and valid_from <= ${to} and (valid_until is null or valid_until >= ${from})
+       and coalesce(recurrence, 'woechentlich') <> 'einmalig'`;
+  if (!rows.length) return null;
+  // Tage vor dem ersten bzw. nach dem letzten Einsatz überhaupt zählen nicht mit (wie Monate ohne Einsatz)
+  const [span] = await sql<{ a: string | null; b: string | null; open: boolean }[]>`
+    select min(valid_from)::text as a, max(valid_until)::text as b, bool_or(valid_until is null) as open
+      from app.shift_plans where employee_id = ${employeeId} and coalesce(recurrence, 'woechentlich') <> 'einmalig'`;
+  const lo = span?.a && span.a > from ? span.a : from;
+  const hi = span && !span.open && span.b && span.b < to ? span.b : to;
+  let sum = 0;
+  let n = 0;
+  for (let d = lo; d <= hi; d = addDays(d, 1)) {
+    n++;
+    // an diesem Tag geltende Wochentage (je Wochentag der höchste Anteil) = Arbeitstage/Woche an diesem Tag
+    const per = new Map<number, number>();
+    for (const r of rows) {
+      if (r.valid_from > d || (r.valid_until && r.valid_until < d)) continue;
+      const every = Math.max(1, Number(r.every ?? 1));
+      const w = r.recurrence === 'monatlich' ? 12 / 52 / every : 1 / every;
+      per.set(Number(r.weekday), Math.max(per.get(Number(r.weekday)) ?? 0, w));
+    }
+    for (const w of per.values()) sum += w;
+  }
+  if (!n) return null;
+  return Math.min(7, Math.round((sum / n) * 100) / 100);
+}
+
+/**
  * Arbeitstage je Abschnitt für den Urlaub: von Hand in den Stammdaten gesetzt (`days_auto = false`) → Verlauf wie
  * bisher; sonst je Kalendermonat aus der Einsatzplanung (Monat ohne Einsatz = wie der nächstgelegene geplante Monat, ganz ohne Einsatz 5).
  */
@@ -200,7 +243,7 @@ async function leaveDaysPeriodsRaw(sql: Sql | Tx, employeeId: string, from: stri
     months.push({
       from: ms < from ? from : ms,
       to: me > to ? to : me,
-      days: await plannedDaysPerWeek(sql, employeeId, ms, me),
+      days: await monthDaysPerWeek(sql, employeeId, ms, me),
     });
     ms = next;
   }

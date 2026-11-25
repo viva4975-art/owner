@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from '../db/client.js';
-import { listAbsenceHours, listAbsences, requestAbsence, weeklyModeDays } from './absences.js';
+import {
+  leaveExitPreview,
+  listAbsenceHours,
+  listAbsences,
+  requestAbsence,
+  weeklyModeDays,
+} from './absences.js';
+import { employeeInput, saveEmployee } from './employees.js';
 import { DEMO } from './seed.js';
+import { saveShiftPlan } from './time.js';
 import { dbAvailable, freshDatabase } from './testing.js';
 
 const available = await dbAvailable();
@@ -55,5 +63,54 @@ describe.skipIf(!available)('Abwesenheit Stunden ohne Einsatz (Datenbank)', () =
     expect(h.every((x) => x.minutes === 300 && x.site_id === DEMO.siteSchool && x.paid)).toBe(true);
     const [row] = (await listAbsences(sql, { employeeId: emp })).filter((a) => a.id === id);
     expect(row?.days).toBe(4);
+  });
+
+  it('Umstellen automatisch → fest 3 Tage gilt ab Eintritt (Ahmed 25.11.: 13,5 statt 9)', async () => {
+    const id = randomUUID();
+    const base = {
+      personnel_no: '3956',
+      first_name: 'Test',
+      last_name: 'Umstellung',
+      employment_type: 'teilzeit',
+      entry_date: '2026-05-11',
+      exit_date: '',
+      weekly_hours: '15',
+      hourly_wage: '',
+      phone: '',
+      email: '',
+      languages: '',
+      private_version: '',
+      street: 'Hauptstr. 12',
+      postal_code: '84101',
+      city: 'Obersüßbach',
+      birth_date: '2003-01-01',
+    };
+    await saveEmployee(sql, id, employeeInput.parse({ ...base, version: '', days_mode: 'auto' }), 't');
+    // Plan Mo–Fr → automatisch 5 Tage
+    await saveShiftPlan(
+      sql,
+      randomUUID(),
+      {
+        employeeId: id,
+        siteId: DEMO.siteSchool,
+        weekdays: [1, 2, 3, 4, 5],
+        startTime: '06:00',
+        endTime: '09:00',
+        breakMinutes: 0,
+        validFrom: '2026-05-11',
+        validUntil: null,
+        note: null,
+      },
+      't',
+    );
+    expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(15);
+    const [v] = await sql<{ version: number }[]>`select version from app.employees where id = ${id}`;
+    await saveEmployee(
+      sql,
+      id,
+      employeeInput.parse({ ...base, version: String(v!.version), days_mode: 'fest', days_per_week: '3' }),
+      't',
+    );
+    expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(9);
   });
 });

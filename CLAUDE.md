@@ -6028,3 +6028,12 @@ Testadresse.
   Stunden, wenn kein Einsatz geplant ist. **Rechtlich:** Urlaubsabgeltung nach Ende des Arbeitsverhältnisses (§ 7 Abs. 4
   BUrlG) ist eine Geldzahlung im Lohnprogramm – das hier ist bezahlter Urlaub während des noch laufenden Arbeitsverhältnisses.
   Test `absence-weekly.db.test.ts`.
+- 2026-11-25: **Fund Urlaub 13,5 statt 9 Tage** (Ahmed: Eintritt 11.05.2026, Austritt 30.11., 3-Tage-Woche; „kein Minimum“):
+  Rechnung bleibt rein anteilig (30 × 3 ÷ 5 = 18 × 6 volle Monate Juni–Nov ÷ 12 = **9 Tage**, keine Untergrenze nach § 5
+  BUrlG – Ahmed). Ursache: Bei „automatisch aus der Einsatzplanung“ zählten die Monate mit den geplanten Wochentagen (mehr
+  als 3), und das Umstellen auf „fest 3 Tage“ galt ohne „gültig ab“ erst ab heute – davor rechnete der Verlauf mit 5.
+  Jetzt: Umstellen von automatisch auf fest ohne Datum gilt ab Eintritt (frühestens 01.01. des Jahres); ein eingetragenes
+  „Stunden/Tage gültig ab“ hält den festen Wert immer ab diesem Tag fest, auch wenn die Tage gleich bleiben (so lässt sich
+  ein falsches Datum korrigieren). **Ahmed: beim betroffenen Mitarbeiter „Stunden/Tage gültig ab“ = 11.05.2026 eintragen
+  und speichern.** **Rechtliches Risiko bleibt:** 9 Tage unterschreiten den gesetzlichen Mindesturlaub (4 Wochen × 3 = 12,
+  § 5 Abs. 1, § 13 BUrlG – Eintritt vor 01.07., Austritt in der 2. Jahreshälfte). Test in `absence-weekly.db.test.ts`.

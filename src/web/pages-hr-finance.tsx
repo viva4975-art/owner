@@ -1095,8 +1095,9 @@ export const EmployeeForm: FC<{
           <input id="hours_valid_from" name="hours_valid_from" type="date" />
           <div class="small mut">
             Nur bei geänderten Stunden oder fest eingetragenen Arbeitstagen: ab wann sie gelten (leer = heute,
-            z. B. 01.11.). Der alte Wert bleibt im Verlauf sichtbar; der Urlaub wird je Monat nach den dann
-            gültigen Arbeitstagen gerechnet.
+            z. B. 01.11.; beim Umstellen von „automatisch“ auf „fest“ leer = ab Eintritt bzw. 01.01.). Der
+            alte Wert bleibt im Verlauf sichtbar; der Urlaub wird je Monat nach den dann gültigen Arbeitstagen
+            gerechnet.
           </div>
         </div>
       )}

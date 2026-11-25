@@ -453,8 +453,15 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
   try {
     await sql.begin(async (tx) => {
       const [cur] = await tx<
-        { version: number; weekly_hours: string | null; days_per_week: string; exit_date: string | null }[]
-      >`select version, weekly_hours::text, days_per_week::text, exit_date::text from app.employees where id = ${id} for update`;
+        {
+          version: number;
+          weekly_hours: string | null;
+          days_per_week: string;
+          exit_date: string | null;
+          days_auto: boolean;
+        }[]
+      >`select version, weekly_hours::text, days_per_week::text, exit_date::text, days_auto
+          from app.employees where id = ${id} for update`;
       exitChanged = !!cur && (cur.exit_date ?? null) !== (input.exit_date ?? null);
       assertVersion(cur?.version, input.version, 'Der Mitarbeiter');
       // Wochenstunden und Arbeitstage mit Verlauf: Änderung gilt ab „gültig ab“ (Zukunft → bis dahin der alte Wert)
@@ -472,9 +479,19 @@ export async function saveEmployee(sql: Sql, id: string, input: EmployeeInput, a
           : input.days_mode === 'auto'
             ? oldDays
             : (input.days_per_week ?? oldDays);
-      const daysChanged = cur ? oldDays !== newDays : newDays !== 5;
+      // Ahmed 25.11.: von „automatisch“ auf „fest“ umgestellt → gilt ohne Datum ab Eintritt (frühestens 01.01. dieses
+      // Jahres), sonst rechnete der Urlaub bis heute weiter mit den Tagen aus dem Plan bzw. 5. Mit „gültig ab“ wird der
+      // feste Wert immer ab diesem Tag festgehalten (auch wenn er gleich bleibt – so lässt sich das Datum korrigieren).
+      const switchToFixed = !!cur && cur.days_auto && input.days_mode === 'fest';
+      const daysChanged = cur
+        ? oldDays !== newDays || switchToFixed || (input.days_mode === 'fest' && !!input.hours_valid_from)
+        : newDays !== 5;
       const hoursChanged = cur ? oldHours !== input.weekly_hours || daysChanged : true;
-      const validFrom = cur ? (input.hours_valid_from ?? todayBerlin()) : input.entry_date;
+      const yStart = `${todayBerlin().slice(0, 4)}-01-01`;
+      const validFrom = cur
+        ? (input.hours_valid_from ??
+          (switchToFixed ? (input.entry_date > yStart ? input.entry_date : yStart) : todayBerlin()))
+        : input.entry_date;
       const row =
         cur && hoursChanged && validFrom > todayBerlin()
           ? { ...base, weekly_hours: oldHours, days_per_week: oldDays }

@@ -6066,3 +6066,11 @@ Testadresse.
     Kalkulation (Kosten am Objekt; Festgehalt mit Stundensatz aus dem Gehalt) und mindert den Resturlaub. **Rechtlich:**
     Abgeltung nur bei Ende des Arbeitsverhältnisses; Höhe = Urlaubsentgelt nach § 11 BUrlG (Ø-Verdienst der letzten
     13 Wochen) – bei schwankenden Stunden Stunden je Tag entsprechend ansetzen; Einmalzahlung (Steuer: sonstiger Bezug).
+- 2026-11-25: **Festgehalt + krank** (Ahmed: „Krank-Stunden in Lohnarten, Gehalt die Differenz, damit der Gesamtbetrag
+  passt“ – auch Minijob mit Festgehalt): Bei Festgehalt stehen Krankheitsstunden jetzt als Lohnart „Krank“ (Stunden) in
+  Stundenliste & Lohnarten, CSV Lohnprogramm (mit Betrag) und Lexware (ASCII); das Gehalt wird um den Krank-Anteil
+  gemindert (`PayrollRow.salarySickCents` = Gehalt ÷ Soll-Minuten laut Plan × Krank-Minuten, wie der Abzug unbezahlt;
+  ohne Plan Stundensatz aus dem Gehalt). Summe Gehalt + Krank = Gehalt; Kosten in Nach-/Plan-Kalkulation unverändert.
+  **Ahmed: In Lexware muss der Stundensatz der Lohnart „Krank“ bei Festgehalt-Mitarbeitenden dem Satz aus der App
+  entsprechen (Gehalt ÷ Soll-Stunden), sonst stimmt die Summe dort nicht – erste Abrechnung gegenprüfen.** Urlaub bei
+  Festgehalt bleibt im Gehalt (nicht getrennt). Test in `payroll-absence.db.test.ts`.

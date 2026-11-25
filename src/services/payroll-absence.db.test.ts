@@ -125,4 +125,32 @@ describe.skipIf(!available)('Lohnexport mit Abwesenheiten (Datenbank)', () => {
     expect(r!.unpaidMinutes).toBe(360);
     expect(r!.absenceConflictMinutes).toBe(120);
   });
+
+  it('Festgehalt und krank: Krank-Stunden als Lohnart, Gehalt um den Anteil gemindert, Summe gleich', async () => {
+    // Mo 09.11. + Di 10.11. krank je 2 Std. (bezahlt)
+    await absence(
+      mini,
+      'krank',
+      '2026-11-09',
+      '2026-11-10',
+      [
+        ['2026-11-09', 120],
+        ['2026-11-10', 120],
+      ],
+      true,
+    );
+    const [r] = await payrollMonth(sql, '2026-11', mini, { cutoff: '2026-10-31' });
+    expect(r!.minutes.krank).toBe(240);
+    // 585 € ÷ 42 Std. × 4 Std. = 55,71 €
+    expect(r!.salarySickCents).toBe(5571n);
+    const { text } = payrollLexwareAscii(
+      [r!],
+      {
+        wage_type_numbers: { aushilfsgehalt: '400', unbezahlt: '990', krank: '300' },
+        overtime_bp: 2500,
+      } as never,
+      '2026-11',
+    );
+    expect(text).toBe('2026;11;7702;400;529,29\r\n2026;11;7702;990;-83,57\r\n2026;11;7702;300;4,00\r\n');
+  });
 });

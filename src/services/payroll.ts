@@ -151,6 +151,9 @@ export interface PayrollRow {
   unpaidMinutes: number;
   /** Festgehalt: Abzug für unbezahlte Abwesenheit in Cent (positiv, wird als Minusbetrag exportiert) */
   unpaidDeductionCents: bigint;
+  /** Festgehalt: Anteil des Gehalts für Krankheitsstunden (Entgeltfortzahlung) – als Lohnart „Krank“ ausgewiesen, das
+   * Gehalt um diesen Betrag gemindert (Summe bleibt das Gehalt; Ahmed 25.11.) */
+  salarySickCents: bigint;
   /** Zuschlagsbeträge in Cent (nur bei bekanntem Stundenlohn) */
   surchargeCents: Record<SurchargeKind, bigint>;
   /** angewandter Satz je Zuschlag (Basispunkte) */
@@ -554,6 +557,13 @@ export async function payrollMonth(
     const unpaidDeductionCents = salary?.cents
       ? unpaidDeduction(salary.cents, unpaid, planBase.get(e.id) ?? 0, e.wage_cents)
       : 0n;
+    // Festgehalt (auch Minijob) und krank: Krankheitsstunden als eigene Lohnart, Gehalt = Rest (gleiche Rechnung wie der
+    // Abzug für unbezahlte Abwesenheit: Gehalt ÷ Soll-Minuten laut Plan × Krank-Minuten), Summe bleibt das Gehalt
+    let salarySickCents = salary?.cents
+      ? unpaidDeduction(salary.cents, m.krank, planBase.get(e.id) ?? 0, e.wage_cents)
+      : 0n;
+    if (salary && salarySickCents > salary.cents - unpaidDeductionCents)
+      salarySickCents = salary.cents - unpaidDeductionCents > 0n ? salary.cents - unpaidDeductionCents : 0n;
     const bp: Record<SurchargeKind, number> = {
       nacht: rates.night,
       sonntag: e.regular_sunday_work ? rates.sundayRegular : rates.sunday,
@@ -575,6 +585,7 @@ export async function payrollMonth(
         salary,
         unpaidMinutes: unpaid,
         unpaidDeductionCents,
+        salarySickCents,
         surchargeCents: sc,
         bp,
         overtimeCents: e.wage_cents ? surchargeCents(m.mehrarbeit, e.wage_cents, settings.overtime_bp) : 0n,
@@ -615,7 +626,7 @@ export function payrollCsv(
           '',
           '',
           '',
-          eur(r.salary.cents),
+          eur(r.salary.cents - r.salarySickCents),
         ].join(';'),
       );
     if (r.unpaidDeductionCents)
@@ -650,7 +661,13 @@ export function payrollCsv(
               ? String(s.overtime_bp / 100).replace('.', ',')
               : '',
           r.wage_cents ? eur(r.wage_cents) : '',
-          sur && r.wage_cents ? eur(r.surchargeCents[sur]) : ot && r.wage_cents ? eur(r.overtimeCents) : '',
+          k === 'krank' && r.salary && r.salarySickCents
+            ? eur(r.salarySickCents)
+            : sur && r.wage_cents
+              ? eur(r.surchargeCents[sur])
+              : ot && r.wage_cents
+                ? eur(r.overtimeCents)
+                : '',
         ].join(';'),
       );
     }
@@ -724,11 +741,12 @@ export function payrollLexwareAscii(
     out.push([year, mon, clean(no), nr, value].join(';'));
   };
   for (const r of rows) {
-    if (r.salary?.cents) push(r.personnel_no, r.salary.type, eurSigned(r.salary.cents));
+    if (r.salary?.cents) push(r.personnel_no, r.salary.type, eurSigned(r.salary.cents - r.salarySickCents));
     if (r.unpaidDeductionCents) push(r.personnel_no, 'unbezahlt', eurSigned(-r.unpaidDeductionCents));
     for (const k of HOUR_TYPES) {
       const v = r.minutes[k] ?? 0;
-      if (!v || (r.salary && BASE_HOURS.includes(k))) continue;
+      // Festgehalt: Grundlohn-Stunden stecken im Gehalt – außer Krank (Gehalt ist um den Krank-Anteil gemindert)
+      if (!v || (r.salary && BASE_HOURS.includes(k) && k !== 'krank')) continue;
       if (!isAmount(k)) push(r.personnel_no, k, dec(v));
       else if (!r.wage_cents) noWage.add(r.name);
       else

@@ -994,8 +994,9 @@ ${absenceCss(
   };
   const isSalary = (x: Row) => !!x.p?.salary;
   // Festgehalt: keine Stunden – außer Urlaubsabgeltung (wird zusätzlich zum Gehalt ausgezahlt)
+  // Festgehalt: keine Stunden – außer Krank (Gehalt dafür gemindert, Ahmed 25.11.) und Urlaubsabgeltung
   const mins = (x: Row, k: HourType) =>
-    isSalary(x) && k !== 'urlaubsabgeltung' ? 0 : (x.p?.minutes[k] ?? 0);
+    isSalary(x) && k !== 'urlaubsabgeltung' && k !== 'krank' ? 0 : (x.p?.minutes[k] ?? 0);
   const lohnCols = (rows: Row[]): LCol[] => {
     const any = (f: (x: Row) => boolean) => rows.some(f);
     const cols: LCol[] = [];
@@ -1023,7 +1024,12 @@ ${absenceCss(
         val: (x) => (isSalary(x) ? 0 : (x.p?.unpaidMinutes ?? 0)),
       });
     if (any((x) => isSalary(x)))
-      cols.push({ key: 'gehalt', label: 'Gehalt €', kind: 'eur', val: (x) => x.p?.salary?.cents ?? 0n });
+      cols.push({
+        key: 'gehalt',
+        label: 'Gehalt €',
+        kind: 'eur',
+        val: (x) => (x.p?.salary ? x.p.salary.cents - x.p.salarySickCents : 0n),
+      });
     if (any((x) => (x.p?.unpaidDeductionCents ?? 0n) > 0n))
       cols.push({
         key: 'abzug',

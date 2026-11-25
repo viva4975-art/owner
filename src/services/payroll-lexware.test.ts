@@ -41,6 +41,7 @@ describe('Lexware ASCII-Export', () => {
       name: 'Chef',
       wage_cents: 4000n,
       salary: { type: 'gf_gehalt', cents: 500000n },
+      salarySickCents: 0n,
       bp,
       minutes: { normal: 9000, urlaub: 480, nacht: 60 },
       surchargeCents: { ...zeroCents, nacht: 1200n },

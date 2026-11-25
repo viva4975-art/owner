@@ -139,4 +139,32 @@ describe.skipIf(!available)('Abwesenheit Stunden ohne Einsatz (Datenbank)', () =
     await plan([1, 2, 3, 4, 5], '2026-11-01', null);
     expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(10);
   });
+
+  it('zwei Einsätze am selben Tag zählen als ein Arbeitstag (Ahmed 25.11.)', async () => {
+    const id = randomUUID();
+    await sql`insert into app.employees (id, personnel_no, first_name, last_name, entry_date, exit_date, hourly_wage_cents, weekly_hours, employment_type, days_auto)
+              values (${id}, '3958', 'Test', 'Doppelt', '2026-06-01', '2026-11-30', 1500, 15, 'teilzeit', true)`;
+    for (const [site, start, end] of [
+      [DEMO.siteSchool, '06:00', '08:00'],
+      [DEMO.siteSchool, '17:00', '19:00'],
+    ] as const)
+      await saveShiftPlan(
+        sql,
+        randomUUID(),
+        {
+          employeeId: id,
+          siteId: site,
+          weekdays: [1, 3, 5],
+          startTime: start,
+          endTime: end,
+          breakMinutes: 0,
+          validFrom: '2026-06-01',
+          validUntil: null,
+          note: null,
+        },
+        't',
+      );
+    // Mo/Mi/Fr je zweimal = 3 Tage → 30 × 3 ÷ 5 × 6 ÷ 12 = 9
+    expect((await leaveExitPreview(sql, id, '2026-11-30'))?.entitlement).toBe(9);
+  });
 });

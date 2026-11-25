@@ -1005,6 +1005,55 @@ export const absentOn = (sql: Sql, day: string, siteIds: string[] | null) =>
  * genommen bis dahin, Rest. Rest > 0 = Abgeltung (§ 7 Abs. 4 BUrlG), Rest < 0 = zu viel genommen – zurückfordern
  * geht in der Regel nicht (§ 5 Abs. 3 BUrlG), deshalb vorher planen.
  */
+/** Aufschlüsselung des Urlaubsanspruchs je vollem Beschäftigungsmonat (zum Nachvollziehen). */
+export async function leaveBreakdown(sql: Sql, employeeId: string, year: number, until?: string) {
+  const [e] = await sql<{ entry_date: string; exit_date: string | null; days_auto: boolean }[]>`
+    select entry_date::text, exit_date::text, days_auto from app.employees where id = ${employeeId}`;
+  if (!e) return null;
+  const yS = `${year}-01-01`;
+  const yE = `${year}-12-31`;
+  let end = e.exit_date && e.exit_date < yE ? e.exit_date : yE;
+  if (until && until < end) end = until;
+  const from = e.entry_date > yS ? e.entry_date : yS;
+  if (from > end) return { auto: e.days_auto, months: [] };
+  const segs = await leaveDaysPeriods(sql, employeeId, from, end);
+  const firstFull = from.slice(8) !== '01' ? Number(from.slice(5, 7)) + 1 : Number(from.slice(5, 7));
+  const months: { month: string; days: number; leave: number; weekdays: string }[] = [];
+  const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  for (let m = firstFull; m <= Number(end.slice(5, 7)); m++) {
+    const ms = `${year}-${String(m).padStart(2, '0')}-01`;
+    const me = addDays(m === 12 ? `${year + 1}-01-01` : `${year}-${String(m + 1).padStart(2, '0')}-01`, -1);
+    let w = 0;
+    let n = 0;
+    for (const g of segs) {
+      const a = g.from > ms ? g.from : ms;
+      const b = g.to < me ? g.to : me;
+      if (a > b) continue;
+      const len = Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000) + 1;
+      w += g.days * len;
+      n += len;
+    }
+    const days = n ? Math.round((w / n) * 100) / 100 : 0;
+    const wds = e.days_auto
+      ? (
+          await sql<{ wd: number }[]>`
+            select distinct weekday as wd from app.shift_plans
+             where employee_id = ${employeeId} and valid_from <= ${me} and (valid_until is null or valid_until >= ${ms})
+               and coalesce(recurrence, 'woechentlich') <> 'einmalig' order by 1`
+        )
+          .map((r) => WD[Number(r.wd)])
+          .join(' ')
+      : '';
+    months.push({
+      month: ms.slice(0, 7),
+      days,
+      leave: Math.round(((LEAVE_DAYS_5DAY * days) / 5 / 12) * 100) / 100,
+      weekdays: wds,
+    });
+  }
+  return { auto: e.days_auto, months };
+}
+
 export async function leaveExitPreview(sql: Sql, employeeId: string, exitAt?: string) {
   const today = todayBerlin();
   const [y, m] = today.split('-').map(Number) as [number, number];

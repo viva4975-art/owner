@@ -58,8 +58,12 @@ export async function hoursPeriods(sql: Sql, employeeId: string, from: string, t
  * vor dem ersten Eintrag mit Tagen gilt 5 (bzw. der Wert am Mitarbeiter, wenn es gar keinen Verlauf gibt).
  */
 export async function daysPeriods(sql: Sql | Tx, employeeId: string, from: string, to: string) {
-  const hist = (await hoursHistory(sql, employeeId)).slice().reverse();
-  const withDays = hist.filter((h) => h.days_per_week != null);
+  // je Stichtag der zuletzt erfasste Eintrag MIT Arbeitstagen (ein späterer Eintrag nur mit Stunden am selben Tag
+  // darf die Tage nicht verdecken)
+  const withDays = await sql<HoursRow[]>`
+    select distinct on (valid_from) id, valid_from::text, weekly_hours::text, days_per_week::text, note, recorded_by, recorded_at
+      from app.employee_hours where employee_id = ${employeeId} and days_per_week is not null
+     order by valid_from asc, recorded_at desc`;
   if (!withDays.length) {
     const [e] = await sql<
       { d: string }[]

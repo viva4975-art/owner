@@ -17,6 +17,7 @@ import {
   updateAbsence,
   leaveBalance,
   leaveExitPreview,
+  leaveBreakdown,
   listAbsences,
   addLeaveExtra,
   deleteLeaveExtra,
@@ -1559,6 +1560,7 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         listLeaveExtra(sql, e.id),
         leaveExitPreview(sql, e.id, exitQ),
       ]);
+      const bd = pv ? await leaveBreakdown(sql, e.id, Number(pv.at.slice(0, 4)), pv.at) : null;
       const canExtra = ['admin', 'personal'].includes(c.get('user').role);
       const num = (n: number) => String(n).replace('.', ',');
       const myWarns = warns.filter((w) => w.employee_id === e.id && isOpen(w));
@@ -1672,6 +1674,40 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 {pv.laterLeave > 0 &&
                   ` ${pv.laterLeave} Urlaub(e) nach dem Austrittstag sind nicht mitgezählt.`}
               </p>
+              {bd && bd.months.length > 0 && (
+                <details style="margin-top:8px">
+                  <summary class="small">So wird der Anspruch gerechnet (je Monat)</summary>
+                  <p class="small mut" style="margin:6px 0">
+                    Arbeitstage/Woche{' '}
+                    {bd.auto
+                      ? 'automatisch aus der Einsatzplanung (Wochentage mit Einsatz in diesem Monat)'
+                      : 'fest aus den Stammdaten (mit „gültig ab“)'}
+                    . Je Monat 30 × Tage ÷ 5 ÷ 12, Summe auf halbe Tage gerundet.
+                  </p>
+                  <table class="keep">
+                    <thead>
+                      <tr>
+                        <th>Monat</th>
+                        <th class="r">Arbeitstage/Woche</th>
+                        {bd.auto && <th>Wochentage mit Einsatz</th>}
+                        <th class="r">Urlaubstage</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bd.months.map((m) => (
+                        <tr>
+                          <td>
+                            {m.month.slice(5)}/{m.month.slice(0, 4)}
+                          </td>
+                          <td class="r">{num(m.days)}</td>
+                          {bd.auto && <td>{m.weekdays || '– (wie nächster Monat mit Einsatz)'}</td>}
+                          <td class="r">{num(m.leave)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
             </div>
           )}
           <div class="cols">

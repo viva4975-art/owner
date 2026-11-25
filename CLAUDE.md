@@ -6044,3 +6044,8 @@ Testadresse.
   (bis 15. Mo/Mi/Fr, danach Di/Do) ergab 5 statt ≈ 2,5. Tage vor dem ersten bzw. nach dem letzten Einsatz und Monate
   ohne Einsatz zählen wie der nächste geplante Monat. Anspruch weiter je voller Beschäftigungsmonat 30 × Tage ÷ 5 ÷ 12,
   auf halbe Tage gerundet. Test in `absence-weekly.db.test.ts`.
+- 2026-11-25: **Urlaub: Aufschlüsselung je Monat + Fund feste Tage** (Ahmed: „1357 immer noch 15 Tage“): Mitarbeiter →
+  Urlaub & Krank → unter der Austritts-Vorschau „So wird der Anspruch gerechnet (je Monat)“: je vollem Monat
+  Arbeitstage/Woche, bei „automatisch“ die Wochentage mit Einsatz in dem Monat, Urlaubstage (`leaveBreakdown` in
+  `absences.ts`). **Fund:** Bei festen Arbeitstagen konnte ein späterer Stunden-Eintrag am selben „gültig ab“-Tag (ohne
+  Tage) den Tage-Eintrag verdecken → Rückfall auf 5. `daysPeriods` nimmt jetzt je Stichtag den letzten Eintrag mit Tagen.

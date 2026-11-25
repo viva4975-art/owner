@@ -6054,3 +6054,15 @@ Testadresse.
   zählen nicht (kein Arbeitsverhältnis mehr). Austritts-Vorschau zeigt jetzt gelb „n Urlaubstage liegen nach dem
   Austrittstag (Zeitraum) und zählen nicht“ mit den Möglichkeiten (Urlaub vorverlegen, Austritt korrigieren, Abgeltung
   § 7 Abs. 4 BUrlG); `leaveExitPreview` liefert `laterDays/laterUntil`.
+- 2026-11-25: **Nur volle Monate + Urlaubsabgeltung** (Ahmed: 1357 Austritt neu 07.12., Anspruch 10,5 statt 9):
+  - Urlaubsanspruch zählt nur **volle Beschäftigungsmonate** – auch der angebrochene **Austrittsmonat** zählt nicht mehr
+    (vorher nur der Eintrittsmonat). Austritt 07.12. → Juni–November = 6 × 1,5 = 9; Austritt am Monatsletzten = Monat
+    zählt (`lastFullMonth` in `absences.ts`, Anspruch, Vorschau, Aufschlüsselung).
+  - **Urlaubsabgeltung** (§ 7 Abs. 4 BUrlG): Mitarbeiter → Urlaub & Krank → Kasten „Urlaubsabgeltung“ (Admin/Personal):
+    Tage (vorbelegt = Rest bis Austritt), Stunden je Tag (Wochenstunden ÷ Arbeitstage), Abrechnungsmonat (Austrittsmonat),
+    Urlaubsjahr, Objekt/Kostenstelle (letzter Einsatz), Notiz (`app.leave_payouts`, Migration `20270211000001`, feste ID
+    je Formular, Löschen mit Protokoll). Wirkt als neue Lohnart **„Urlaubsabgeltung“** (Stunden) in Stundenliste &
+    Lohnarten, CSV, Lexware-Export (Lohnart-Nummer unter Einstellungen → Zuschläge & Lohnarten eintragen), Nach-/Plan-
+    Kalkulation (Kosten am Objekt; Festgehalt mit Stundensatz aus dem Gehalt) und mindert den Resturlaub. **Rechtlich:**
+    Abgeltung nur bei Ende des Arbeitsverhältnisses; Höhe = Urlaubsentgelt nach § 11 BUrlG (Ø-Verdienst der letzten
+    13 Wochen) – bei schwankenden Stunden Stunden je Tag entsprechend ansetzen; Einmalzahlung (Steuer: sonstiger Bezug).

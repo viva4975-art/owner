@@ -143,9 +143,12 @@ async function computeLabor(sql: Sql, from: string, to: string, salaryOnly = fal
       const wage = r.wage_cents ?? mw?.w ?? 0n;
       const m = r.minutes;
       let gross: bigint;
-      if (r.salary) gross = r.salary.cents - r.unpaidDeductionCents;
+      if (r.salary)
+        // Festgehalt: Urlaubsabgeltung mit dem Stundensatz aus dem Gehalt (effective_wage_cents)
+        gross =
+          r.salary.cents - r.unpaidDeductionCents + (BigInt(m.urlaubsabgeltung) * wage * 2n + 60n) / 120n;
       else {
-        const paid = m.normal + m.aushilfslohn + m.urlaub + m.krank + m.feiertag_lfz;
+        const paid = m.normal + m.aushilfslohn + m.urlaub + m.krank + m.feiertag_lfz + m.urlaubsabgeltung;
         gross = (BigInt(paid) * wage * 2n + 60n) / 120n;
       }
       // Zuschläge wie im Lohnexport; ohne hinterlegten Lohn mit dem angenommenen Tariflohn

@@ -20,8 +20,11 @@ import {
   leaveBreakdown,
   listAbsences,
   addLeaveExtra,
+  addLeavePayout,
   deleteLeaveExtra,
+  deleteLeavePayout,
   listLeaveExtra,
+  listLeavePayouts,
   requestAbsence,
   plannedAtSites,
   applicationDate,
@@ -1561,6 +1564,15 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
         leaveExitPreview(sql, e.id, exitQ),
       ]);
       const bd = pv ? await leaveBreakdown(sql, e.id, Number(pv.at.slice(0, 4)), pv.at) : null;
+      const payouts = await listLeavePayouts(sql, e.id);
+      // Vorschlag Abgeltung: Objekt des letzten Einsatzes, Stunden je Tag = Wochenstunden ÷ Arbeitstage
+      const [lastSite] = await sql<{ site_id: string }[]>`
+        select site_id from app.shift_plans where employee_id = ${e.id}
+         order by coalesce(valid_until, '9999-12-31') desc, valid_from desc limit 1`;
+      const perDay =
+        stamm?.weekly && Number(stamm.weekly) > 0
+          ? Math.round((Number(stamm.weekly) / (Number(stamm.days) > 0 ? Number(stamm.days) : 5)) * 100) / 100
+          : null;
       const canExtra = ['admin', 'personal'].includes(c.get('user').role);
       const num = (n: number) => String(n).replace('.', ',');
       const myWarns = warns.filter((w) => w.employee_id === e.id && isOpen(w));
@@ -1657,6 +1669,11 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                 <span>
                   − genommen/beantragt <b>{num(pv.taken + pv.requested)}</b>
                 </span>
+                {pv.paidOut > 0 && (
+                  <span>
+                    − abgegolten <b>{num(pv.paidOut)}</b>
+                  </span>
+                )}
                 <span>
                   = Rest{' '}
                   <b style={pv.rest < 0 ? 'color:var(--err)' : 'color:var(--ok,#1a7f37)'}>
@@ -1729,6 +1746,115 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
               />
             </div>
           </div>
+          {(canExtra || payouts.length > 0) && (
+            <div class="card" id="abgeltung">
+              <h3>Urlaubsabgeltung</h3>
+              <p class="muted">
+                Nicht genommener Urlaub wird bei Austritt ausgezahlt (§ 7 Abs. 4 BUrlG): Tage × Stunden je Tag
+                als Lohnart „Urlaubsabgeltung“ im Abrechnungsmonat (Stundenliste &amp; Lohnarten, Lohnexport),
+                Kosten auf das gewählte Objekt. Die Tage mindern den Resturlaub.
+              </p>
+              {payouts.length > 0 && (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Abrechnung</th>
+                      <th>Urlaubsjahr</th>
+                      <th class="num">Tage</th>
+                      <th class="num">Std./Tag</th>
+                      <th class="num">Stunden</th>
+                      <th>Objekt</th>
+                      <th>eingetragen</th>
+                      {canExtra && <th></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payouts.map((x) => (
+                      <tr>
+                        <td>{`${x.payout_month.slice(5, 7)}/${x.payout_month.slice(0, 4)}`}</td>
+                        <td>{x.leave_year}</td>
+                        <td class="num">{num(x.days)}</td>
+                        <td class="num">{hoursText(x.minutes_per_day)}</td>
+                        <td class="num">{hoursText(Math.round(x.days * x.minutes_per_day))}</td>
+                        <td>{x.site_name ?? '–'}</td>
+                        <td class="muted">
+                          {dateDe(x.created_at.slice(0, 10))} · {x.created_by}
+                          {x.note && ` · ${x.note}`}
+                        </td>
+                        {canExtra && (
+                          <td>
+                            <form
+                              method="post"
+                              action={`/personal/${e.id}/abgeltung/${x.id}/loeschen`}
+                              data-confirm="Urlaubsabgeltung wirklich löschen? Ist der Monat schon an das Lohnprogramm exportiert, kommt die Differenz als Korrektur im Folgemonat."
+                            >
+                              <button class="btn sm danger">Löschen</button>
+                            </form>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {canExtra && (
+                <form method="post" action={`/personal/${e.id}/abgeltung`} class="grid">
+                  <input type="hidden" name="id" value={randomUUID()} />
+                  <label>
+                    Tage
+                    <input
+                      name="days"
+                      required
+                      inputmode="decimal"
+                      value={pv && pv.rest > 0 ? num(pv.rest) : ''}
+                      placeholder="z. B. 9 oder 2,5"
+                    />
+                  </label>
+                  <label>
+                    Stunden je Tag
+                    <input
+                      name="hours"
+                      required
+                      inputmode="decimal"
+                      value={perDay ? num(perDay) : ''}
+                      placeholder="z. B. 8"
+                    />
+                  </label>
+                  <label>
+                    Abrechnungsmonat
+                    <input type="month" name="month" required value={(pv?.at ?? todayBerlin()).slice(0, 7)} />
+                  </label>
+                  <label>
+                    Urlaubsjahr
+                    <select name="year">
+                      {[year - 1, year, year + 1].map((y) => (
+                        <option
+                          value={String(y)}
+                          selected={y === Number((pv?.at ?? todayBerlin()).slice(0, 4))}
+                        >
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div>
+                    <label for="ab_site_id">Objekt / Kostenstelle</label>
+                    <select id="ab_site_id" name="site_id">
+                      <option value="">– ohne Objekt –</option>
+                      <SiteOptions sites={absSites} selected={lastSite?.site_id ?? ''} />
+                    </select>
+                  </div>
+                  <label>
+                    Notiz
+                    <input name="note" placeholder="optional, z. B. Austritt 07.12." />
+                  </label>
+                  <div class="formfoot">
+                    <button class="btn">Urlaubsabgeltung eintragen</button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
           {canExtra && (
             <p class="small">
               <a href={`/personal/${e.id}/ruhend`}>Arbeitsverhältnis ruht (von–bis) eintragen …</a>
@@ -1845,6 +1971,41 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
     await deleteLeaveExtra(sql, c.req.param('xid'), c.req.param('id'), c.get('actor'));
     return back(c, `/personal/${c.req.param('id')}/abwesenheiten#zusatzurlaub`, {
       ok: 'Zusätzlicher Urlaub gelöscht.',
+    });
+  });
+
+  app.post(`/personal/:id{${UUID}}/abgeltung`, async (c) => {
+    assertExtra(c);
+    const b = await c.req.parseBody();
+    const id = String(b.id ?? '');
+    if (!new RegExp(`^${UUID}$`).test(id)) throw new BusinessError('Formular ungültig – Seite neu laden');
+    const dec = (v: unknown) =>
+      Number(
+        String(v ?? '')
+          .trim()
+          .replace(',', '.'),
+      );
+    const siteId = String(b.site_id ?? '');
+    await addLeavePayout(sql, {
+      id,
+      employeeId: c.req.param('id'),
+      leaveYear: Number(b.year),
+      month: String(b.month ?? ''),
+      days: dec(b.days),
+      minutesPerDay: Math.round(dec(b.hours) * 60),
+      siteId: new RegExp(`^${UUID}$`).test(siteId) ? siteId : null,
+      note: String(b.note ?? ''),
+      actor: c.get('actor'),
+    });
+    return back(c, `/personal/${c.req.param('id')}/abwesenheiten#abgeltung`, {
+      ok: 'Urlaubsabgeltung eingetragen – steht in Stundenliste & Lohnarten im Abrechnungsmonat.',
+    });
+  });
+  app.post(`/personal/:id{${UUID}}/abgeltung/:xid{${UUID}}/loeschen`, async (c) => {
+    assertExtra(c);
+    await deleteLeavePayout(sql, c.req.param('xid'), c.req.param('id'), c.get('actor'));
+    return back(c, `/personal/${c.req.param('id')}/abwesenheiten#abgeltung`, {
+      ok: 'Urlaubsabgeltung gelöscht.',
     });
   });
 

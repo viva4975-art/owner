@@ -701,6 +701,8 @@ export interface LeaveBalance {
   openingAsOf?: string;
   /** zusätzlicher Urlaub (im Anspruch enthalten, app.leave_extra) */
   extra: number;
+  /** ausgezahlte Urlaubstage (Urlaubsabgeltung § 7 Abs. 4 BUrlG, app.leave_payouts) – mindern den Rest */
+  paidOut: number;
 }
 
 /**
@@ -730,15 +732,17 @@ export async function leaveBalance(
       op.available != null ? Math.max(0, ftCarried + ftEntitlement - op.taken - op.available) : 0;
     const fromCarry = Math.min(op.taken, Math.max(0, ftCarried - ftExpired));
     const taken = op.taken - fromCarry + after.taken;
+    const paidOut = await leavePaidOutDays(sql, employeeId, year);
     return {
       entitlement,
       taken,
       requested: after.requested,
-      rest: entitlement - taken - after.requested,
+      rest: entitlement - taken - after.requested - paidOut,
       carried: 0,
       carriedExpired: 0,
       openingAsOf: op.as_of,
       extra: after.extra,
+      paidOut,
     };
   }
   const base = await baseBalance(sql, employeeId, year, undefined, exitAt);
@@ -746,7 +750,8 @@ export async function leaveBalance(
   // Resturlaub (Zweig oben) zählt noch.
   const carried = 0;
   const expired = 0;
-  const rest = base.entitlement + carried - expired - base.taken - base.requested;
+  const paidOut = await leavePaidOutDays(sql, employeeId, year);
+  const rest = base.entitlement + carried - expired - base.taken - base.requested - paidOut;
   return {
     entitlement: base.entitlement,
     taken: base.taken,
@@ -755,8 +760,12 @@ export async function leaveBalance(
     carried,
     carriedExpired: expired,
     extra: base.extra,
+    paidOut,
   };
 }
+
+/** Letzter voller Beschäftigungsmonat (1–12) bis `to`: endet `to` nicht am Monatsletzten, zählt der Monat nicht. */
+const lastFullMonth = (to: string) => Number(to.slice(5, 7)) - (addDays(to, 1).slice(8) === '01' ? 0 : 1);
 
 /** `countFrom`: Abwesenheiten erst ab diesem Tag zählen (nach einem übernommenen Stand) */
 async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom?: string, exitAt?: string) {
@@ -769,8 +778,10 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   const from = e.entry_date > yStart0 ? e.entry_date : yStart0;
   const to = e.exit_date && e.exit_date < yEnd ? e.exit_date : yEnd;
   // anteilig: volle Beschäftigungsmonate (§ 5 BUrlG vereinfacht), auf halbe Tage gerundet
+  // nur volle Beschäftigungsmonate (§ 5 BUrlG): angebrochener Ein- und Austrittsmonat zählen nicht
+  // (Ahmed 25.11.: Austritt 07.12. → Dezember zählt nicht)
   const months =
-    from > to ? 0 : Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 - (from.slice(8) !== '01' ? 1 : 0);
+    from > to ? 0 : lastFullMonth(to) - Number(from.slice(5, 7)) + 1 - (from.slice(8) !== '01' ? 1 : 0);
   // Rahmentarifvertrag: 30 Tage bei 5-Tage-Woche für alle (Ahmed 12.10.) – nicht mehr je Mitarbeiter eingetragen
   const full = LEAVE_DAYS_5DAY;
   // Anspruch gilt für 5 Arbeitstage/Woche; je Beschäftigungsmonat anteilig nach den dann gültigen Arbeitstagen
@@ -783,7 +794,7 @@ async function baseBalance(sql: Sql, employeeId: string, year: number, countFrom
   else {
     const firstFull = from.slice(8) !== '01' ? Number(from.slice(5, 7)) + 1 : Number(from.slice(5, 7));
     let factorSum = 0;
-    for (let m = firstFull; m <= Number(to.slice(5, 7)); m++) {
+    for (let m = firstFull; m <= lastFullMonth(to); m++) {
       const ms = `${year}-${String(m).padStart(2, '0')}-01`;
       const me = addDays(m === 12 ? `${year + 1}-01-01` : `${year}-${String(m + 1).padStart(2, '0')}-01`, -1);
       let w = 0;
@@ -878,6 +889,106 @@ export async function addLeaveExtra(
       await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
                values (${p.actor}, 'create', 'leave_extra', ${p.id},
                        ${tx.json({ employee_id: p.employeeId, year: p.year, days: p.days, reason })})`;
+  });
+  invalidateLeaveWarnings();
+}
+
+async function leavePaidOutDays(sql: Sql, employeeId: string, year: number): Promise<number> {
+  const [r] = await sql<{ d: string | null }[]>`
+    select sum(days)::text as d from app.leave_payouts where employee_id = ${employeeId} and leave_year = ${year}`;
+  return r?.d ? Number(r.d) : 0;
+}
+
+export interface LeavePayout {
+  id: string;
+  leave_year: number;
+  payout_month: string;
+  days: number;
+  minutes_per_day: number;
+  site_id: string | null;
+  site_name: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export async function listLeavePayouts(sql: Sql, employeeId: string): Promise<LeavePayout[]> {
+  const rows = await sql<(Omit<LeavePayout, 'days'> & { days: string })[]>`
+    select p.id, p.leave_year, p.payout_month, p.days::text as days, p.minutes_per_day, p.site_id,
+           case when s.id is null then null else s.name || ' (' || s.site_no || ')' end as site_name,
+           p.note, p.created_by, p.created_at::text as created_at
+      from app.leave_payouts p left join app.sites s on s.id = p.site_id
+     where p.employee_id = ${employeeId} order by p.payout_month desc, p.created_at desc`;
+  return rows.map((r) => ({ ...r, days: Number(r.days) }));
+}
+
+/**
+ * Urlaubsabgeltung (§ 7 Abs. 4 BUrlG, Ahmed 25.11.): nicht genommener Urlaub wird bei Austritt ausgezahlt –
+ * Tage × Stunden je Tag als Lohnart „Urlaubsabgeltung“ im Abrechnungsmonat, Kosten auf das gewählte Objekt.
+ * Mindert den Resturlaub des Urlaubsjahres. Feste ID je Formular → doppelt absenden legt nichts doppelt an.
+ */
+export async function addLeavePayout(
+  sql: Sql,
+  p: {
+    id: string;
+    employeeId: string;
+    leaveYear: number;
+    month: string;
+    days: number;
+    minutesPerDay: number;
+    siteId: string | null;
+    note: string;
+    actor: string;
+  },
+) {
+  if (!Number.isFinite(p.days) || p.days <= 0 || p.days > 60 || Math.round(p.days * 2) !== p.days * 2)
+    throw new BusinessError('Tage: halbe oder ganze Tage, z. B. 5 oder 2,5');
+  if (!Number.isInteger(p.minutesPerDay) || p.minutesPerDay < 1 || p.minutesPerDay > 1440)
+    throw new BusinessError('Stunden je Tag: z. B. 8 oder 4,5');
+  if (!Number.isInteger(p.leaveYear) || p.leaveYear < 2000 || p.leaveYear > 2100)
+    throw new BusinessError('Urlaubsjahr ungültig');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.month)) throw new BusinessError('Abrechnungsmonat ungültig');
+  const [e] = await sql<{ exit_date: string | null }[]>`
+    select exit_date::text from app.employees where id = ${p.employeeId}`;
+  if (!e) throw new BusinessError('Mitarbeiter nicht gefunden');
+  if (p.siteId) {
+    const [s] = await sql`select 1 from app.sites where id = ${p.siteId}`;
+    if (!s) throw new BusinessError('Objekt nicht gefunden');
+  }
+  const note = p.note.trim() || null;
+  await sql.begin(async (tx) => {
+    const r = await tx`
+      insert into app.leave_payouts (id, employee_id, leave_year, payout_month, days, minutes_per_day, site_id, note, created_by)
+      values (${p.id}, ${p.employeeId}, ${p.leaveYear}, ${p.month}, ${p.days}, ${p.minutesPerDay}, ${p.siteId},
+              ${note}, ${p.actor})
+      on conflict (id) do nothing returning id`;
+    if (r.length)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${p.actor}, 'create', 'leave_payout', ${p.id},
+                       ${tx.json({
+                         employee_id: p.employeeId,
+                         leave_year: p.leaveYear,
+                         month: p.month,
+                         days: p.days,
+                         minutes_per_day: p.minutesPerDay,
+                         site_id: p.siteId,
+                         note,
+                       })})`;
+  });
+  invalidateLeaveWarnings();
+}
+
+export async function deleteLeavePayout(sql: Sql, id: string, employeeId: string, actor: string) {
+  await sql.begin(async (tx) => {
+    const [r] = await tx<
+      { leave_year: number; payout_month: string; days: string; minutes_per_day: number }[]
+    >`
+      delete from app.leave_payouts where id = ${id} and employee_id = ${employeeId}
+      returning leave_year, payout_month, days::text as days, minutes_per_day`;
+    if (r)
+      await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+               values (${actor}, 'delete', 'leave_payout', ${id},
+                       ${tx.json({ employee_id: employeeId, ...r, days: Number(r.days) })})`;
   });
   invalidateLeaveWarnings();
 }
@@ -1020,7 +1131,7 @@ export async function leaveBreakdown(sql: Sql, employeeId: string, year: number,
   const firstFull = from.slice(8) !== '01' ? Number(from.slice(5, 7)) + 1 : Number(from.slice(5, 7));
   const months: { month: string; days: number; leave: number; weekdays: string }[] = [];
   const WD = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-  for (let m = firstFull; m <= Number(end.slice(5, 7)); m++) {
+  for (let m = firstFull; m <= lastFullMonth(end); m++) {
     const ms = `${year}-${String(m).padStart(2, '0')}-01`;
     const me = addDays(m === 12 ? `${year + 1}-01-01` : `${year}-${String(m + 1).padStart(2, '0')}-01`, -1);
     let w = 0;

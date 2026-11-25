@@ -978,7 +978,7 @@ ${absenceCss(
     neg?: boolean;
     val: (x: Row) => number | bigint | string;
   };
-  const LBASE: HourType[] = ['normal', 'aushilfslohn', 'urlaub', 'krank', 'feiertag_lfz'];
+  const LBASE: HourType[] = ['normal', 'aushilfslohn', 'urlaub', 'krank', 'feiertag_lfz', 'urlaubsabgeltung'];
   const LSHORT: Record<HourType, string> = {
     normal: 'Normalstunden',
     aushilfslohn: 'Aushilfslohn',
@@ -990,9 +990,12 @@ ${absenceCss(
     feiertag: 'Sonn-/Feiertag',
     feiertag_hoch: 'Hohe Feiertage',
     mehrarbeit: 'Mehrarbeit',
+    urlaubsabgeltung: 'Urlaubsabgeltung',
   };
   const isSalary = (x: Row) => !!x.p?.salary;
-  const mins = (x: Row, k: HourType) => (isSalary(x) ? 0 : (x.p?.minutes[k] ?? 0));
+  // Festgehalt: keine Stunden – außer Urlaubsabgeltung (wird zusätzlich zum Gehalt ausgezahlt)
+  const mins = (x: Row, k: HourType) =>
+    isSalary(x) && k !== 'urlaubsabgeltung' ? 0 : (x.p?.minutes[k] ?? 0);
   const lohnCols = (rows: Row[]): LCol[] => {
     const any = (f: (x: Row) => boolean) => rows.some(f);
     const cols: LCol[] = [];

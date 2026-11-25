@@ -23,7 +23,14 @@ import { monthRange } from './timesheet.js';
 
 /** Lohnarten mit Stunden */
 export type HourType =
-  'normal' | 'aushilfslohn' | 'urlaub' | 'krank' | 'feiertag_lfz' | SurchargeKind | 'mehrarbeit';
+  | 'normal'
+  | 'aushilfslohn'
+  | 'urlaub'
+  | 'krank'
+  | 'feiertag_lfz'
+  | SurchargeKind
+  | 'mehrarbeit'
+  | 'urlaubsabgeltung';
 /** Lohnarten mit Monatsbetrag (Festgehalt) */
 export type SalaryType = 'gehalt' | 'aushilfsgehalt' | 'gf_gehalt';
 /** Abzug vom Festgehalt für unbezahlte Abwesenheit (Minusbetrag) */
@@ -41,6 +48,7 @@ export const HOUR_TYPE_LABEL: Record<HourType, string> = {
   feiertag: 'Zuschlag Feiertagsarbeit',
   feiertag_hoch: 'Zuschlag hohe Feiertage',
   mehrarbeit: 'Zuschlag Mehrarbeit',
+  urlaubsabgeltung: 'Urlaubsabgeltung',
 };
 export const SALARY_TYPE_LABEL: Record<SalaryType, string> = {
   gehalt: 'Gehalt',
@@ -263,7 +271,9 @@ export async function payrollMonth(
            e.pay_model, e.regular_sunday_work, e.employment_type::text, e.tags, e.monthly_salary_cents,
            e.entry_date::text, e.exit_date::text, e.first_name || ' ' || e.last_name as full_name
       from app.employees e
-     where e.entry_date <= ${to} and (e.exit_date is null or e.exit_date >= ${from})
+     where e.entry_date <= ${to}
+       and (e.exit_date is null or e.exit_date >= ${from}
+            or exists (select 1 from app.leave_payouts lp where lp.employee_id = e.id and lp.payout_month = ${month}))
        and ${employeeId ? sql`e.id = ${employeeId}` : sql`true`}
      order by e.last_name, e.first_name`;
   // Geschäftsführer (Tag oder laut Firmendaten): keine Zuschläge, auch keine Mehrarbeit (Ahmed 24.11.) – Organ der GmbH,
@@ -276,6 +286,11 @@ export async function payrollMonth(
       select id, kind::text, half_day from app.absences where start_date <= ${to} and end_date >= ${from}`,
   ]);
   const kindOf = new Map(kinds.map((k) => [k.id, k.kind]));
+  // Urlaubsabgeltung (§ 7 Abs. 4 BUrlG): Tage × Stunden je Tag im Abrechnungsmonat, Kosten auf das gewählte Objekt
+  const payouts = await sql<{ employee_id: string; minutes: number; site_id: string | null }[]>`
+    select employee_id, round(days * minutes_per_day)::int as minutes, site_id::text
+      from app.leave_payouts where payout_month = ${month}
+       and ${employeeId ? sql`employee_id = ${employeeId}` : sql`true`}`;
   // Ganztägige Abwesenheit (Urlaub, Krank, unbezahlt …) geht vor einer am selben Tag erfassten Zeit (z. B. „Soll als
   // Ist“ automatisch übernommen, bevor die Abwesenheit eingetragen wurde) – sonst stünde der Tag doppelt im Lohn
   // (Ahmed 29.10.: 22 Tage × 4,5 = 99 Normalstunden trotz eines unbezahlten Tags).
@@ -505,6 +520,11 @@ export async function payrollMonth(
       for (const k of SURCHARGES) m[k] = 0;
     }
     m.feiertag_lfz = holidayPay.get(e.id) ?? 0;
+    for (const p of payouts)
+      if (p.employee_id === e.id) {
+        m.urlaubsabgeltung += p.minutes;
+        site(p.site_id, p.minutes);
+      }
     for (const [sid, min] of holidaySite.get(e.id) ?? []) site(sid, min);
     let unpaid = 0;
     for (const h of absHours) {

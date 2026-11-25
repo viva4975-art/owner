@@ -6049,3 +6049,8 @@ Testadresse.
   Arbeitstage/Woche, bei „automatisch“ die Wochentage mit Einsatz in dem Monat, Urlaubstage (`leaveBreakdown` in
   `absences.ts`). **Fund:** Bei festen Arbeitstagen konnte ein späterer Stunden-Eintrag am selben „gültig ab“-Tag (ohne
   Tage) den Tage-Eintrag verdecken → Rückfall auf 5. `daysPeriods` nimmt jetzt je Stichtag den letzten Eintrag mit Tagen.
+- 2026-11-25: **Urlaub über den Austritt hinaus** (Ahmed: 1357 „9 Tage eingetragen, Rest 5“): Rechnung richtig – Urlaub
+  12.11.–04.12. (24 Std./Woche auf 3 Tage = Mo–Mi) hat 9 Tage, davon nur 4 bis zum Austritt 23.11.; die 5 Tage danach
+  zählen nicht (kein Arbeitsverhältnis mehr). Austritts-Vorschau zeigt jetzt gelb „n Urlaubstage liegen nach dem
+  Austrittstag (Zeitraum) und zählen nicht“ mit den Möglichkeiten (Urlaub vorverlegen, Austritt korrigieren, Abgeltung
+  § 7 Abs. 4 BUrlG); `leaveExitPreview` liefert `laterDays/laterUntil`.

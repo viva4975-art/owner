@@ -59,6 +59,7 @@ describe.skipIf(!available)('Glückwünsche und Urlaub bei Austritt', () => {
     expect(p!.taken).toBe(4); // 06.01. Feiertag
     expect(p!.rest).toBe(3.5);
     expect(p!.laterLeave).toBe(1);
+    expect(p!.laterDays).toBe(13); // 03.–21.05. = 15 Werktage, 2 Feiertage
     // Austritt 31.10. (zweite Jahreshälfte): 30 × 10/12 = 25 (≥ 20 gesetzlich)
     const q = await leaveExitPreview(sql, emp, '2027-10-31');
     expect(q!.entitlement).toBe(25);

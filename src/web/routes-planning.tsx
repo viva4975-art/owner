@@ -1671,9 +1671,16 @@ export function registerPlanningRoutes({ app, deps, page, back, shells }: Ctx) {
                     ? 'Resturlaub bis zum Austritt nehmen lassen – sonst muss er ausbezahlt werden (§ 7 Abs. 4 BUrlG).'
                     : 'Passt genau.'}{' '}
                 Rein anteilig nach Beschäftigungsmonaten und Arbeitstagen.
-                {pv.laterLeave > 0 &&
-                  ` ${pv.laterLeave} Urlaub(e) nach dem Austrittstag sind nicht mitgezählt.`}
               </p>
+              {pv.laterDays > 0 && (
+                <p class="notice warn" style="margin-top:8px">
+                  {num(pv.laterDays)} Urlaubstag(e) liegen nach dem Austrittstag ({dateDe(addDays(pv.at, 1))}
+                  {pv.laterUntil && pv.laterUntil > addDays(pv.at, 1) ? `–${dateDe(pv.laterUntil)}` : ''}) und
+                  zählen nicht – dort besteht kein Arbeitsverhältnis mehr. Entweder den Urlaub so legen, dass
+                  er vor dem Austritt liegt, das Austrittsdatum korrigieren oder den Rest auszahlen
+                  (Urlaubsabgeltung § 7 Abs. 4 BUrlG).
+                </p>
+              )}
               {bd && bd.months.length > 0 && (
                 <details style="margin-top:8px">
                   <summary class="small">So wird der Anspruch gerechnet (je Monat)</summary>

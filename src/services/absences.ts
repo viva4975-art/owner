@@ -1065,8 +1065,29 @@ export async function leaveExitPreview(sql: Sql, employeeId: string, exitAt?: st
   if (fixed) at = e.exit_date!;
   if (e.entry_date > at || (e.exit_date && e.exit_date < `${at.slice(0, 4)}-01-01`)) return null;
   const b = await leaveBalance(sql, employeeId, Number(at.slice(0, 4)), at);
-  const [lr] = await sql<{ n: string | null }[]>`
-    select count(*)::text as n from app.absences where employee_id = ${employeeId} and kind = 'urlaub'
-       and status in ('genehmigt', 'beantragt') and end_date > ${at} and start_date <= ${at.slice(0, 4) + '-12-31'}`;
-  return { at, fixed, ...b, laterLeave: Number(lr?.n ?? 0) };
+  const yEnd = at.slice(0, 4) + '-12-31';
+  const later = await sql<
+    { start_date: string; end_date: string; half_day: boolean; hours_days: string | null }[]
+  >`
+    select start_date::text, end_date::text, half_day, hours_days::text from app.absences
+     where employee_id = ${employeeId} and kind = 'urlaub'
+       and status in ('genehmigt', 'beantragt') and end_date > ${at} and start_date <= ${yEnd}
+     order by start_date`;
+  // Urlaubstage nach dem Austrittstag (zählen nicht, z. B. 12.11.–04.12. bei Austritt 23.11.)
+  let laterDays = 0;
+  let laterUntil: string | null = null;
+  for (const r of later) {
+    const from = r.start_date > at ? r.start_date : addDays(at, 1);
+    const to = r.end_date < yEnd ? r.end_date : yEnd;
+    laterDays += await leaveDaysOf(sql, employeeId, from, to, r.half_day, r.hours_days);
+    if (!laterUntil || to > laterUntil) laterUntil = to;
+  }
+  return {
+    at,
+    fixed,
+    ...b,
+    laterLeave: later.length,
+    laterDays: Math.round(laterDays * 100) / 100,
+    laterUntil,
+  };
 }

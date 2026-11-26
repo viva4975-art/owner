@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
 import { AddressBlockError, formatAddressBlock, parseAddressBlock } from '../domain/letter/address-block.js';
 import { contactGreeting, personGreeting } from '../domain/letter/greeting.js';
-import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { nextYearNumber } from './purchasing.js';
@@ -272,7 +272,7 @@ async function letterContent(
 }
 
 async function contentPdf(sql: Sql, k: LetterContent): Promise<Uint8Array> {
-  return renderLetterPdf({
+  return renderFormLetter({
     title: k.subject,
     date: k.date,
     info: k.info,

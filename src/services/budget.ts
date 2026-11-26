@@ -5,10 +5,9 @@ import { employerCost, isManagingDirector } from '../domain/hr/employer-cost.js'
 import { type Cents, lineNet, type Quantity } from '../domain/money/money.js';
 import { laborFromPayroll } from './costing-labor.js';
 import { absenceStats, countDays } from './absence-stats.js';
-import { revenueLines, siteCosting, SPECIAL_SITE_ID } from './costing.js';
+import { siteCosting, SPECIAL_SITE_ID } from './costing.js';
 import { BusinessError } from './errors.js';
 import { getPlanCostRates, planCosting } from './plan-costing.js';
-import { monthlyRevenue } from './statistics.js';
 import { recurringCosts } from './recurring-payments.js';
 import { siteClosureMap } from './site-closures.js';
 
@@ -17,10 +16,10 @@ import { siteClosureMap } from './site-closures.js';
  * filtern nach Objekt, Kunde, Gesamtsummen; alle Kosten planen“).
  *
  * Umsatz je Objekt und Monat:
- *   - laufende Pauschalen (monatlich; automatisch abgerechnete 2-monatlich … jährlich anteilig je Monat)
+ *   - laufende Pauschalen im Abrechnungsmonat (monatlich jeden Monat, 2-monatlich … jährlich im Rechnungsmonat)
  *   - Turnus-Leistungen nach Ausführung (2-monatlich … jährlich) voll im Monat ihrer Fälligkeit
- *   - einmalige Leistungen mit Beginn im Jahr (noch nicht ausgeführt) im Monat des Beginns
- *   - Sonder-/Einzelleistungen wie im Vorjahr: Ist-Umsatz des Vorjahres über den regelmäßigen Leistungen
+ *   - nur aus den Leistungen (Ahmed 26.11.): keine Vorjahreswerte, keine „Sonderleistungen wie Vorjahr“;
+ *     einmalige Leistungen und Regie/je Ausführung zählen nicht
  *   - Preiserhöhung über den Lohnkostenanteil ab dem Monat der Tariferhöhung (wenn „weitergeben“)
  * Direkte Kosten je Objekt und Monat wie die Plan-Kalkulation: Lohn laut Einsatzplanung inkl. Arbeitgeberkosten
  * (× Tariferhöhung ab Monat), Nachunternehmer laut Bestellung, Material in % vom Umsatz.
@@ -280,11 +279,11 @@ export interface SiteRevenue {
   prev: bigint[];
 }
 
-/** Umsatz je Objekt und Monat eines Jahres aus den Leistungen (+ Vorjahr), siehe Kopfkommentar. */
+/** Umsatz je Objekt und Monat eines Jahres aus den Leistungen, siehe Kopfkommentar. */
 export async function budgetRevenue(
   sql: Sql,
   year: number,
-  opts: { wageBp: number; wageMonth: number; passOn: boolean; extra: boolean },
+  opts: { wageBp: number; wageMonth: number; passOn: boolean },
 ): Promise<Map<string, SiteRevenue>> {
   const yStart = `${year}-01-01`;
   const yEnd = `${year}-12-31`;
@@ -345,20 +344,6 @@ export async function budgetRevenue(
       : BigInt(sv.quantity_milli);
     return lineNet(qty as Quantity, BigInt(sv.unit_price_cents) as Cents);
   };
-  // Objekte mit laufender (nicht einmaliger) Leistung im Jahr – nur sie bekommen „Sonderleistungen wie Vorjahr“
-  // (abgeschlossene Baureinigung o. ä. mit nur einmaligen Leistungen soll nicht im Plan stehen, Ahmed 22.11.)
-  // Ebenso Objekte, an denen im Jahr eigene Leute eingeplant sind oder eine NU-Bestellung läuft (Ahmed 23.11.:
-  // Objekt mit Kosten, aber ohne angelegte regelmäßige Leistung bekam sonst keinen Umsatz wie Vorjahr)
-  const running = new Set(services.filter((s) => s.billing_cycle !== 'einmalig').map((s) => s.site_id));
-  for (const x of await sql<{ site_id: string }[]>`
-      select distinct site_id from app.shift_plans
-       where employee_id is not null and valid_from <= ${yEnd} and (valid_until is null or valid_until >= ${yStart})
-      union
-      select distinct coalesce(ss.site_id, sc.site_id) from app.subcontracts sc
-        left join app.subcontract_sites ss on ss.subcontract_id = sc.id
-       where sc.status = 'erteilt' and sc.valid_from <= ${yEnd}
-         and (sc.valid_to is null or sc.valid_to >= ${yStart})`)
-    if (x.site_id) running.add(x.site_id);
   for (const sv of services) {
     const r = row(sv.site_id);
     const step = CYCLE_MONTHS[sv.billing_cycle];
@@ -392,41 +377,6 @@ export async function budgetRevenue(
     }
     // einmalige Leistungen und Regie/je Ausführung zählen im Budget nicht (Ahmed 23.11.)
   }
-  // Vorjahr (Ist nach Leistungszeitraum) – Vergleich und Grundlage der Sonderleistungen
-  const active = new Set(
-    (
-      await sql<{ id: string }[]>`
-        select s.id from app.sites s join app.customers c on c.id = s.customer_id
-         where s.active and c.active and not c.is_internal`
-    ).map((x) => x.id),
-  );
-  // Objekte, deren regelmäßige Leistungen vor dem Jahr geendet haben, bekommen keine „Sonderleistungen wie Vorjahr“
-  // (sonst stünde der alte Vertrag als Sonderumsatz im Plan)
-  const endedFlat = new Set(
-    (
-      await sql<{ site_id: string }[]>`
-        select distinct ss.site_id from app.site_services ss
-         where ss.kind = 'monthly_flat' and ss.valid_to is not null and ss.valid_to < ${yStart}
-           and not exists (select 1 from app.site_services x where x.site_id = ss.site_id and x.kind = 'monthly_flat'
-                             and (x.active or x.ended_auto) and (x.valid_to is null or x.valid_to >= ${yStart}))`
-    ).map((x) => x.site_id),
-  );
-  for (const i of MONTHS) {
-    const { start, end } = monthBounds(mKey(year - 1, i));
-    for (const l of await revenueLines(sql, start, end)) {
-      if (!l.site_id || !active.has(l.site_id) || l.site_id === SPECIAL_SITE_ID) continue;
-      row(l.site_id).prev[i]! += l.net;
-    }
-  }
-  if (opts.extra)
-    for (const [site, r] of out) {
-      if (!active.has(site) || endedFlat.has(site) || !running.has(site)) continue;
-      const reg = MONTHS.map((i) => r.flat[i]! + r.cycle[i]!);
-      const surplus = sum(r.prev) - sum(reg);
-      if (surplus <= 0n) continue;
-      const w = MONTHS.map((i) => (r.prev[i]! > reg[i]! ? r.prev[i]! - reg[i]! : 0n));
-      r.extra = splitBy(surplus, sum(w) > 0n ? w : r.prev);
-    }
   for (const [k, r] of out)
     if (![...r.flat, ...r.cycle, ...r.prev, ...r.extra].some((x) => x !== 0n)) out.delete(k);
   return out;
@@ -529,7 +479,6 @@ export async function computeBudget(sql: Sql, id: string, actor: string) {
     wageBp: b.wage_increase_bp,
     wageMonth: b.wage_increase_month,
     passOn: b.pass_on,
-    extra: b.extra_like_prev,
   });
   const direct = new Map<string, { minutes: number[]; labor: bigint[]; sub: bigint[] }>();
   const dRow = (site: string) => {
@@ -875,9 +824,14 @@ export async function setSiteExcluded(
  * Haben sich seit der letzten Berechnung Leistungen, Objekte, Kunden oder Einsätze geändert (z. B. neuer Kunde mit
  * Leistungen ab 01.01.)? Dann rechnet die App das Budget (Entwurf) selbst neu.
  */
+/** Stand des Rechenwegs; Entwürfe, die davor berechnet wurden, werden neu berechnet. */
+const CALC_SINCE = '2026-11-26 17:00';
+
 export async function budgetStale(sql: Sql, b: Budget): Promise<boolean> {
   if (b.status !== 'entwurf' || b.computing) return false;
   if (!b.computed_at) return true;
+  // Rechenweg geändert (26.11.: Umsatz nur aus den Leistungen) → ältere Entwürfe einmal neu rechnen
+  if (b.computed_at < CALC_SINCE) return true;
   const [r] = await sql<{ stale: boolean }[]>`
     select exists (select 1 from app.site_services where updated_at > ${b.computed_at})
         or exists (select 1 from app.sites where updated_at > ${b.computed_at})
@@ -1184,11 +1138,7 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
   for (const m of months) {
     if (exclMap.has(m.site_id)) {
       const e = exclSum.get(m.site_id) ?? { revenue: 0n, direct: 0n };
-      e.revenue +=
-        BigInt(m.revenue_flat) +
-        BigInt(m.revenue_cycle) +
-        BigInt(m.revenue_extra) +
-        BigInt(m.revenue_increase);
+      e.revenue += BigInt(m.revenue_flat) + BigInt(m.revenue_cycle) + BigInt(m.revenue_increase);
       e.direct += BigInt(m.labor) + BigInt(m.subcontractor) + BigInt(m.material);
       exclSum.set(m.site_id, e);
       continue;
@@ -1197,9 +1147,8 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     const i = m.month - 1;
     r.flat[i] = BigInt(m.revenue_flat);
     r.cycle[i] = BigInt(m.revenue_cycle);
-    r.extra[i] = BigInt(m.revenue_extra);
+    // „Sonderleistungen wie Vorjahr“ und Vorjahreswerte gibt es nicht mehr (Ahmed 26.11.) – alte Stände ignorieren
     r.increase[i] = BigInt(m.revenue_increase);
-    r.prev[i] = BigInt(m.prev_revenue);
     r.minutes[i] = m.minutes;
     r.labor[i] = BigInt(m.labor);
     r.sub[i] = BigInt(m.subcontractor);
@@ -1264,29 +1213,6 @@ export async function budgetData(sql: Sql, year: number): Promise<BudgetData | n
     vacation_bp: bpOf(vacDays),
     sick_bp: bpOf(sickDays),
   };
-  // Vorjahr gesamt wie Auswertungen → Statistiken (Leistungszeitraum, eigene + übernommene Rechnungen). Was keinem
-  // Objekt im Budget zugeordnet ist (inaktive/herausgenommene Objekte, Rechnungen ohne Objekt, Sonderreinigung),
-  // steht in einer eigenen Zeile – so stimmt „Vorjahr“ in Summen, Diagrammen und PDF mit dem echten Umsatz überein.
-  {
-    const y0 = budget.year - 1;
-    const total = await monthlyRevenue(sql, `${y0}-01-01`, `${y0}-12-31`);
-    const rest = MONTHS.map((i) => {
-      const t = total.get(`${y0}-${String(i + 1).padStart(2, '0')}`) ?? 0n;
-      let have = 0n;
-      for (const r of map.values()) have += r.prev[i]!;
-      return t - have;
-    });
-    if (rest.some((v) => v !== 0n))
-      map.set(
-        'vj:rest',
-        blank('vj:rest', {
-          site_no: '–',
-          name: 'Vorjahr: übrige Rechnungen (inaktive Objekte, ohne Objekt)',
-          customer_name: '–',
-          prev: rest,
-        }),
-      );
-  }
   const rows = [...map.values()];
   for (const r of rows)
     for (const i of MONTHS) {

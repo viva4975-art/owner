@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import { stripGreeting } from '../domain/letter/greeting.js';
 import { customerGreeting } from './letters.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { buildBuyerSnapshot, type Customer, getCustomer, getSeller } from './masterdata.js';
 import { toCsv } from './reports.js';
@@ -165,7 +165,7 @@ export async function renderCustomerLetter(deps: Deps, templateId: string, custo
     else paras.shift();
   }
   const buyer = await buildBuyerSnapshot(deps.sql, customerId, null);
-  return renderLetterPdf({
+  return renderFormLetter({
     title: t.title,
     date: todayBerlin(),
     info: [

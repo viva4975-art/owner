@@ -285,7 +285,6 @@ const AmountHead = ({ first }: { first: string }) => (
 const breakdown = (a: Agg) =>
   [
     `laufend/Turnus ${eur0(a.regular)}`,
-    a.extra > 0n && `Sonderleistungen wie Vorjahr ${eur0(a.extra)}`,
     a.increase > 0n && `Preiserhöhung ${eur0(a.increase)}`,
     a.adj !== 0n && `Anpassung/Neugeschäft ${eur0(a.adj)}`,
   ]
@@ -295,9 +294,6 @@ const AmountCells = ({ a }: { a: Agg }) => (
   <>
     <td class="r nw" data-sort={String(a.revenue)} title={breakdown(a)}>
       <b>{eur0(a.revenue)}</b>
-      <div class="small mut" style="white-space:nowrap">
-        {a.prev ? `Vj. ${eur0(a.prev)}` : 'Vj. –'}
-      </div>
     </td>
     <td class="r nw" data-sort={String(a.labor)}>
       {eur0(a.labor)}
@@ -338,7 +334,6 @@ const pctOf = (v: bigint, of: bigint) => pct(v, of);
 interface MonthChart {
   label: string;
   revenue: bigint;
-  prev: bigint;
   labor: bigint;
   absence: bigint;
   sub: bigint;
@@ -355,7 +350,6 @@ const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
     return {
       label: MON[i]!,
       revenue: a.revenue,
-      prev: a.prev,
       labor: a.labor,
       absence: a.vacation + a.sick,
       sub: a.sub,
@@ -377,7 +371,6 @@ const chartData = (d: BudgetData, rows: BudgetRow[], filtered: boolean) => {
   ].filter((x) => x.cents !== 0n);
   const kinds = [
     { label: 'Laufende Leistungen / Turnus', href: null, cents: a.regular },
-    { label: 'Sonderleistungen wie Vorjahr', href: null, cents: a.extra },
     { label: 'Preiserhöhung (Lohnanteil)', href: null, cents: a.increase },
     { label: 'Neugeschäft / Anpassungen', href: null, cents: a.adj },
   ].filter((k) => k.cents !== 0n);
@@ -550,9 +543,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             <h2>Budget {year} anlegen</h2>
             <p>
               Die App schlägt das Budget aus den Daten vor: Umsatz je Objekt aus den Leistungen (monatlich,
-              Turnus, einmalig, Sonderleistungen wie im Vorjahr), Lohn aus der Einsatzplanung, Nachunternehmer
-              laut Bestellung, Gemeinkosten aus wiederkehrenden Zahlungen und Eingangsrechnungen. Danach lässt
-              sich alles anpassen und am Ende freigeben.
+              quartalsweise, halbjährlich, jährlich – im Monat der Rechnung bzw. Fälligkeit), Lohn aus der
+              Einsatzplanung, Nachunternehmer laut Bestellung, Gemeinkosten aus wiederkehrenden Zahlungen und
+              Eingangsrechnungen. Danach lässt sich alles anpassen und am Ende freigeben.
             </p>
             {edit ? (
               <form method="post" action="/auswertungen/budget/anlegen">
@@ -660,11 +653,8 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <div class="card">
             <div class="stat-head">
               <h3 style="margin:0">Umsatz je Monat</h3>
-              <span class="legend">
-                <i class="lg-now" /> Plan {year} <i class="lg-prev" /> Vorjahr (Ist)
-              </span>
             </div>
-            <StatBars rows={ch.months.map((m) => ({ label: m.label, cents: m.revenue, prev: m.prev }))} />
+            <StatBars rows={ch.months.map((m) => ({ label: m.label, cents: m.revenue }))} />
           </div>
           <div class="card" style="margin-top:14px">
             <div class="stat-head">
@@ -1323,11 +1313,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <div class="kpi">
             <div class="l">Umsatz {year}</div>
             <div class="v">{eur0(sum.revenue)}</div>
-            <div class="s">
-              Vorjahr Ist {eur0(sum.prev)}
-              {sum.prev > 0n &&
-                ` (${sum.revenue >= sum.prev ? '+' : ''}${pct(sum.revenue - sum.prev, sum.prev)})`}
-            </div>
+            <div class="s">aus den Leistungen</div>
           </div>
           <div class="kpi">
             <div class="l">Direkte Kosten</div>
@@ -1368,9 +1354,9 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <summary>
             Annahmen: Tariferhöhung {(b.wage_increase_bp / 100).toLocaleString('de-DE')} % ab{' '}
             {MON_LONG[b.wage_increase_month - 1]}
-            {b.pass_on ? ', an Kunden weitergegeben' : ', nicht weitergegeben'}
-            {b.extra_like_prev ? ', Sonderleistungen wie Vorjahr' : ''} · Urlaub {fmtDays(ab.vacation_days)}{' '}
-            Tage (+{bpTxt(ab.vacation_bp)}) · Krank {fmtDays(ab.sick_days)} Tage (+{bpTxt(ab.sick_bp)})
+            {b.pass_on ? ', an Kunden weitergegeben' : ', nicht weitergegeben'}· Urlaub{' '}
+            {fmtDays(ab.vacation_days)} Tage (+{bpTxt(ab.vacation_bp)}) · Krank {fmtDays(ab.sick_days)} Tage
+            (+{bpTxt(ab.sick_bp)})
           </summary>
           <form method="post" action={`/auswertungen/budget/${year}/einstellungen`} data-noback>
             <div class="grid">
@@ -1402,16 +1388,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
                   disabled={!draft || !edit}
                 />{' '}
                 Erhöhung über den Lohnkostenanteil an die Kunden weitergeben (Preisanpassung)
-              </label>
-              <label class="chk">
-                <input
-                  type="checkbox"
-                  name="extra"
-                  value="1"
-                  checked={b.extra_like_prev}
-                  disabled={!draft || !edit}
-                />{' '}
-                Sonder- und Einzelleistungen wie im Vorjahr (Ist-Umsatz über den regelmäßigen Leistungen)
               </label>
               <label class="chk">
                 <input
@@ -1568,12 +1544,10 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     );
     const lines: [string, bigint[], boolean?][] = [
       ['Laufende Leistungen', r.flat],
-      ['Turnus / einmalig', r.cycle],
-      ['Sonderleistungen wie Vorjahr', r.extra],
+      ['Turnus (nach Ausführung)', r.cycle],
       ['Preiserhöhung (Lohnanteil)', r.increase],
       ['Anpassung Umsatz', r.adjRevenue],
       ['Umsatz', r.revenue],
-      ['Vorjahr (Ist)', r.prev],
       ['Lohn inkl. AG-Kosten', r.labor],
       ['Ausfall Urlaub', r.vacation],
       ['Ausfall Krank', r.sick],
@@ -1617,7 +1591,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           <div class="kpi">
             <div class="l">Umsatz {year}</div>
             <div class="v">{eur0(a.revenue)}</div>
-            <div class="s">Vorjahr {eur0(a.prev)}</div>
+            <div class="s">aus den Leistungen</div>
           </div>
           <div class="kpi">
             <div class="l">Deckungsbeitrag I</div>
@@ -1678,7 +1652,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             months={M12.map((i) => ({
               label: MON[i]!,
               revenue: r.revenue[i]!,
-              prev: r.prev[i]!,
               labor: r.labor[i]!,
               absence: r.vacation[i]! + r.sick[i]!,
               sub: r.sub[i]!,
@@ -1833,7 +1806,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       of === 0n ? '' : { n: Number((v * 10000n) / of) / 10000, fmt: 'pct' };
     const amountRow = (a: Agg) => [
       n(a.revenue),
-      n(a.prev),
       hrs(a.minutes),
       n(a.labor),
       n(a.vacation + a.sick),
@@ -1846,7 +1818,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     ];
     const amountHead = [
       'Umsatz',
-      'Vorjahr Ist',
       'Stunden',
       'Lohn inkl. AG',
       'Urlaub/Krank',
@@ -1869,7 +1840,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         header: [
           'Monat',
           'Umsatz',
-          'Vorjahr Ist',
           'Lohn',
           'Urlaub/Krank',
           'Nachunternehmer',
@@ -1882,7 +1852,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         rows: ch.months.map((m, i) => [
           MON_LONG[i]!,
           n(m.revenue),
-          n(m.prev),
           n(m.labor),
           n(m.absence),
           n(m.sub),
@@ -1896,7 +1865,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           [
             'Jahr',
             n(ch.months.reduce((a, m) => a + m.revenue, 0n)),
-            n(ch.months.reduce((a, m) => a + m.prev, 0n)),
             n(ch.months.reduce((a, m) => a + m.labor, 0n)),
             n(ch.months.reduce((a, m) => a + m.absence, 0n)),
             n(ch.months.reduce((a, m) => a + m.sub, 0n)),
@@ -1910,7 +1878,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             ),
           ],
         ],
-        widths: [14, 14, 14, 14, 14, 14, 16, 14, 14, 9],
+        widths: [14, 14, 14, 14, 14, 16, 14, 14, 9],
       },
       {
         name: 'Kunden',
@@ -1924,20 +1892,12 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           ...amountRow(a),
         ]),
         footer: [['Gesamt', { n: rows.length, fmt: 'int' } as XlsxCell, ...amountRow(all)]],
-        widths: [36, 8, 14, 14, 9, 14, 14, 14, 14, 14, 14, 9],
+        widths: [36, 8, 14, 9, 14, 14, 14, 14, 14, 14, 9],
       },
       {
         name: 'Objekte',
         title,
-        header: [
-          'Nr.',
-          'Objekt',
-          'Kunde',
-          ...amountHead,
-          'davon laufend/Turnus',
-          'Sonder wie Vorjahr',
-          'Erhöhung/Anpassung',
-        ],
+        header: ['Nr.', 'Objekt', 'Kunde', ...amountHead, 'davon laufend/Turnus', 'Erhöhung/Anpassung'],
         rows: rows.map((r) => {
           const a = agg([r]);
           return [
@@ -1946,14 +1906,11 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
             r.customer_name,
             ...amountRow(a),
             n(a.regular),
-            n(a.extra),
             n(a.increase + a.adj),
           ];
         }),
-        footer: [
-          ['Gesamt', '', '', ...amountRow(all), n(all.regular), n(all.extra), n(all.increase + all.adj)],
-        ],
-        widths: [10, 34, 28, 14, 14, 9, 14, 14, 14, 14, 14, 14, 9, 14, 14, 14],
+        footer: [['Gesamt', '', '', ...amountRow(all), n(all.regular), n(all.increase + all.adj)]],
+        widths: [10, 34, 28, 14, 9, 14, 14, 14, 14, 14, 14, 9, 14, 14],
       },
       {
         name: 'Objekte je Monat',
@@ -2020,7 +1977,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
         {
           label: `Umsatz ${year}`,
           value: eur0(all.revenue),
-          sub: `Vorjahr ${eur0(all.prev)}${all.prev > 0n ? ` (${pct(all.revenue - all.prev, all.prev)})` : ''}`,
+          sub: 'aus den Leistungen',
         },
         {
           label: 'Direkte Kosten',
@@ -2048,7 +2005,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       months: ch.months.map((m) => ({
         label: m.label,
         revenue: m.revenue,
-        prev: m.prev,
         costs: m.labor + m.absence + m.sub + m.material + m.overhead,
         result: m.result,
       })),
@@ -2071,7 +2027,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     const cols = [
       { label: 'Bezeichnung', width: 190, wrap: true },
       { label: 'Umsatz', width: 70, align: 'right' as const },
-      { label: 'Vorjahr', width: 64, align: 'right' as const },
       { label: 'Lohn inkl. AG', width: 66, align: 'right' as const },
       { label: 'Urlaub/Krank', width: 60, align: 'right' as const },
       { label: 'NU', width: 58, align: 'right' as const },
@@ -2085,7 +2040,6 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
     const cells = (label: string, a: Agg, bold = false): PdfRow => [
       bold ? { text: label, bold: true } : label,
       bold ? { text: eur0(a.revenue), bold: true } : eur0(a.revenue),
-      a.prev ? eur0(a.prev) : '–',
       eur0(a.labor),
       eur0(a.vacation + a.sick),
       eur0(a.sub),
@@ -2128,7 +2082,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
       rows: tableRows,
       fontSize: 7.5,
       footnote:
-        'Planwerte netto. Umsatz aus den Leistungen (monatlich, Turnus, einmalig), Sonderleistungen wie Vorjahr, Preiserhöhung über den Lohnanteil; Lohn laut Einsatzplanung inkl. Arbeitgeberkosten; Gemeinkosten nach Umsatz verteilt.',
+        'Planwerte netto. Umsatz aus den Leistungen (monatlich, quartalsweise, halbjährlich, jährlich), Preiserhöhung über den Lohnanteil; Lohn laut Einsatzplanung inkl. Arbeitgeberkosten; Gemeinkosten nach Umsatz verteilt.',
     });
     const parts = [overview, main];
     if (!filtered) {
@@ -2256,7 +2210,7 @@ export function registerBudgetRoutes({ app, deps, page, back }: Ctx) {
           wage_increase_bp: bp,
           wage_increase_month: Number(b.wage_month ?? 1),
           pass_on: b.pass_on === '1',
-          extra_like_prev: b.extra === '1',
+          extra_like_prev: false,
           allocate: b.allocate === '1',
           note: typeof b.note === 'string' && b.note.trim() ? b.note.trim().slice(0, 2000) : null,
           vacation_days: vac ?? 30,

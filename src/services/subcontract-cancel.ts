@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import type { Sql } from '../db/client.js';
 import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
-import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { BusinessError } from './errors.js';
 import { getSupplier } from './inventory.js';
 import { getSeller } from './masterdata.js';
@@ -123,7 +123,8 @@ export async function cancellationPdf(
     : formatDateDe(sc.valid_from);
   const objekt =
     sc.n_sites > 1 ? `Sammelbestellung (${sc.n_sites} Objekte)` : `${sc.site_name} (${sc.site_no})`;
-  return renderLetterPdf({
+  return renderFormLetter({
+    signLabel: 'Stempel und Unterschrift Auftraggeber',
     title: `Kündigung der Bestellung ${sc.number}`,
     date: todayBerlin(),
     info: [
@@ -275,7 +276,8 @@ async function siteEndPdf(sql: Sql, id: string, siteId: string, o: { reasonInLet
   const issued = r.issued_at
     ? formatDateDe(r.issued_at.toISOString().slice(0, 10))
     : formatDateDe(r.valid_from);
-  return renderLetterPdf({
+  return renderFormLetter({
+    signLabel: 'Stempel und Unterschrift Auftraggeber',
     title: `Teilkündigung der Bestellung ${r.number}`,
     date: todayBerlin(),
     info: [

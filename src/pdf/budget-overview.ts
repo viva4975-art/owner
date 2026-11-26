@@ -15,7 +15,6 @@ const INK = rgb(0.1, 0.09, 0.1);
 const MUT = rgb(0.43, 0.43, 0.45);
 const LINE = rgb(0.88, 0.88, 0.9);
 const BRAND = rgb(0.49, 0.08, 0.21);
-const PREV = rgb(0.91, 0.79, 0.83);
 const COST = rgb(0.72, 0.72, 0.74);
 const OK = rgb(0.18, 0.49, 0.31);
 const ERR = rgb(0.7, 0.15, 0.12);
@@ -31,7 +30,7 @@ export interface BudgetOverviewInput {
   title: string;
   subtitle: string;
   kpis: { label: string; value: string; sub?: string; neg?: boolean }[];
-  months: { label: string; revenue: bigint; prev: bigint; costs: bigint; result: bigint }[];
+  months: { label: string; revenue: bigint; prev?: bigint; costs: bigint; result: bigint }[];
   structure: { label: string; cents: bigint; color: string }[];
   customers: { label: string; cents: bigint }[];
   overhead: { label: string; cents: bigint }[];
@@ -143,7 +142,7 @@ export async function budgetOverviewPdf(p: BudgetOverviewInput): Promise<Uint8Ar
       });
   });
 
-  // Säulen je Monat: Umsatz, Vorjahr, Kosten; Ergebnis als Zahl
+  // Säulen je Monat: Umsatz, Kosten; Ergebnis als Zahl (keine Vorjahreswerte, Ahmed 26.11.)
   const cX = M;
   const cTop = kTop - 76;
   const cW = 500;
@@ -157,7 +156,6 @@ export async function budgetOverviewPdf(p: BudgetOverviewInput): Promise<Uint8Ar
   });
   const legend: [string, ReturnType<typeof rgb>][] = [
     ['Umsatz Plan', BRAND],
-    ['Vorjahr (Ist)', PREV],
     ['Kosten gesamt', COST],
   ];
   let lx = cX + 220;
@@ -170,7 +168,7 @@ export async function budgetOverviewPdf(p: BudgetOverviewInput): Promise<Uint8Ar
   const base = cTop - 14 - cH + 28;
   const plotH = cH - 40;
   const max = p.months.reduce((m, r) => {
-    for (const v of [r.revenue, r.prev, r.costs]) if (v > m) m = v;
+    for (const v of [r.revenue, r.costs]) if (v > m) m = v;
     return m;
   }, 1n);
   const maxE = Number(max) / 100;
@@ -200,10 +198,9 @@ export async function budgetOverviewPdf(p: BudgetOverviewInput): Promise<Uint8Ar
   const slot = (cX + cW - axL) / Math.max(1, p.months.length);
   p.months.forEach((m, i) => {
     const gw = slot * 0.78;
-    const bw = gw / 3;
+    const bw = gw / 2;
     const x0 = axL + i * slot + (slot - gw) / 2;
     const bars: [bigint, ReturnType<typeof rgb>][] = [
-      [m.prev, PREV],
       [m.revenue, BRAND],
       [m.costs, COST],
     ];

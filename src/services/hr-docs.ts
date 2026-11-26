@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import { personGreeting } from '../domain/letter/greeting.js';
 import { PDFDocument } from '@cantoo/pdf-lib';
 import { todayBerlin } from '../domain/invoice/calc.js';
 import type { BuyerSnapshot } from '../domain/invoice/types.js';
-import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import {
   type DocumentTemplate,
   type Employee,
@@ -62,7 +62,7 @@ export async function renderTemplateLetter(
     .split(/\n\s*\n/)
     .map((x) => x.replace(/\s*\n\s*/g, ' ').trim())
     .filter(Boolean);
-  return renderLetterPdf({
+  return renderFormLetter({
     title: t.title,
     date: todayBerlin(),
     info: [

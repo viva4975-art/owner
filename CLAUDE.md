@@ -6128,3 +6128,18 @@ Testadresse.
   Preisnachtrag zusätzlich). Pauschale je Einsatz: bis zum Monat des Endes voll, danach 0. Wirkt auf NU-Abrechnung
   (Hinweis „gekündigt, anteilig gekürzt“), Nach-/Plan-Kalkulation, Verteilung von Eingangsrechnungen, Summen in den
   Listen und Bestellschein (gekündigte Objekte nach dem Ende nicht mehr darauf). Test `sammel-site-end.db.test.ts`.
+- 2026-11-26: **Budget nur aus den Leistungen, ohne Vorjahr** (Ahmed): Umsatz je Objekt nur noch aus den Leistungen –
+  Pauschalen im Abrechnungsmonat (monatlich jeden Monat, 2-monatlich/quartalsweise/halbjährlich/jährlich voll im Monat
+  der Rechnung), Turnus nach Ausführung im Fälligkeitsmonat, ohne „Monate ohne Rechnung“; einmalige und Regie zählen
+  nicht. „Sonderleistungen wie Vorjahr“ (Schalter entfernt), Vorjahreswerte (Spalte „Vj.“, Kachel, Säulen, Zeile
+  „Vorjahr: übrige Rechnungen“, Excel/PDF) entfallen. Gespeicherte alte Werte werden beim Lesen ignoriert; Entwürfe, die
+  vor dem 26.11. 17:00 berechnet wurden, rechnet die App einmal neu (`CALC_SINCE` in `budget.ts`). Soll/Ist bleibt.
+- 2026-11-26: **NU-Kündigungen und Schriftverkehr im Format der Mitarbeiter-Schreiben** (Ahmed: „wie die Kündigung beim
+  Mitarbeiter“): neuer Baustein `src/pdf/form-letter.ts` (`renderFormLetter`, FormDoc wie Abmahnung/Vertragsänderung):
+  Briefpapier, Titel groß mit Linie und Kennung rechts (z. B. „Bestellung BE-…“), „München, den …“ rechts, weitere
+  Angaben (Unser Zeichen, Ansprechpartner) klein darunter, Anschrift, „Objekt: …“ fett, Anrede, Text, Tabelle falls nötig,
+  „Mit freundlichen Grüßen“ und Unterschriftslinie (darunter Name/Firma aus der Grußformel bzw. „Stempel und Unterschrift
+  Auftraggeber“). Gilt für: Kündigung/Teilkündigung einer NU-Bestellung, Kündigung der Zusammenarbeit, freie Briefe
+  (Verwaltung → Briefe, Kunde, Objekt, Lieferant, Mitarbeiter), Mitarbeiter-Briefvorlagen, Serienbriefe an Kunden,
+  Preisanpassungs-Anschreiben. Rechnungen, Mahnungen, Gutschriften, Bestellscheine, Lieferscheine bleiben im Rechnungs-
+  stil. Bereits archivierte PDFs bleiben unverändert. Die Word-Fassung der freien Briefe ist unverändert.

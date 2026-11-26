@@ -1,4 +1,5 @@
 import { objectCosts, siteMode, sqmCenti, sammelTotals, subcontractSites } from './subcontract-sites.js';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { contactGreeting } from '../domain/letter/greeting.js';
 import type { Sql } from '../db/client.js';
@@ -1183,7 +1184,8 @@ export async function terminationPdf(sql: Sql, supplierId: string) {
   const contracts = (await listSubcontracts(sql, { supplierId })).filter(
     (c) => c.valid_to === s.terminated_on,
   );
-  return renderLetterPdf({
+  return renderFormLetter({
+    signLabel: 'Stempel und Unterschrift Auftraggeber',
     title: 'Kündigung der Zusammenarbeit',
     date: todayBerlin(),
     info: [['Lieferanten-Nr.', s.supplier_no]],

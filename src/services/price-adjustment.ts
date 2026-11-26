@@ -1,6 +1,6 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { renderFormLetter } from '../pdf/form-letter.js';
 import type { Sql } from '../db/client.js';
-import { renderLetterPdf } from '../pdf/invoice-pdf.js';
 import { buildBuyerSnapshot, getSeller } from './masterdata.js';
 import { storeFile, type UploadConfig } from './uploads.js';
 import {
@@ -306,7 +306,7 @@ export async function renderAdjustmentLetter(
   const oldSum = items.reduce((a, i) => a + i.old_price_cents, 0n);
   const newSum = items.reduce((a, i) => a + i.new_price_cents, 0n);
   const from = formatDateDe(run.effective_from);
-  return renderLetterPdf({
+  return renderFormLetter({
     title: 'Preisanpassung',
     date: todayBerlin(),
     info: [

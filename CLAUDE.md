@@ -6102,3 +6102,12 @@ Testadresse.
   Änderungen), Protokoll `warning_letter`. Word-Vorlagen mit „Abmahnung“ im Namen/Code werden beim Mitarbeiter nicht mehr
   angeboten (bleiben unter Einstellungen). **Rechtlich:** konkret, zeitnah, nachweisbar zugestellt; derselbe Vorfall kann
   danach nicht mehr allein zur Kündigung führen; bei Verdacht auf Alkoholsucht (Krankheit) vorher beraten lassen.
+- 2026-11-26: **Eingangsrechnung: Beträge aus der NU-Abrechnung, oben nur die Summe** (Ahmed: „Beträge aus der Abrechnung
+  übernehmen, bei mehreren oben zusammenrechnen, nicht änderbar“): Bestellung + Monat in einer Zeile gewählt → Betrag der
+  Zeile kommt aus der NU-Abrechnung dieses Monats (`/rechnungseingang/abrechnung.json?sup&monat`, `nuStatements`: Pauschale
+  bzw. Summe der Objekte, je Tag × Arbeitstage, Stunden, Regie), Hinweis darunter mit Rechenweg; ohne Abrechnungswert der
+  bisherige Vorschlag aus der Bestellung. Zeilenbeträge bleiben änderbar (eigene Eingaben werden nicht überschrieben;
+  Zeilen „nur <Objekt>“ und doppelte Bestellung+Monat werden nicht vorbelegt). **Netto oben = Summe der Zeilen, gesperrt**,
+  sobald eine Bestellzeile da ist; der Server rechnet die Summe selbst und lehnt ab, wenn nur ein Teil der Zeilen einen
+  Betrag hat. Ohne Bestellzeilen bleibt Netto frei. Im Browser geprüft (2 Bestellungen, Änderung einer Zeile, gespeichert),
+  `e2e:einkauf` 21 grün.

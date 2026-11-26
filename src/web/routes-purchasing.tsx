@@ -1,5 +1,6 @@
 import { sammelSqmCenti, sammelTotals } from '../services/subcontract-sites.js';
 import { hoursByMonth } from '../services/subcontract-hours.js';
+import { nuStatements } from '../services/nu-statement.js';
 import { costCenterReport } from '../services/cost-centers.js';
 import { randomUUID } from 'node:crypto';
 import { SiteOptions } from './site-options.js';
@@ -1491,6 +1492,23 @@ export function registerPurchasingRoutes(ctx: Ctx) {
     });
   });
 
+  // Beträge je Bestellung aus der NU-Abrechnung des Monats (Ahmed 26.11.): Zeilenbetrag = Abrechnung, oben die Summe
+  app.get('/rechnungseingang/abrechnung.json', async (c) => {
+    const sup = c.req.query('sup') ?? '';
+    const month = c.req.query('monat') ?? '';
+    if (!/^[0-9a-f-]{36}$/.test(sup) || !/^\d{4}-\d{2}$/.test(month)) return c.json({});
+    const [st] = await nuStatements(sql, month, { supplierId: sup });
+    const out: Record<string, { cents: string; calc: string[] }> = {};
+    for (const l of st?.lines ?? []) {
+      if (l.amount == null) continue;
+      const e = out[l.subcontractId] ?? { cents: '0', calc: [] };
+      e.cents = String(BigInt(e.cents) + l.amount);
+      if (l.calc) e.calc.push(l.calc);
+      out[l.subcontractId] = e;
+    }
+    return c.json(out, 200, { 'Cache-Control': 'private, no-store' });
+  });
+
   app.get(`/rechnungseingang/:id{${UUID}}`, async (c) => {
     const id = c.req.param('id');
     const [i, suppliers, sites, orders, files, subcontracts, allocations, targets] = await Promise.all([
@@ -1990,6 +2008,9 @@ export function registerPurchasingRoutes(ctx: Ctx) {
                   <label for="net">Netto €</label>
                   <input id="net" name="net" value={v.net} required class="right" />
                   <small class="mut" id="net-suggest"></small>
+                  <style>
+                    {'input.ro-sum{background:#f3f1f2!important;font-weight:600;cursor:not-allowed}'}
+                  </style>
                 </div>
                 <div>
                   <label for="vat">USt €</label>
@@ -2140,25 +2161,29 @@ var first=rows.querySelector('select[name=link_sc]')===sel;var sm=document.getEl
 var lm=tr.querySelector('[name=link_month]');if(lm&&!lm.value)setSel(lm,(sm&&sm.value)||prevMonth());
 if(first){setSel(document.getElementById('site_id'),o.dataset.site);setSel(document.getElementById('category'),'nachunternehmer');if(sm&&!sm.value)setSel(sm,lm&&lm.value);
 }suggest();});
-// Betragsvorschlag: Summe aller Zeilen = Pauschale/Summe der Objekte + erfasste Stunden + Regie (monatliche: Monat der Zeile,
-// sonst alle). Nur wenn das Feld leer ist oder noch den letzten Vorschlag enthält – eigene Eingaben bleiben (Ahmed 30.10.)
+// Beträge je Zeile aus der NU-Abrechnung des Monats (Ahmed 26.11.), sonst Vorschlag aus der Bestellung (Ahmed 30.10.).
+// Eigene Eingaben in der Zeile bleiben; oben steht immer die Summe der Zeilen und ist dann gesperrt.
 function cents(v){return (v/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function suggest(){var n=document.getElementById('net');if(!n)return;var tot=0,parts=[],seen={};
-rows.querySelectorAll('tr').forEach(function(tr){var sel=tr.querySelector('select[name=link_sc]');var o=sel&&sel.selectedOptions[0];if(!o||!o.value)return;
-var lm=(tr.querySelector('[name=link_month]')||{}).value||'';var key=o.value+'|'+lm;if(seen[key])return;seen[key]=1;
-var b=+(o.dataset.base||0);var h={};try{h=JSON.parse(o.dataset.hrs||'{}')}catch(e){}var hn=0,hr=0;
+var stCache={};
+function statement(m,cb){var s=sup&&sup.value;if(!s||!/^\\d{4}-\\d{2}$/.test(m))return cb(null);var k=s+'|'+m;if(stCache[k]!==undefined)return cb(stCache[k]);
+fetch('/rechnungseingang/abrechnung.json?sup='+encodeURIComponent(s)+'&monat='+m,{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){stCache[k]=j;cb(j);}).catch(function(){cb(null);});}
+function local(o,lm){var b=+(o.dataset.base||0);var h={};try{h=JSON.parse(o.dataset.hrs||'{}')}catch(e){}var hn=0,hr=0;
 Object.keys(h).forEach(function(m){if(o.dataset.rec!=='1'||m===lm){hn+=+h[m].n;hr+=+h[m].r;}});
-var dd={};try{dd=JSON.parse(o.dataset.days||'{}')}catch(e){}if(lm&&dd[lm])b+=+dd[lm];
-var rowSum=b+hn+hr;tot+=rowSum;var rn=tr.querySelector('[name=link_net]');if(rn&&!rn.disabled&&rowSum&&(!rn.value||rn.value===rn.dataset.auto)){rn.value=cents(rowSum);rn.dataset.auto=rn.value;}
-if(b)parts.push('Bestellung '+cents(b));if(hn)parts.push('Stunden '+cents(hn));if(hr)parts.push('Regie '+cents(hr));});
-var hint=document.getElementById('net-suggest');if(hint)hint.textContent=tot?'Vorschlag aus der Bestellung: '+cents(tot)+' € ('+parts.join(' + ')+') – Beträge je Zeile änderbar, oben steht die Summe der Zeilen.':'';
-sumRows(tot);}
-// Netto oben = Summe der Zeilenbeträge (Ahmed 30.10.); ohne Zeilenbeträge der Vorschlag, eigene Eingabe oben bleibt dann
+var dd={};try{dd=JSON.parse(o.dataset.days||'{}')}catch(e){}if(lm&&dd[lm])b+=+dd[lm];return b+hn+hr;}
+function suggest(){var pend=0,parts=[],seen={};var trs=Array.prototype.slice.call(rows.querySelectorAll('tr'));
+function done(){if(--pend>0)return;var hint=document.getElementById('net-suggest');if(hint)hint.textContent=parts.length?'Aus der NU-Abrechnung: '+parts.join(' · ')+' – Beträge je Zeile änderbar, oben steht die Summe der Zeilen.':'';sumRows();}
+pend=1;trs.forEach(function(tr){var sel=tr.querySelector('select[name=link_sc]');var o=sel&&sel.selectedOptions[0];if(!o||!o.value)return;
+var lm=(tr.querySelector('[name=link_month]')||{}).value||'';var ls=(tr.querySelector('[name=link_site]')||{}).value||'';var key=o.value+'|'+lm;
+var rn=tr.querySelector('[name=link_net]');if(ls||seen[key]||!rn||rn.disabled)return;seen[key]=1;pend++;
+statement(lm,function(j){var e=j&&j[o.value];var v=e?+e.cents:local(o,lm);
+if(v&&(!rn.value||rn.value===rn.dataset.auto)){rn.value=cents(v);rn.dataset.auto=rn.value;}
+if(e)parts.push((o.textContent.split(' · ')[0]||'').trim()+' '+lm.slice(5)+'/'+lm.slice(0,4)+': '+cents(+e.cents)+' €'+(e.calc.length?' ('+e.calc.join(' + ')+')':''));done();});});done();}
 function num(v){v=String(v||'').trim().replace(/\\s|€/g,'');if(!v)return 0;if(v.indexOf(',')>=0)v=v.replace(/\\./g,'').replace(',','.');var x=Math.round(parseFloat(v)*100);return isFinite(x)?x:0;}
-function sumRows(fb){var n=document.getElementById('net');if(!n)return;var s=0;rows.querySelectorAll('[name=link_net]').forEach(function(x){s+=num(x.value);});
-var v=s?cents(s):(fb?cents(fb):'');if(!v)return;if(s||!n.value||n.value===n.dataset.auto){if(n.value!==v){n.value=v;n.dispatchEvent(new Event('change',{bubbles:true}));}n.dataset.auto=v;}}
-rows.addEventListener('input',function(e){if(e.target.matches&&e.target.matches('[name=link_net]'))sumRows(0);});
-rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('[name=link_month]'))suggest();});
+function sumRows(){var n=document.getElementById('net');if(!n)return;var s=0,any=false;rows.querySelectorAll('tr').forEach(function(tr){var sel=tr.querySelector('select[name=link_sc]');if(!sel||!sel.value)return;any=true;s+=num((tr.querySelector('[name=link_net]')||{}).value);});
+n.readOnly=any;n.classList.toggle('ro-sum',any);n.title=any?'Summe der Bestellzeilen – Beträge in den Zeilen ändern':'';if(!any)return;var v=cents(s);if(n.value!==v){n.value=v;n.dispatchEvent(new Event('change',{bubbles:true}));}}
+rows.addEventListener('input',function(e){if(e.target.matches&&e.target.matches('[name=link_net]'))sumRows();});
+rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('[name=link_month],select[name=link_site]'))suggest();});
+if(sup)sup.addEventListener('change',function(){stCache={};});window.addEventListener('load',function(){setTimeout(sumRows,60);});
 function multi(){var sites={},m=false,label='';rows.querySelectorAll('select[name=link_sc]').forEach(function(x){var o=x.selectedOptions[0];if(!o||!o.value)return;sites[o.dataset.site]=1;if(+o.dataset.multi>1)m=true;if(!label)label=(o.textContent.split(' · ')[1]||'').trim();});var n=Object.keys(sites).length;var any=n>0;m=m||n>1;var bx=document.getElementById('site-box'),au=document.getElementById('site-auto'),si=document.getElementById('site_id'),mb=document.getElementById('month-box'),tx=document.getElementById('site-auto-text');if(!bx||!au)return;bx.hidden=any;au.hidden=!any;if(mb)mb.hidden=any;if(tx)tx.textContent=m?'automatisch – die Kosten werden auf die Objekte der Bestellungen verteilt (Beträge je Zeile, sonst nach Preis; Sammelbestellung nach Fläche bzw. Betrag je Objekt).':'aus der Bestellung: '+label;if(any&&si&&si.value){si.value='';if(si._cbLabel)si._cbLabel();}}
 rows.addEventListener('change',function(e){if(e.target.matches&&e.target.matches('select[name=link_sc]'))setTimeout(multi,0);});multi();
 // Eingaben-Wiederherstellung und Safari-Zurück setzen Werte ohne „change“ → nachträglich noch einmal prüfen
@@ -2543,6 +2568,13 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
       });
     const one = (k: string) =>
       typeof b[k] === 'string' && (b[k] as string).trim() !== '' ? (b[k] as string).trim() : null;
+    // Mehrere Bestellzeilen: Netto oben = Summe der Zeilen, nicht frei änderbar (Ahmed 26.11.)
+    const withNet = links.filter((l) => l.net != null);
+    if (withNet.length && withNet.length < links.length)
+      throw new BusinessError(
+        'Bitte bei jeder Bestellzeile den Betrag eintragen – oben steht die Summe der Zeilen',
+      );
+    const lineSum = withNet.length ? withNet.reduce((a, l) => a + (l.net as bigint), 0n) : null;
     const sk = one('skonto_percent');
     const bp = sk ? Math.round(Number(sk.replace(',', '.')) * 100) : null;
     if (sk && (!Number.isFinite(bp) || bp! <= 0 || bp! > 1000)) throw new BusinessError('Skonto % ungültig');
@@ -2567,7 +2599,7 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
         invoiceDate: one('invoice_date') ?? todayBerlin(),
         dueDate: one('due_date'),
         serviceMonth: isMonth(one('service_month')) ? one('service_month') : null,
-        net: money(one('net'), 'Netto'),
+        net: lineSum != null ? (lineSum as Cents) : money(one('net'), 'Netto'),
         vat: !tax && one('vat') ? money(one('vat'), 'USt') : (0n as Cents),
         reverseCharge: !tax && b.reverse_charge === 'on',
         category: cat,

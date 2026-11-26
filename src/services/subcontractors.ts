@@ -849,7 +849,8 @@ export async function subcontractPdf(sql: Sql, id: string, sig?: SubcontractSign
           : sc.billing === 'qm'
             ? 'm²'
             : 'Monat';
-  const sammel = await subcontractSites(sql, id);
+  // gekündigte Objekte (Ahmed 26.11.) stehen nach ihrem Ende nicht mehr auf dem Bestellschein
+  const sammel = (await subcontractSites(sql, id)).filter((r) => !r.valid_to || r.valid_to >= todayBerlin());
   const sqmTotal = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
   // je Objekt „je m²“ oder Pauschale (Ahmed 23.10.)
   const perObj = sammel.length ? objectCosts(sc.billing, sc.current_price_cents, sammel) : null;

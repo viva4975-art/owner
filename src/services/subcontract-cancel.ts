@@ -174,3 +174,151 @@ export async function cancellationPdf(
     signature: null,
   });
 }
+
+/*
+ * Einzelnes Objekt einer Sammelbestellung kündigen (Ahmed 26.11.): Die Bestellung läuft weiter, das Objekt zählt bis
+ * einschließlich zum Datum – im Monat des Endes anteilig nach Kalendertagen, danach nicht mehr (Kosten, Abrechnung,
+ * Nachkalkulation). Optional Kündigungsschreiben (write-once beim Nachunternehmer, „Schriftverkehr“).
+ */
+export async function endSammelSite(
+  deps: { sql: Sql; filesDir: string; maxBytes: number },
+  id: string,
+  p: { siteId: string; date: string; reason: string | null; letter: boolean; reasonInLetter: boolean },
+  actor: string,
+) {
+  const { sql } = deps;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date))
+    throw new BusinessError('Bitte das Datum angeben, zu dem gekündigt wird');
+  const [sc] = await sql<
+    { number: string; status: string; valid_from: string; valid_to: string | null; supplier_id: string }[]
+  >`select number, status, valid_from::text, valid_to::text, supplier_id from app.subcontracts where id = ${id}`;
+  if (!sc) throw new BusinessError('Bestellung nicht gefunden');
+  if (sc.status === 'storniert') throw new BusinessError('Stornierte Bestellung kann nicht geändert werden');
+  const sites = await sql<{ site_id: string; valid_to: string | null; site_no: string; name: string }[]>`
+    select x.site_id, x.valid_to::text, s.site_no, s.name from app.subcontract_sites x
+      join app.sites s on s.id = x.site_id where x.subcontract_id = ${id}`;
+  const site = sites.find((x) => x.site_id === p.siteId);
+  if (!site) throw new BusinessError('Objekt gehört nicht zu dieser Sammelbestellung');
+  if (site.valid_to)
+    throw new BusinessError(`${site.name} ist schon zum ${formatDateDe(site.valid_to)} gekündigt`);
+  if (p.date < sc.valid_from) throw new BusinessError('Datum liegt vor dem Beginn der Bestellung');
+  if (sc.valid_to && p.date >= sc.valid_to)
+    throw new BusinessError(`Die Bestellung endet ohnehin am ${formatDateDe(sc.valid_to)}`);
+  if (sites.filter((x) => !x.valid_to && x.site_id !== p.siteId).length === 0)
+    throw new BusinessError('Das ist das letzte laufende Objekt – bitte die ganze Bestellung kündigen');
+  await sql.begin(async (tx) => {
+    await tx`update app.subcontract_sites
+                set valid_to = ${p.date}, end_reason = ${p.reason?.trim() || null}, ended_at = now(), ended_by = ${actor}
+              where subcontract_id = ${id} and site_id = ${p.siteId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'site_end', 'subcontract', ${id},
+                     ${tx.json({ site: p.siteId, site_no: site.site_no, date: p.date, reason: p.reason })})`;
+  });
+  if (!p.letter) return null;
+  const pdf = await siteEndPdf(sql, id, p.siteId, { reasonInLetter: p.reasonInLetter });
+  const f = await storeFile(
+    sql,
+    { dir: deps.filesDir, maxBytes: deps.maxBytes },
+    {
+      id: randomUUID(),
+      name: `Kuendigung_${sc.number}_${site.site_no}.pdf`,
+      type: 'application/pdf',
+      data: pdf,
+      link: { type: 'supplier', id: sc.supplier_id },
+      category: 'Schriftverkehr',
+    },
+    actor,
+  );
+  await sql`update app.subcontract_sites set end_file_id = ${f.id} where subcontract_id = ${id} and site_id = ${p.siteId}`;
+  return f.id;
+}
+
+export async function revokeSammelSiteEnd(sql: Sql, id: string, siteId: string, actor: string) {
+  const [x] = await sql<{ valid_to: string | null }[]>`
+    select valid_to::text from app.subcontract_sites where subcontract_id = ${id} and site_id = ${siteId}`;
+  if (!x?.valid_to) throw new BusinessError('Für dieses Objekt ist keine Kündigung erfasst');
+  await sql.begin(async (tx) => {
+    await tx`update app.subcontract_sites
+                set valid_to = null, end_reason = null, ended_at = null, ended_by = null, end_file_id = null
+              where subcontract_id = ${id} and site_id = ${siteId}`;
+    await tx`insert into app.audit_log (actor, action, entity, entity_id, details)
+             values (${actor}, 'site_end_revoke', 'subcontract', ${id}, ${tx.json({ site: siteId, date_alt: x.valid_to })})`;
+  });
+}
+
+/** Kündigungsschreiben für ein Objekt einer Sammelbestellung. */
+async function siteEndPdf(sql: Sql, id: string, siteId: string, o: { reasonInLetter: boolean }) {
+  const [r] = await sql<
+    {
+      number: string;
+      supplier_id: string;
+      service_kind: string;
+      frequency: string;
+      valid_from: string;
+      issued_at: Date | null;
+      site_no: string;
+      site_name: string;
+      street: string | null;
+      postal_code: string | null;
+      city: string | null;
+      valid_to: string;
+      end_reason: string | null;
+    }[]
+  >`
+    select sc.number, sc.supplier_id, sc.service_kind, sc.frequency, sc.valid_from::text, sc.issued_at,
+           s.site_no, s.name as site_name, s.street, s.postal_code, s.city, x.valid_to::text, x.end_reason
+      from app.subcontract_sites x join app.subcontracts sc on sc.id = x.subcontract_id join app.sites s on s.id = x.site_id
+     where x.subcontract_id = ${id} and x.site_id = ${siteId} and x.valid_to is not null`;
+  if (!r) throw new BusinessError('Keine Kündigung erfasst');
+  const s = await getSupplier(sql, r.supplier_id);
+  if (!s) throw new BusinessError('Nachunternehmer nicht gefunden');
+  const issued = r.issued_at
+    ? formatDateDe(r.issued_at.toISOString().slice(0, 10))
+    : formatDateDe(r.valid_from);
+  return renderLetterPdf({
+    title: `Teilkündigung der Bestellung ${r.number}`,
+    date: todayBerlin(),
+    info: [
+      ['Bestellung', r.number],
+      ['Lieferanten-Nr.', s.supplier_no],
+    ],
+    seller: await getSeller(sql),
+    buyer: {
+      customerNo: s.supplier_no,
+      name: s.name,
+      name2: attnLine(s.contact_name),
+      street: s.street ?? '',
+      postalCode: s.postal_code ?? '',
+      city: s.city ?? '',
+      countryCode: 'DE',
+      vatId: null,
+      leitwegId: null,
+      supplierNo: null,
+      email: null,
+      contactName: null,
+      site: null,
+    },
+    objekt: {
+      title: `${r.site_name} (${r.site_no})`,
+      address:
+        [r.street, [r.postal_code, r.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null,
+    },
+    intro:
+      `hiermit kündigen wir unsere Bestellung ${r.number} vom ${issued} ` +
+      `(${r.service_kind}, ${FREQUENCY[r.frequency] ?? r.frequency}) für das oben genannte Objekt zum ` +
+      `${formatDateDe(r.valid_to)}, hilfsweise zum nächstmöglichen Termin.`,
+    columns: [],
+    rows: [],
+    sums: [],
+    total: null,
+    paragraphs: [
+      ...(o.reasonInLetter && r.end_reason ? [`Grund: ${r.end_reason}`] : []),
+      'Für alle übrigen Objekte gilt die Bestellung unverändert weiter. Die Vergütung für dieses Objekt endet mit dem ' +
+        `${formatDateDe(r.valid_to)}; ein Monatsbetrag wird für den Monat des Endes anteilig nach Kalendertagen berechnet.`,
+      'Bitte geben Sie überlassene Schlüssel, Zugangskarten und Arbeitsmittel für dieses Objekt bis zum ' +
+        `${formatDateDe(r.valid_to)} zurück.`,
+      'Mit freundlichen Grüßen',
+    ],
+    signature: null,
+  });
+}

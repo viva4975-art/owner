@@ -6111,3 +6111,20 @@ Testadresse.
   sobald eine Bestellzeile da ist; der Server rechnet die Summe selbst und lehnt ab, wenn nur ein Teil der Zeilen einen
   Betrag hat. Ohne Bestellzeilen bleibt Netto frei. Im Browser geprüft (2 Bestellungen, Änderung einer Zeile, gespeichert),
   `e2e:einkauf` 21 grün.
+- 2026-11-26: **Staatsangehörigkeitsschlüssel komplett** (Ahmed, PDF „Staatsangehörigkeits- und Gebietsschlüssel“ Stand
+  01.01.2011): `NATIONALITY_KEYS` in `wage-statistics.ts` enthält jetzt alle Staaten der Länderliste der App (Spalte
+  „Staatsang.“ der PDF), dazu staatenlos 997, ungeklärt 998. **Abweichend von der PDF (Stand vor der Teilung 2011):**
+  Sudan 277, Südsudan 278 statt Sudan 276 – nach der aktuellen destatis-Liste; Eswatini = Swasiland 281, Nordmazedonien
+  = Mazedonien 144. Ein von Hand eingetragener Schlüssel am Mitarbeiter geht weiter vor.
+- 2026-11-26: **Sammelbestellung: einzelne Objekte kündigen** (Ahmed: „Beträge müssen evtl. runtergekürzt werden“):
+  Bestellung → Kasten Sammelbestellung → „Einzelnes Objekt kündigen“: Objekt, gekündigt zum (letzter Tag mit Leistung,
+  Vorschlag Monatsende), Grund intern, optional Teilkündigungsschreiben (PDF, beim NU unter Dokumente „Schriftverkehr“).
+  `subcontract_sites.valid_to/end_reason/ended_at/ended_by/end_file_id` (Migration `20270213000001`),
+  `endSammelSite`/`revokeSammelSiteEnd` in `subcontract-cancel.ts` (Protokoll `site_end`/`site_end_revoke`, „zurücknehmen“
+  in der Objektzeile). Die Bestellung läuft für die übrigen Objekte weiter; das letzte laufende Objekt ist nicht einzeln
+  kündbar (dann ganze Bestellung kündigen). **Betrag automatisch gekürzt** (`siteMonthShare`/`applyShare`): im Monat des
+  Endes anteilig nach Kalendertagen (kaufmännisch auf Cent), danach 0 – bei je m², Pauschale je Objekt, Anteil am Umsatz
+  und bei einer Pauschale für die ganze Bestellung (sinkt um den Anteil des Objekts nach Betrag bzw. Fläche; keinen
+  Preisnachtrag zusätzlich). Pauschale je Einsatz: bis zum Monat des Endes voll, danach 0. Wirkt auf NU-Abrechnung
+  (Hinweis „gekündigt, anteilig gekürzt“), Nach-/Plan-Kalkulation, Verteilung von Eingangsrechnungen, Summen in den
+  Listen und Bestellschein (gekündigte Objekte nach dem Ende nicht mehr darauf). Test `sammel-site-end.db.test.ts`.

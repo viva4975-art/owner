@@ -27,7 +27,31 @@ export interface SammelSite {
   rate_cents: string | null;
   /** Vorschlag aus Tiefgaragen-Stammdaten bzw. Raumbuch */
   sqm_hint: string | null;
+  /** Objekt gekündigt zum (einschließlich, Ahmed 26.11.); null = läuft mit der Bestellung */
+  valid_to: string | null;
+  end_reason: string | null;
+  end_file_id: string | null;
 }
+
+/**
+ * Anteil eines Objekts an einem Monat (Zähler, Nenner): gekündigte Objekte zählen im Monat des Endes anteilig nach
+ * Kalendertagen, danach nicht mehr. Ohne Anteiligkeit (Pauschale je Einsatz) zählt das Objekt bis zum Monat des Endes voll.
+ */
+export function siteMonthShare(
+  validTo: string | null | undefined,
+  month: string,
+  prorate = true,
+): [bigint, bigint] {
+  if (!validTo) return [1n, 1n];
+  if (validTo < `${month}-01`) return [0n, 1n];
+  const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+  if (!prorate || validTo >= `${month}-${String(days).padStart(2, '0')}`) return [1n, 1n];
+  return [BigInt(Number(validTo.slice(8, 10))), BigInt(days)];
+}
+
+/** Betrag × Anteil, kaufmännisch auf Cent */
+export const applyShare = (v: bigint, [n, d]: [bigint, bigint]): bigint =>
+  d === 1n ? v * n : v < 0n ? -((-v * n * 2n + d) / (2n * d)) : (v * n * 2n + d) / (2n * d);
 
 /** m² als ganze Hundertstel (kein Gleitkomma) */
 export const sqmCenti = (v: string | null | undefined): bigint | null => {
@@ -70,7 +94,7 @@ export async function subcontractSites(sql: Sql, id: string): Promise<SammelSite
   return sql<SammelSite[]>`
     select x.site_id, s.site_no, s.name, s.street, s.city, c.name as customer_name, x.sqm::text as sqm,
            x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents,
-           ${sqmHint(sql)} as sqm_hint
+           ${sqmHint(sql)} as sqm_hint, x.valid_to::text as valid_to, x.end_reason, x.end_file_id
       from app.subcontract_sites x join app.sites s on s.id = x.site_id join app.customers c on c.id = s.customer_id
      where x.subcontract_id = ${id}
      order by s.site_no`;
@@ -192,6 +216,7 @@ export async function siteRevenueMonth(
 }
 
 type CostSite = {
+  valid_to?: string | null;
   sqm: string | null;
   share_cents: string | null;
   mode?: string | null;
@@ -234,7 +259,8 @@ export async function sammelTotals(
   if (!ids.length) return out;
   const rows = await sql<(CostSite & { id: string })[]>`
     select subcontract_id as id, sqm::text as sqm, share_cents::text as share_cents, mode, rate_cents::text as rate_cents
-      from app.subcontract_sites where subcontract_id = any(${ids}::uuid[])`;
+      from app.subcontract_sites where subcontract_id = any(${ids}::uuid[])
+       and (valid_to is null or valid_to >= (now() at time zone 'Europe/Berlin')::date)`;
   for (const o of orders) {
     const mine = rows.filter((r) => r.id === o.id);
     if (!mine.length) continue;
@@ -268,10 +294,14 @@ export async function allocateSammel(
     { billing: string; price_cents: bigint }[]
   >`select billing, price_cents from app.subcontracts where id = ${subcontractId}`;
   const sites = await sql<(CostSite & { site_id: string })[]>`
-    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents,
+           x.valid_to::text as valid_to
       from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${subcontractId} order by s.site_no`;
   if (!sc || sites.length < 2) return null;
+  // gekündigte Objekte (Ahmed 26.11.): im Monat des Endes anteilig, danach ohne Anteil
+  const share = sites.map((x) => siteMonthShare(x.valid_to, month, sc.billing !== 'pauschale_einsatz'));
+  if (share.every(([n]) => n === 0n)) share.fill([1n, 1n]);
   let weights: bigint[];
   const per = objectCosts(sc.billing, BigInt(sc.price_cents), sites);
   if (per && per.some((w) => w > 0n)) weights = per;
@@ -285,6 +315,8 @@ export async function allocateSammel(
     if (!weights.some((w) => w > 0n)) weights = sites.map((s) => sqmCenti(s.sqm) ?? 0n);
   } else if (sc.billing === 'qm') weights = sites.map((s) => sqmCenti(s.sqm) ?? 0n);
   else weights = flatWeights(sites);
+  if (!weights.some((w) => w > 0n)) weights = sites.map(() => 1n);
+  weights = weights.map((w, i) => applyShare(w * 1000n, share[i]!));
   const parts = splitByWeights(net, weights);
   return sites.map((s, i) => ({ site_id: s.site_id, net: parts[i]! }));
 }
@@ -299,13 +331,18 @@ export async function sammelMonthCost(
   month: string,
 ): Promise<{ site_id: string; cost: bigint }[]> {
   const sites = await sql<(CostSite & { site_id: string })[]>`
-    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents
+    select x.site_id, x.sqm::text as sqm, x.share_cents::text as share_cents, x.mode, x.rate_cents::text as rate_cents,
+           x.valid_to::text as valid_to
       from app.subcontract_sites x join app.sites s on s.id = x.site_id
      where x.subcontract_id = ${sc.id} order by s.site_no`;
   if (!sites.length) return [];
+  // gekündigte Objekte (Ahmed 26.11.): Monat des Endes anteilig nach Kalendertagen, danach 0
+  const share = sites.map((s) => siteMonthShare(s.valid_to, month, sc.billing !== 'pauschale_einsatz'));
+  const out = (costs: bigint[]) =>
+    sites.map((s, i) => ({ site_id: s.site_id, cost: applyShare(costs[i]!, share[i]!) }));
   // je m² bzw. Pauschale je Objekt: Kosten ergeben sich je Objekt
   const per = objectCosts(sc.billing, BigInt(sc.price_cents), sites);
-  if (per) return sites.map((s, i) => ({ site_id: s.site_id, cost: per[i]! }));
+  if (per) return out(per);
   if (sc.billing === 'umsatz') {
     const rev = await siteRevenueMonth(
       sql,
@@ -313,15 +350,15 @@ export async function sammelMonthCost(
       month,
     );
     const keep = BigInt(10000 - (sc.margin_bp ?? 0));
-    return sites.map((s) => {
-      const r = rev.get(s.site_id) ?? 0n;
-      return { site_id: s.site_id, cost: (r * keep * 2n + 10000n) / 20000n };
-    });
+    return out(sites.map((s) => ((rev.get(s.site_id) ?? 0n) * keep * 2n + 10000n) / 20000n));
   }
-  if (sc.billing === 'pauschale_monat') {
-    const parts = splitByWeights(BigInt(sc.price_cents), flatWeights(sites));
-    return sites.map((s, i) => ({ site_id: s.site_id, cost: parts[i]! }));
-  }
+  // Pauschale für die ganze Bestellung: Anteil je Objekt nach Betrag bzw. Fläche – fällt ein Objekt weg,
+  // sinkt der Betrag um seinen Anteil
+  if (
+    sc.billing === 'pauschale_monat' ||
+    (sc.billing === 'pauschale_einsatz' && sites.some((s) => s.valid_to))
+  )
+    return out(splitByWeights(BigInt(sc.price_cents), flatWeights(sites)));
   return [];
 }
 
@@ -331,7 +368,8 @@ export async function sammelSqmCenti(sql: Sql, ids: string[]): Promise<Map<strin
   if (!ids.length) return out;
   for (const r of await sql<{ id: string; c: string | null }[]>`
     select subcontract_id as id, (sum(sqm) * 100)::bigint::text as c from app.subcontract_sites
-     where subcontract_id = any(${ids}::uuid[]) group by subcontract_id`)
+     where subcontract_id = any(${ids}::uuid[])
+       and (valid_to is null or valid_to >= (now() at time zone 'Europe/Berlin')::date) group by subcontract_id`)
     out.set(r.id, BigInt(r.c ?? '0'));
   return out;
 }

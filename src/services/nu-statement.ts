@@ -147,6 +147,9 @@ export async function nuStatements(
     sammelSummaries(sql, ids),
     billingTracking(sql, ids, { today: to, limit: 600 }),
   ]);
+  const endedSites = await sql<{ id: string; valid_to: string }[]>`
+    select subcontract_id as id, valid_to::text from app.subcontract_sites
+     where subcontract_id = any(${ids}::uuid[]) and valid_to is not null`;
   const byId = new Map<string, Statement>();
   for (const o of orders) {
     const price = BigInt(o.month_price);
@@ -202,9 +205,24 @@ export async function nuStatements(
       base =
         rec ||
         (step === 0 ? endMonth === month : (diff + 1) % step === 0 || (!!o.valid_to && endMonth === month));
-      const total =
+      let total =
         totals.get(o.id) ??
         (o.billing === 'qm' ? (sqm.get(o.id) ? (price * sqm.get(o.id)! + 50n) / 100n : null) : price);
+      // Sammelbestellung: Betrag des Monats je Objekt – gekündigte Objekte anteilig bzw. ohne (Ahmed 26.11.)
+      let ended = '';
+      if (sum && base) {
+        const parts = await sammelMonthCost(
+          sql,
+          { id: o.id, billing: o.billing, price_cents: price, margin_bp: o.margin_bp },
+          month,
+        );
+        if (parts.length) {
+          total = parts.reduce((a, p) => a + p.cost, 0n);
+          const gone = endedSites.filter((e) => e.id === o.id && e.valid_to <= `${month}-31`);
+          if (gone.length)
+            ended = ` – ${gone.length === 1 ? '1 Objekt' : `${gone.length} Objekte`} gekündigt, anteilig gekürzt`;
+        }
+      }
       amount = total;
       calc =
         o.billing === 'qm'
@@ -217,6 +235,7 @@ export async function nuStatements(
               ? `Pauschale ${MON(month)}${sum ? ` (Summe der ${sum.n} Objekte)` : ''}`
               : `Pauschale, ausgeführt bis ${formatDateDe(o.valid_to ?? o.valid_from)}`;
       if (!rec && o.billing === 'pauschale_monat' && o.valid_to) calc += ' (einmalig)';
+      calc += ended;
     }
     // Zustand aus der Rechnungsverfolgung (gleicher Zeitraum wie „Rechnung erwartet“)
     const per = (tracking.get(o.id) ?? []).find((p) => p.start <= month && month <= p.end.slice(0, 7));

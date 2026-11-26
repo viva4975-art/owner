@@ -4,7 +4,7 @@ import { ensureGeneralSite } from '../services/fortytools-more-import.js';
 import type { Context } from 'hono';
 import type { FC } from 'hono/jsx';
 import { getCookie, setCookie } from 'hono/cookie';
-import { todayBerlin } from '../domain/invoice/calc.js';
+import { formatDateDe, todayBerlin } from '../domain/invoice/calc.js';
 import { parseEuro } from '../domain/money/money.js';
 import { signSession, verifySession } from '../services/employee-auth.js';
 import { ADVANCE_METHOD, deleteAdvance, listAdvances, saveAdvance } from '../services/advances.js';
@@ -21,7 +21,12 @@ import {
   countDays,
   workDaysLabel,
 } from '../services/subcontract-days.js';
-import { cancelSubcontract, revokeCancellation } from '../services/subcontract-cancel.js';
+import {
+  cancelSubcontract,
+  endSammelSite,
+  revokeCancellation,
+  revokeSammelSiteEnd,
+} from '../services/subcontract-cancel.js';
 import { SCHOOL_DATA_UNTIL } from '../domain/time/school-holidays.js';
 import {
   addPriceChange,
@@ -2236,7 +2241,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
               Sammelbestellung – {anz(sammel.length, 'Objekt', 'Objekte')}
             </h3>
             {(() => {
-              const total = sammel.reduce((a, r) => a + (sqmCenti(r.sqm) ?? 0n), 0n);
+              const total = sammel.reduce(
+                (a, r) => a + (!r.valid_to || r.valid_to >= todayBerlin() ? (sqmCenti(r.sqm) ?? 0n) : 0n),
+                0n,
+              );
               const price = BigInt(sc.price_cents);
               const umsatz = sc.billing === 'umsatz';
               // je Objekt wählbar: je m² oder Pauschale (Ahmed 23.10.: wie unser Auftrag am Objekt angelegt ist)
@@ -2255,7 +2263,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 : perRunPrice
                   ? sammel.map((r) => BigInt(r.share_cents ?? '0'))
                   : null;
-              const costSum = costs ? costs.reduce((a, b) => a + b, 0n) : null;
+              // gekündigte Objekte (Ahmed 26.11.): ab dem Tag nach dem Ende nicht mehr in Summe/Fläche
+              const todayS = todayBerlin();
+              const running = (r: (typeof sammel)[number]) => !r.valid_to || r.valid_to >= todayS;
+              const costSum = costs ? costs.reduce((a, b, i) => (running(sammel[i]!) ? a + b : a), 0n) : null;
               const centsDe = (v: string | null) =>
                 v === null ? '' : (Number(v) / 100).toFixed(2).replace('.', ',');
               const priceDe = (Number(price) / 100).toFixed(2).replace('.', ',');
@@ -2289,6 +2300,31 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                               <div class="small mut">
                                 {[r.street, r.city].filter(Boolean).join(', ')} · {r.customer_name}
                               </div>
+                              {r.valid_to && (
+                                <div class="small" style="margin-top:4px">
+                                  <span class={`tag ${r.valid_to < todayS ? 'err' : 'warn'}`}>
+                                    gekündigt zum {formatDateDe(r.valid_to)}
+                                  </span>
+                                  {r.end_reason && <span class="mut"> · {r.end_reason}</span>}
+                                  {r.end_file_id && (
+                                    <>
+                                      {' · '}
+                                      <a href={`/dateien/${r.end_file_id}`} target="_blank">
+                                        Kündigungsschreiben
+                                      </a>
+                                    </>
+                                  )}{' '}
+                                  <button
+                                    class="btn ghost sm"
+                                    formaction={`/nachunternehmer/auftraege/${id}/objekt-kuendigung/zuruecknehmen`}
+                                    name="revoke_site"
+                                    value={r.site_id}
+                                    data-confirm="Kündigung dieses Objekts zurücknehmen?"
+                                  >
+                                    zurücknehmen
+                                  </button>
+                                </div>
+                              )}
                             </td>
                             {perObject && (
                               <td>
@@ -2365,6 +2401,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                                   <span class="tag warn">m² fehlt</span>
                                 ) : (m === 'pauschale' || perRunPrice) && !r.share_cents ? (
                                   <span class="tag warn">Betrag fehlt</span>
+                                ) : !running(r) ? (
+                                  <span class="small mut">
+                                    <s>{euro(cost)}</s> entfällt
+                                  </span>
                                 ) : (
                                   euro(cost)
                                 )
@@ -2414,7 +2454,10 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                         </td>
                         <td class="num">
                           {(() => {
-                            const rev = sammel.reduce((a, r) => a + (ourRevenue.get(r.site_id) ?? 0n), 0n);
+                            const rev = sammel.reduce(
+                              (a, r) => a + (running(r) ? (ourRevenue.get(r.site_id) ?? 0n) : 0n),
+                              0n,
+                            );
                             if (!rev) return null;
                             const cost =
                               costSum ??
@@ -2443,6 +2486,66 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
                 </form>
               );
             })()}
+            {sc.status !== 'entwurf' && sammel.filter((r) => !r.valid_to).length > 1 && (
+              <details style="margin-top:18px" id="objekt-kuendigen">
+                <summary>Einzelnes Objekt kündigen</summary>
+                <form
+                  method="post"
+                  action={`/nachunternehmer/auftraege/${id}/objekt-kuendigen`}
+                  style="margin-top:8px;max-width:560px"
+                >
+                  <label for="end-site">Objekt</label>
+                  <select id="end-site" name="site" required>
+                    <option value="">– Objekt wählen –</option>
+                    {sammel
+                      .filter((r) => !r.valid_to)
+                      .map((r) => (
+                        <option value={r.site_id}>
+                          {r.site_no} {r.name}
+                          {r.street ? ` – ${r.street}` : ''}
+                        </option>
+                      ))}
+                  </select>
+                  <label for="end-date" style="margin-top:8px">
+                    Gekündigt zum (letzter Tag mit Leistung)
+                  </label>
+                  <input
+                    id="end-date"
+                    type="date"
+                    name="date"
+                    required
+                    value={(() => {
+                      const t = todayBerlin();
+                      const d = new Date(Date.UTC(Number(t.slice(0, 4)), Number(t.slice(5, 7)), 0));
+                      return d.toISOString().slice(0, 10);
+                    })()}
+                  />
+                  <label for="end-reason" style="margin-top:8px">
+                    Grund (intern)
+                  </label>
+                  <input id="end-reason" name="reason" placeholder="z. B. Objekt vom Kunden gekündigt" />
+                  <label style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                    <input type="checkbox" name="letter" value="1" checked style="width:auto" />{' '}
+                    Kündigungsschreiben an den Nachunternehmer erstellen (PDF, beim Nachunternehmer unter
+                    Dokumente)
+                  </label>
+                  <label style="display:flex;gap:8px;align-items:center">
+                    <input type="checkbox" name="reason_letter" value="1" style="width:auto" /> Grund im
+                    Schreiben nennen
+                  </label>
+                  <p class="small mut">
+                    Die Bestellung läuft für die übrigen Objekte weiter. Der Betrag sinkt automatisch: im
+                    Monat des Endes anteilig nach Kalendertagen, danach entfällt das Objekt (NU-Abrechnung,
+                    Nachkalkulation, Kostenverteilung). Bei einer Pauschale für die ganze Bestellung sinkt sie
+                    um den Anteil des Objekts (Betrag bzw. Fläche) – keinen Preisnachtrag zusätzlich
+                    eintragen.
+                  </p>
+                  <button class="btn sm" data-confirm="Objekt zum gewählten Datum kündigen?">
+                    Objekt kündigen
+                  </button>
+                </form>
+              </details>
+            )}
             <details style="margin-top:10px">
               <summary>Objekte hinzufügen</summary>
               <form method="post" action={`/nachunternehmer/auftraege/${id}/objekte`} style="margin-top:8px">
@@ -3659,6 +3762,51 @@ export function registerSubcontractorRoutes({ app, deps, page, back }: Ctx) {
     }
     return back(c, `/nachunternehmer/auftraege/${id}`, {
       ok: 'Bestellung gekündigt – Kündigungsschreiben liegt beim Nachunternehmer unter Dokumente.',
+    });
+  });
+
+  // Einzelnes Objekt einer Sammelbestellung kündigen (Ahmed 26.11.)
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/objekt-kuendigen`, async (c) => {
+    const id = c.req.param('id');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    let file: string | null;
+    try {
+      file = await endSammelSite(
+        { sql, filesDir: deps.env.FILES_DIR, maxBytes: deps.env.UPLOAD_MAX_BYTES },
+        id,
+        {
+          siteId: b.site ?? '',
+          date: b.date ?? '',
+          reason: b.reason ?? null,
+          letter: b.letter === '1',
+          reasonInLetter: b.reason_letter === '1',
+        },
+        c.get('actor'),
+      );
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}#sammel`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}#sammel`, {
+      ok: file
+        ? 'Objekt gekündigt – Kündigungsschreiben liegt beim Nachunternehmer unter Dokumente.'
+        : 'Objekt gekündigt.',
+    });
+  });
+
+  app.post(`/nachunternehmer/auftraege/:id{${UUID}}/objekt-kuendigung/zuruecknehmen`, async (c) => {
+    const id = c.req.param('id');
+    const b = (await c.req.parseBody()) as Record<string, string>;
+    try {
+      await revokeSammelSiteEnd(sql, id, b.revoke_site ?? '', c.get('actor'));
+    } catch (e) {
+      if (e instanceof BusinessError)
+        return back(c, `/nachunternehmer/auftraege/${id}#sammel`, { fehler: e.message });
+      throw e;
+    }
+    return back(c, `/nachunternehmer/auftraege/${id}#sammel`, {
+      ok: 'Kündigung des Objekts zurückgenommen.',
     });
   });
 

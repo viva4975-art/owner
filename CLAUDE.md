@@ -6089,3 +6089,16 @@ Testadresse.
   **Steuer/GoBD:** Vorsteuer nur mit Beleg (bis 250 € Kleinbetragsrechnung); nicht im DATEV-Export – der Steuerberater
   bucht über den Kontoauszug. Wiederkehrende Zahlungen nicht zusätzlich so zuordnen (sonst doppelt in der Nachkalkulation).
   Migration `20270212000001`, Test `bank-costs.db.test.ts`.
+- 2026-11-26: **Abmahnung mit vorauswählbaren Gründen** (Ahmed: „Felder nicht beschriftet, man weiß nicht, was man
+  reinschreiben soll“): Mitarbeiter → Dokumente → Knopf „Abmahnung“ bzw. Aktionen → „Abmahnung erstellen“
+  (`/personal/:id/abmahnung`, Admin/Personal, `src/services/warning-letter.ts`). Bis 5 Vorfälle, je Vorfall Grund aus der
+  Liste (zu spät gekommen, zu früh gegangen, unentschuldigt gefehlt, Krankmeldung zu spät, Alkohol/Drogen, Arbeit nicht
+  ausgeführt, Reinigung mangelhaft, Arbeitszeit falsch erfasst, Anweisung nicht befolgt, Handy/Privates, Verhalten,
+  Sicherheit/Schlüssel, Arbeitsschutz, Sonstiges), Datum (nicht in der Zukunft), Objekt der Person, bei Verspätung/zu früh
+  Uhrzeit laut Plan + tatsächlich, „Was genau ist passiert?“ mit Hinweis je Grund (bei den meisten Pflicht). Daraus
+  entsteht der Text: Sachverhalt + verletzte Pflicht je Vorfall, Rüge + Aufforderung, Warnung (Kündigung im
+  Wiederholungsfall; „Letzte Abmahnung“ wählbar), frühere Abmahnungen (vorbelegt aus der App), Gegendarstellung,
+  Empfangsbestätigung (Person bestätigt nur den Erhalt). PDF/Word/„in der Personalakte ablegen“ (Arbeitsvertrag &
+  Änderungen), Protokoll `warning_letter`. Word-Vorlagen mit „Abmahnung“ im Namen/Code werden beim Mitarbeiter nicht mehr
+  angeboten (bleiben unter Einstellungen). **Rechtlich:** konkret, zeitnah, nachweisbar zugestellt; derselbe Vorfall kann
+  danach nicht mehr allein zur Kündigung führen; bei Verdacht auf Alkoholsucht (Krankheit) vorher beraten lassen.

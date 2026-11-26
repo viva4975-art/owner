@@ -57,6 +57,9 @@ export const EmployeeActions: FC<{
                 ))}
               </select>
             </form>
+            <a href={`${base}/abmahnung`}>
+              <Icon name="alert" size={15} /> Abmahnung erstellen
+            </a>
             <a href={`${base}/ruhend`}>
               <Icon name="pause" size={15} /> Ruhen eintragen (von–bis)
             </a>

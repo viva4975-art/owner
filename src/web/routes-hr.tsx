@@ -54,6 +54,16 @@ import {
 import { storeFile } from '../services/uploads.js';
 import { uuidFrom } from '../services/photo-stamp.js';
 import {
+  WARNING_LEVELS,
+  WARNING_REASONS,
+  type WarningInput,
+  previousWarnings,
+  warningLetterDocx,
+  warningLetterInfo,
+  warningLetterPdf,
+  warningSites,
+} from '../services/warning-letter.js';
+import {
   WEATHER_ACTIVITIES,
   WEATHER_PAY,
   WEATHER_REASON_DEFAULT,
@@ -359,7 +369,10 @@ export function registerHrRoutes(ctx: Ctx) {
                 </div>
               </form>
               <WordTemplateBox
-                templates={wordTemplates.filter((t) => !/^VD-ZV-Nachtrag/i.test(t.code ?? ''))}
+                templates={wordTemplates.filter(
+                  (t) =>
+                    !/^VD-ZV-Nachtrag/i.test(t.code ?? '') && !/abmahnung/i.test(`${t.code ?? ''} ${t.name}`),
+                )}
                 target={{ type: 'employee', id: e.id }}
                 extra={
                   ['admin', 'personal'].includes(c.get('user').role)
@@ -368,6 +381,11 @@ export function registerHrRoutes(ctx: Ctx) {
                           label: 'Vertragsänderung',
                           href: `/personal/${e.id}/vertragsaenderung`,
                           hint: 'nur was sich ändert · bisher → neu',
+                        },
+                        {
+                          label: 'Abmahnung',
+                          href: `/personal/${e.id}/abmahnung`,
+                          hint: 'Grund auswählen (zu spät, gefehlt, Alkohol, Arbeit nicht gemacht …) · Text fertig',
                         },
                         {
                           label: 'Bestätigung Witterung',
@@ -807,6 +825,244 @@ export function registerHrRoutes(ctx: Ctx) {
     const id = c.req.param('id');
     await deleteRestPeriod(sql, c.req.param('rid'), id, c.get('actor'));
     return back(c, `/personal/${id}/ruhend`, { ok: 'Ruhenszeitraum gelöscht.' });
+  });
+
+  // Abmahnung mit vorauswählbaren Gründen (Ahmed 26.11.2026)
+  const WARN_ROWS = 5;
+  app.get(`/personal/:id{${UUID}}/abmahnung`, (c) =>
+    shells.employee!(c, 'dokumente', async (head) => {
+      ccGuard(c);
+      const [sites, prev] = await Promise.all([warningSites(sql, head.id), previousWarnings(sql, head.id)]);
+      const today = todayBerlin();
+      const reasonsJson = JSON.stringify(
+        Object.fromEntries(
+          WARNING_REASONS.map((r) => [r.key, { t: r.times ?? null, h: r.hint, req: !!r.detailRequired }]),
+        ),
+      );
+      const prevText = prev.length
+        ? `Abmahnung${prev.length > 1 ? 'en' : ''} vom ${prev.map((p) => `${formatDateDe(p.date)} (${p.reasons.join(', ')})`).join(', ')}`
+        : '';
+      return (
+        <div class="card" style="max-width:960px">
+          <h3 style="margin-top:0">Abmahnung</h3>
+          <p class="small mut" style="margin-top:-4px">
+            Grund auswählen, Datum und Objekt angeben, kurz ergänzen, was genau passiert ist – der Text der
+            Abmahnung (Sachverhalt, verletzte Pflicht, Aufforderung, Hinweis auf die Kündigung) wird daraus
+            erstellt. Mehrere Vorfälle möglich.
+          </p>
+          {prev.length > 0 && (
+            <div class="note" style="margin-bottom:10px">
+              <strong>Bisherige Abmahnungen (aus der App):</strong>{' '}
+              {prev
+                .map(
+                  (p) =>
+                    `${formatDateDe(p.date)} – ${p.reasons.join(', ')}${p.level === 'letzte' ? ' (letzte)' : ''}`,
+                )
+                .join(' · ')}
+            </div>
+          )}
+          <form
+            method="post"
+            action={`/personal/${head.id}/abmahnung`}
+            target="_blank"
+            data-resubmit
+            id="abm-form"
+          >
+            {Array.from({ length: WARN_ROWS }, (_, n) => (
+              <fieldset
+                class="card abm-inc"
+                data-n={n}
+                hidden={n > 0}
+                style="border:1px solid var(--line,#e5e5ea);padding:12px 14px;margin:0 0 10px"
+              >
+                <legend style="font-weight:600;padding:0 6px">Vorfall {n + 1}</legend>
+                <div class="grid">
+                  <label for={`abm-r${n}`}>Grund</label>
+                  <select id={`abm-r${n}`} name={`reason_${n}`} class="abm-reason" required={n === 0}>
+                    <option value="">– bitte wählen –</option>
+                    {WARNING_REASONS.map((r) => (
+                      <option value={r.key}>{r.label}</option>
+                    ))}
+                  </select>
+                  <label for={`abm-d${n}`}>Datum des Vorfalls</label>
+                  <input id={`abm-d${n}`} type="date" name={`date_${n}`} max={today} />
+                  <label for={`abm-s${n}`}>Objekt</label>
+                  <select id={`abm-s${n}`} name={`site_${n}`}>
+                    <option value="">– kein Objekt nennen –</option>
+                    {sites.map((s) => (
+                      <option value={s.id} selected={sites.length === 1}>
+                        {s.site_no} · {s.name}
+                        {s.city ? ` (${s.city})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <label for={`abm-p${n}`} class="abm-t" hidden>
+                    <span class="abm-tp">Laut Plan</span> (Uhrzeit)
+                  </label>
+                  <input id={`abm-p${n}`} type="time" name={`plan_${n}`} class="abm-t" hidden />
+                  <label for={`abm-a${n}`} class="abm-t" hidden>
+                    <span class="abm-ta">Tatsächlich</span> (Uhrzeit)
+                  </label>
+                  <input id={`abm-a${n}`} type="time" name={`actual_${n}`} class="abm-t" hidden />
+                  <label for={`abm-x${n}`}>
+                    Was genau ist passiert? <span class="abm-req small mut">(optional)</span>
+                  </label>
+                  <textarea
+                    id={`abm-x${n}`}
+                    name={`detail_${n}`}
+                    rows={3}
+                    placeholder="Zuerst einen Grund wählen"
+                  />
+                </div>
+              </fieldset>
+            ))}
+            <p>
+              <button type="button" class="btn sec" id="abm-add">
+                + weiteren Vorfall
+              </button>
+            </p>
+            <div class="grid">
+              <label for="abm-level">Art</label>
+              <select id="abm-level" name="level">
+                {WARNING_LEVELS.map(([v, l]) => (
+                  <option value={v}>{l}</option>
+                ))}
+              </select>
+              <label for="abm-prev">Frühere Abmahnungen erwähnen</label>
+              <input
+                id="abm-prev"
+                name="previous"
+                value={prevText}
+                placeholder="optional, z. B. Abmahnung vom 03.09.2026 wegen Verspätung"
+              />
+              <label for="abm-rec">Empfangsbestätigung</label>
+              <label style="font-weight:400">
+                <input id="abm-rec" type="checkbox" name="receipt" value="1" checked /> unten mit ausdrucken
+                (die Person bestätigt mit Unterschrift den Erhalt)
+              </label>
+              <label for="abm-place">Ort</label>
+              <input id="abm-place" name="place" placeholder="leer = Firmensitz" />
+              <label for="abm-date">Datum der Abmahnung</label>
+              <input id="abm-date" type="date" name="date" value={today} />
+            </div>
+            <details class="small" style="margin:10px 0">
+              <summary>Worauf achten? (rechtlich)</summary>
+              <ul style="margin:6px 0 0 18px">
+                <li>
+                  Jeder Vorfall muss konkret beschrieben sein (wann, wo, was, wer hat es festgestellt).
+                  „Arbeitet schlecht“ reicht nicht – deshalb ist die Ergänzung bei den meisten Gründen
+                  Pflicht.
+                </li>
+                <li>
+                  Die Abmahnung sollte zeitnah zum Vorfall ausgesprochen werden und muss nachweisbar zugehen:
+                  persönlich mit Empfangsbestätigung oder per Einwurf-Einschreiben bzw. Bote.
+                </li>
+                <li>
+                  Alkohol/Drogen: Bei Verdacht auf Abhängigkeit (Krankheit) wirkt eine Abmahnung oft nicht –
+                  dann Gespräch und Hilfe anbieten, vorher rechtlich beraten lassen. Person nicht
+                  weiterarbeiten lassen.
+                </li>
+                <li>
+                  Wegen desselben Vorfalls darf nicht zusätzlich gekündigt werden – die Abmahnung „verbraucht“
+                  ihn. Bei sehr schweren Verstößen (z. B. Arbeitszeitbetrug) vor der Abmahnung prüfen, ob eine
+                  Kündigung in Frage kommt.
+                </li>
+                <li>„Letzte Abmahnung“ nur, wenn beim nächsten Verstoß wirklich gekündigt wird.</li>
+              </ul>
+            </details>
+            <div class="formfoot">
+              <button class="btn" name="aktion" value="pdf" data-noback>
+                PDF erstellen
+              </button>
+              <button class="btn sec" name="aktion" value="word" formtarget="_self" data-noback>
+                Als Word herunterladen
+              </button>
+              <button class="btn sec" name="aktion" value="ablegen" formtarget="_self" data-noback>
+                PDF erstellen und in der Personalakte ablegen
+              </button>
+            </div>
+          </form>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){var R=${reasonsJson};var f=document.getElementById('abm-form');if(!f)return;
+function upd(fs){var k=fs.querySelector('.abm-reason').value,r=R[k];var t=fs.querySelectorAll('.abm-t');
+for(var i=0;i<t.length;i++){t[i].hidden=!(r&&r.t);if(t[i].tagName==='INPUT')t[i].required=!!(r&&r.t);}
+if(r&&r.t){fs.querySelector('.abm-tp').textContent=r.t.plan;fs.querySelector('.abm-ta').textContent=r.t.actual;}
+var x=fs.querySelector('textarea');x.placeholder=r?r.h:'Zuerst einen Grund wählen';x.required=!!(r&&r.req);
+fs.querySelector('.abm-req').textContent=r&&r.req?'(Pflicht)':'(optional)';
+fs.querySelector('input[type=date]').required=!!k;}
+var all=f.querySelectorAll('.abm-inc');for(var i=0;i<all.length;i++){(function(fs){var s=fs.querySelector('.abm-reason');
+s.addEventListener('change',function(){upd(fs)});upd(fs);if(s.value)fs.hidden=false;})(all[i]);}
+document.getElementById('abm-add').addEventListener('click',function(){for(var i=0;i<all.length;i++){if(all[i].hidden){all[i].hidden=false;
+if(i===all.length-1)this.hidden=true;all[i].querySelector('select').focus();return;}}this.hidden=true;});})();`,
+            }}
+          />
+        </div>
+      );
+    }),
+  );
+
+  app.post(`/personal/:id{${UUID}}/abmahnung`, async (c) => {
+    ccGuard(c);
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const input: WarningInput = {
+      incidents: Array.from({ length: WARN_ROWS }, (_, n) => ({
+        reason: str(b, `reason_${n}`) ?? '',
+        date: str(b, `date_${n}`) ?? '',
+        siteId: str(b, `site_${n}`) ?? '',
+        plan: str(b, `plan_${n}`) ?? '',
+        actual: str(b, `actual_${n}`) ?? '',
+        detail: str(b, `detail_${n}`) ?? '',
+      })),
+      level: str(b, 'level') ?? 'normal',
+      previous: str(b, 'previous') ?? '',
+      receipt: str(b, 'receipt') === '1',
+      place: str(b, 'place') ?? '',
+      date: str(b, 'date') ?? '',
+    };
+    const aktion = str(b, 'aktion') ?? 'pdf';
+    const info = await warningLetterInfo(sql, id, input);
+    await sql`insert into app.audit_log (actor, action, entity, entity_id, details)
+              values (${c.get('actor')}, 'warning_letter', 'employee', ${id},
+                      ${sql.json({ date: info.date, reasons: info.reasons, level: info.level, aktion })})`;
+    if (aktion === 'word') {
+      const { data, name } = await warningLetterDocx(sql, id, input);
+      return new Response(data, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `attachment; filename="${name}"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+    const { pdf, name } = await warningLetterPdf(sql, id, input);
+    if (aktion === 'ablegen') {
+      const fileId = uuidFrom(`${id}:abmahnung:${createHash('sha256').update(pdf).digest('hex')}`);
+      await storeFile(
+        sql,
+        cfg,
+        {
+          id: fileId,
+          name,
+          type: 'application/pdf',
+          data: pdf,
+          link: { type: 'employee', id },
+          category: 'Arbeitsvertrag',
+        },
+        c.get('actor'),
+      );
+      return back(c, `/personal/${id}/dokumente`, {
+        ok: `${name} unter „Arbeitsvertrag & Änderungen“ abgelegt. Ausdrucken, unterschreiben, nachweisbar übergeben; den unterschriebenen Empfang als Scan hochladen.`,
+      });
+    }
+    return new Response(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${name}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
   });
 
   // Bestätigung witterungsbedingter Arbeitsausfall (Ahmed 12.11.2026)

@@ -82,7 +82,7 @@ export async function candidates(sql: Sql, env: Env): Promise<Candidate[]> {
     select f.storage_path, f.completed_at from app.files f
      where f.status = 'complete' and f.storage_path is not null
        and (exists (select 1 from app.file_links l where l.file_id = f.id
-                     and l.entity_type in ('invoice', 'incoming_invoice'))
+                     and l.entity_type in ('invoice', 'incoming_invoice', 'bank_transaction'))
             or exists (select 1 from app.incoming_invoices i where i.einvoice_file_id = f.id)
             or exists (select 1 from app.payslips p where p.file_id = f.id)
             or exists (select 1 from app.reduction_vouchers v where v.file_id = f.id))`;

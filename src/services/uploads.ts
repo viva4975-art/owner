@@ -61,6 +61,7 @@ export type LinkTarget = {
     | 'vehicle'
     | 'word_template'
     | 'personnel_form'
+    | 'bank_transaction'
     | 'legacy_import';
   id: string;
 };

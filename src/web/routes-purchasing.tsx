@@ -99,7 +99,7 @@ import { planCostingPdf, siteCostingPdf } from '../services/costing-pdf.js';
 import { EInvoiceRoutes, EInvoiceTable } from './routes-einvoice-in.js';
 import { RecurringRows, registerRecurringRoutes } from './routes-recurring.js';
 import { markRecurringPaid } from '../services/recurring-payments.js';
-import { quickSupplier } from '../services/bank.js';
+import { EXPENSE_CATEGORY, quickSupplier } from '../services/bank.js';
 import { pendingEInvoices } from '../services/einvoice-inbox.js';
 import { type AppEnv, type Ctx, UUID } from './app.js';
 import { FileArea } from './files.js';
@@ -5009,13 +5009,17 @@ var b=document.querySelector('[data-nu-add]');if(b)b.addEventListener('click',fu
                     {details.map((d) => (
                       <tr>
                         <td>
-                          <a href={`/rechnungseingang/${d.id}`}>
+                          <a href={d.href}>
                             {d.supplier_name} · {d.invoice_no}
                           </a>
                         </td>
                         <td>{dateDe(d.invoice_date)}</td>
                         <td>{d.month.split('-').reverse().join('/')}</td>
-                        <td>{COST_CATEGORY[d.category as CostCategory] ?? d.category}</td>
+                        <td>
+                          {COST_CATEGORY[d.category as CostCategory] ??
+                            EXPENSE_CATEGORY[d.category] ??
+                            d.category}
+                        </td>
                         <td>
                           {d.status}
                           {d.status === 'abgelehnt' && <span class="small mut"> (zählt nicht)</span>}

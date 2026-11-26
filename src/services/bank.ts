@@ -7,7 +7,8 @@ import {
   type StatementLine,
 } from '../domain/bank/statement.js';
 import { addDays, formatDateDe } from '../domain/invoice/calc.js';
-import { divRoundHalfUp } from '../domain/money/money.js';
+import { divRoundHalfUp, formatEuro, type Cents } from '../domain/money/money.js';
+const formatCents = (c: bigint) => formatEuro(c as Cents);
 import { deleteAdvance, saveAdvance } from './advances.js';
 import { BusinessError } from './errors.js';
 import { getSeller } from './masterdata.js';
@@ -33,7 +34,7 @@ export interface BankTx {
   bank_ref: string | null;
   status: 'offen' | 'zugeordnet' | 'ignoriert';
   note: string | null;
-  assigned_kind: 'kunde' | 'lieferant' | 'mitarbeiter' | 'sonstiges' | null;
+  assigned_kind: 'kunde' | 'lieferant' | 'mitarbeiter' | 'sonstiges' | 'kosten' | null;
   assigned_id: string | null;
   matched_by: string | null;
   matched_at: Date | null;
@@ -1399,12 +1400,138 @@ export async function reopenTransaction(sql: Sql, id: string, actor: string) {
     await deleteAdvance(sql, adv.id, actor);
     return;
   }
+  await sql`delete from app.bank_cost_allocations where bank_transaction_id = ${id}`;
   const r =
     await sql`update app.bank_transactions set status = 'offen', note = null, assigned_kind = null, assigned_id = null,
                       expense_category = null,
                       matched_by = ${actor}, matched_at = now()
                       where id = ${id} and status = 'ignoriert' returning id`;
   if (!r.length) throw new BusinessError('Nur ignorierte Umsätze können wieder geöffnet werden');
+}
+
+/** Kostenarten, die als Kosten auf Objekte/Kostenstellen gebucht werden können (keine Steuern/Privat). */
+export const COST_ASSIGN_CATEGORIES = Object.keys(EXPENSE_CATEGORY).filter(
+  (k) => !['umsatzsteuer', 'koerperschaftsteuer', 'steuern', 'privat'].includes(k),
+);
+
+export interface BankCostLine {
+  /** Objekt (s:<uuid>) oder allgemeine Kostenstelle (c:<uuid>) */
+  target: string;
+  gross: bigint;
+}
+
+/** Netto aus Brutto: kaufmännisch gerundet. */
+export const netOf = (gross: bigint, vatBp: number) =>
+  vatBp === 0 ? gross : divRoundHalfUp(gross * 10000n, BigInt(10000 + vatBp));
+
+/**
+ * Kontoumsatz ohne Lieferant/Rechnung direkt als Kosten zuordnen (Ahmed 26.11.): auf Objekte bzw. allgemeine
+ * Kostenstellen, Summe der Bruttobeträge = Umsatz. Zählt netto in Nachkalkulation/Kostenstellen. Feste IDs je
+ * Umsatz + Zeile → doppelt absenden ändert nichts (Umsatz ist danach nicht mehr offen).
+ */
+export async function assignCosts(
+  sql: Sql,
+  txIdValue: string,
+  p: {
+    lines: BankCostLine[];
+    category: string;
+    vatBp: number;
+    month: string;
+    note: string | null;
+  },
+  actor: string,
+) {
+  if (!COST_ASSIGN_CATEGORIES.includes(p.category)) throw new BusinessError('Bitte eine Kostenart wählen');
+  if (![0, 700, 1900].includes(p.vatBp)) throw new BusinessError('USt-Satz unbekannt');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.month)) throw new BusinessError('Leistungsmonat fehlt');
+  const lines = p.lines.filter((l) => l.target || l.gross);
+  if (!lines.length) throw new BusinessError('Bitte mindestens ein Objekt oder eine Kostenstelle wählen');
+  if (lines.length > 50) throw new BusinessError('Höchstens 50 Zeilen');
+  const t = await getTransaction(sql, txIdValue);
+  if (!t) throw new BusinessError('Umsatz nicht gefunden');
+  if (t.status !== 'offen') throw new BusinessError('Umsatz ist nicht (mehr) offen');
+  const total = -t.amount_cents; // Ausgang = Kosten (positiv), Eingang = Erstattung (negativ)
+  // eine Zeile ohne Betrag = ganzer Umsatz
+  if (lines.length === 1 && !lines[0]!.gross) lines[0] = { ...lines[0]!, gross: total < 0n ? -total : total };
+  const sign = total < 0n ? -1n : 1n;
+  const targets: { siteId: string | null; ccId: string | null; gross: bigint }[] = [];
+  for (const l of lines) {
+    const m = /^([sc]):([0-9a-f-]{36})$/.exec(l.target);
+    if (!m) throw new BusinessError('Bitte in jeder Zeile ein Objekt oder eine Kostenstelle wählen');
+    if (l.gross <= 0n) throw new BusinessError('Beträge bitte positiv eintragen');
+    targets.push({
+      siteId: m[1] === 's' ? m[2]! : null,
+      ccId: m[1] === 'c' ? m[2]! : null,
+      gross: l.gross * sign,
+    });
+  }
+  const sum = targets.reduce((a, x) => a + x.gross, 0n);
+  if (sum !== total)
+    throw new BusinessError(
+      `Summe der Zeilen (${formatCents(sum < 0n ? -sum : sum)}) muss dem Umsatz (${formatCents(total < 0n ? -total : total)}) entsprechen`,
+    );
+  const label = EXPENSE_CATEGORY[p.category]!;
+  await sql.begin(async (tx) => {
+    const names: string[] = [];
+    for (const [i, x] of targets.entries()) {
+      const [n] = x.siteId
+        ? await tx<{ n: string }[]>`select site_no || ' ' || name as n from app.sites where id = ${x.siteId}`
+        : await tx<
+            { n: string }[]
+          >`select number || ' ' || name as n from app.cost_centers where id = ${x.ccId}`;
+      if (!n) throw new BusinessError('Objekt bzw. Kostenstelle nicht gefunden');
+      names.push(n.n);
+      await tx`insert into app.bank_cost_allocations (id, bank_transaction_id, site_id, cost_center_id, month,
+                 gross_cents, vat_bp, net_cents, category, note, created_by)
+               values (${uuidOf(`${txIdValue}:kosten:${i}`)}, ${txIdValue}, ${x.siteId}, ${x.ccId}, ${`${p.month}-01`},
+                       ${x.gross}, ${p.vatBp}, ${netOf(x.gross, p.vatBp)}, ${p.category}, ${p.note}, ${actor})
+               on conflict (id) do nothing`;
+    }
+    const note = `Kosten ${label}: ${names.join(', ')}${p.note?.trim() ? ` – ${p.note.trim()}` : ''}`.slice(
+      0,
+      300,
+    );
+    const r = await tx`
+      update app.bank_transactions set status = 'ignoriert', note = ${note}, assigned_kind = 'kosten', assigned_id = null,
+             expense_category = ${p.category}, matched_by = ${actor}, matched_at = now()
+       where id = ${txIdValue} and status = 'offen' returning id`;
+    if (!r.length) throw new BusinessError('Umsatz ist nicht (mehr) offen');
+  });
+}
+
+export async function bankCostAllocations(sql: Sql, txIdValue: string) {
+  return sql<
+    {
+      id: string;
+      label: string;
+      month: string;
+      gross_cents: bigint;
+      net_cents: bigint;
+      vat_bp: number;
+      category: string;
+    }[]
+  >`
+    select b.id, coalesce(s.site_no || ' · ' || s.name, cc.number || ' · ' || cc.name) as label,
+           to_char(b.month, 'MM/YYYY') as month, b.gross_cents, b.net_cents, b.vat_bp, b.category
+      from app.bank_cost_allocations b left join app.sites s on s.id = b.site_id
+      left join app.cost_centers cc on cc.id = b.cost_center_id
+     where b.bank_transaction_id = ${txIdValue} order by b.id`;
+}
+
+/** Vorschlag aus der letzten Kosten-Zuordnung desselben Empfängers (IBAN, sonst Name). */
+export async function lastCostAssignment(sql: Sql, t: BankTx) {
+  const ib = iban(t.counterparty_iban);
+  const name = (t.counterparty_name ?? '').trim().toLowerCase();
+  if (!ib && !name) return null;
+  const [r] = await sql<{ target: string; category: string; vat_bp: number }[]>`
+    select case when b.site_id is not null then 's:' || b.site_id else 'c:' || b.cost_center_id end as target,
+           b.category, b.vat_bp
+      from app.bank_cost_allocations b join app.bank_transactions x on x.id = b.bank_transaction_id
+     where x.id <> ${t.id} and x.assigned_kind = 'kosten'
+       and (${ib ? sql`upper(replace(coalesce(x.counterparty_iban, ''), ' ', '')) = ${ib}` : sql`false`}
+            or ${name ? sql`lower(trim(coalesce(x.counterparty_name, ''))) = ${name}` : sql`false`})
+     order by x.booking_date desc, b.id limit 1`;
+  return r ?? null;
 }
 
 export async function listImports(sql: Sql) {

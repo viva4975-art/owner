@@ -1,6 +1,7 @@
 import { employeeDocCategory } from '../services/employees.js';
 import { randomUUID } from 'node:crypto';
-import { unlinkFile } from '../services/uploads.js';
+import { listFiles, storeFile, unlinkFile } from '../services/uploads.js';
+import { listCostCenters } from '../services/cost-centers.js';
 import {
   type PhotoGroupRow,
   deletePhotoGroup,
@@ -17,8 +18,12 @@ import {
   assignCustomerPick,
   assignInvoices,
   assignIncoming,
+  assignCosts,
   assignParty,
   assignPaymentRun,
+  bankCostAllocations,
+  COST_ASSIGN_CATEGORIES,
+  lastCostAssignment,
   assignReturn,
   type BankTx,
   closeBefore,
@@ -335,6 +340,7 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
           )}
         </div>
         <script dangerouslySetInnerHTML={{ __html: INLINE_JS }} />
+        <script dangerouslySetInnerHTML={{ __html: COST_JS }} />
         <div class="card tx-list">
           {rows.length > 1 && (
             <div class="tx-row tx-head">
@@ -417,9 +423,11 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               <span class={`badge ${t.status === 'zugeordnet' ? 'ok' : ''}`}>
                 {t.status === 'zugeordnet'
                   ? 'zugeordnet'
-                  : t.assigned_kind
-                    ? 'zugeordnet (ohne Buchung)'
-                    : 'nicht zugeordnet'}
+                  : t.assigned_kind === 'kosten'
+                    ? 'Kosten zugeordnet'
+                    : t.assigned_kind
+                      ? 'zugeordnet (ohne Buchung)'
+                      : 'nicht zugeordnet'}
               </span>{' '}
               {t.note}
               {t.matched_by && (
@@ -449,6 +457,14 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
                 data-inline={`${BACK}/${t.id}/inline?art=mitarbeiter`}
               >
                 Mitarbeiter
+              </a>
+              <a
+                class="btn sm sec"
+                href={`${BACK}/${t.id}/kosten`}
+                data-inline={`${BACK}/${t.id}/inline?art=kosten`}
+                title="Ohne Lieferant/Rechnung direkt einem Objekt oder einer Kostenstelle zuordnen"
+              >
+                Kosten
               </a>
             </div>
           )}
@@ -710,16 +726,23 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
     const t = await getTransaction(sql, c.req.param('id'));
     if (!t) return c.html(<div class="notice err">Umsatz nicht gefunden</div>);
     const art =
-      (['kunde', 'lieferant', 'mitarbeiter'] as const).find((a) => a === c.req.query('art')) ?? 'kunde';
+      (['kunde', 'lieferant', 'mitarbeiter', 'kosten'] as const).find((a) => a === c.req.query('art')) ??
+      'kunde';
     const base = `${BACK}/${t.id}/inline`;
     let p = c.req.query('p') ?? '';
     const purpose = normNo(t.purpose);
     const amount = t.amount_cents < 0n ? -t.amount_cents : t.amount_cents;
     const tabs = (
       <div class="inl-tabs">
-        {(['kunde', 'lieferant', 'mitarbeiter'] as const).map((a) => (
+        {(['kunde', 'lieferant', 'mitarbeiter', 'kosten'] as const).map((a) => (
           <a class={`chip ${a === art ? 'on' : ''}`} href="#" data-inline={`${base}?art=${a}`}>
-            {a === 'kunde' ? 'Kunde' : a === 'lieferant' ? 'Lieferant' : 'Mitarbeiter'}
+            {a === 'kunde'
+              ? 'Kunde'
+              : a === 'lieferant'
+                ? 'Lieferant'
+                : a === 'mitarbeiter'
+                  ? 'Mitarbeiter'
+                  : 'Kosten'}
           </a>
         ))}
         <a class="inl-x" href="#" data-inline-close="1" title="Abbrechen" aria-label="Abbrechen">
@@ -728,6 +751,13 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       </div>
     );
     const cp = (t.counterparty_iban ?? '').toUpperCase();
+    if (art === 'kosten')
+      return c.html(
+        <div class="inl">
+          {tabs}
+          <CostForm t={t} {...await costFormData(t)} />
+        </div>,
+      );
     if (art === 'mitarbeiter') {
       const emps = await sql<{ id: string; personnel_no: string; name: string; iban: string | null }[]>`
         select e.id, e.personnel_no, trim(coalesce(e.first_name, '') || ' ' || e.last_name) as name,
@@ -1002,6 +1032,8 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
   app.get(`/transfer/kontoumsaetze/:id{${UUID}}`, async (c) => {
     const t = await getTransaction(sql, c.req.param('id'));
     if (!t) throw new BusinessError('Umsatz nicht gefunden');
+    const costRows = t.assigned_kind === 'kosten' ? await bankCostAllocations(sql, t.id) : [];
+    const belege = costRows.length ? await listFiles(sql, { type: 'bank_transaction', id: t.id }) : [];
     const custs = await sql<{ id: string; customer_no: string; name: string }[]>`
       select id, customer_no, name from app.customers where status <> 'interessent' order by name`;
     const [byIban] = t.counterparty_iban
@@ -1067,6 +1099,9 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
               </a>
               <a class="btn sec" href={`${BACK}/${t.id}/mitarbeiter`}>
                 Mitarbeiter
+              </a>
+              <a class="btn sec" href={`${BACK}/${t.id}/kosten`}>
+                Kosten direkt zuordnen
               </a>
             </form>
             {t.amount_cents > 0n && (
@@ -1174,6 +1209,49 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
             </form>
           </>
         )}
+        {costRows.length > 0 && (
+          <div class="card">
+            <h3 style="margin-top:0">Kosten zugeordnet</h3>
+            <div class="tbl">
+              <table class="keep">
+                <thead>
+                  <tr>
+                    <th>Objekt / Kostenstelle</th>
+                    <th>Kostenart</th>
+                    <th>Leistungsmonat</th>
+                    <th class="r">Brutto</th>
+                    <th class="r">USt</th>
+                    <th class="r">Netto (Kosten)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costRows.map((r) => (
+                    <tr>
+                      <td>{r.label}</td>
+                      <td>{EXPENSE_CATEGORY[r.category] ?? r.category}</td>
+                      <td>{r.month}</td>
+                      <td class="r">{euro(r.gross_cents)}</td>
+                      <td class="r">{r.vat_bp / 100} %</td>
+                      <td class="r">{euro(r.net_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <h4>Beleg</h4>
+            <p class="small mut" style="margin-top:0">
+              Quittung oder Rechnung hier ablegen (write-once, revisionssicher). Ohne Beleg kein
+              Vorsteuerabzug.
+            </p>
+            <FileArea
+              link={{ type: 'bank_transaction', id: t.id }}
+              files={belege}
+              category="Beleg"
+              title="Beleg hierher ziehen"
+              maxBytes={env.UPLOAD_MAX_BYTES}
+            />
+          </div>
+        )}
         {t.status === 'ignoriert' && (
           <form method="post" action={`${BACK}/${t.id}/oeffnen`} class="actions">
             <button class="btn sec">Wieder öffnen</button>
@@ -1181,6 +1259,240 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
         )}
       </>,
     );
+  });
+
+  // ---------------------------------------------------------------- Kosten direkt zuordnen (Ahmed 26.11.)
+  const costFormData = async (t: BankTx) => {
+    const [sites, ccs, pre] = await Promise.all([
+      sql<{ id: string; site_no: string; name: string; customer_name: string | null; city: string | null }[]>`
+        select s.id, s.site_no, s.name, k.name as customer_name, s.city
+          from app.sites s left join app.customers k on k.id = s.customer_id
+         where s.active order by k.name, s.site_no`,
+      listCostCenters(sql),
+      lastCostAssignment(sql, t),
+    ]);
+    return { sites, ccs: ccs.map((x) => ({ id: x.id, number: x.number, name: x.name })), pre };
+  };
+  const CostForm = ({ t, sites, ccs, pre }: { t: BankTx } & Awaited<ReturnType<typeof costFormData>>) => {
+    const amount = t.amount_cents < 0n ? -t.amount_cents : t.amount_cents;
+    const rows = 8;
+    const TargetOptions = ({ sel }: { sel?: string | undefined }) => {
+      const groups = new Map<string, (typeof sites)[number][]>();
+      for (const s of sites) {
+        const k = s.customer_name?.trim() || 'ohne Kunde';
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(s);
+      }
+      return (
+        <>
+          <option value="">Objekt oder Kostenstelle …</option>
+          <optgroup label="Allgemeine Kostenstellen" data-cust="1">
+            {ccs.map((x) => (
+              <option value={`c:${x.id}`} selected={sel === `c:${x.id}`}>
+                {x.number} · {x.name}
+              </option>
+            ))}
+          </optgroup>
+          {[...groups.entries()].map(([k, list]) => (
+            <optgroup label={k} data-cust="1">
+              {list.map((s) => (
+                <option value={`s:${s.id}`} selected={sel === `s:${s.id}`}>
+                  {s.site_no} · {s.name}
+                  {s.city ? ` – ${s.city}` : ''}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </>
+      );
+    };
+    return (
+      <form
+        method="post"
+        action={`${BACK}/${t.id}/kosten`}
+        enctype="multipart/form-data"
+        class="cost-form"
+        data-amount={String(amount)}
+      >
+        <p class="small mut" style="margin:0 0 8px">
+          Ohne Lieferant und ohne Rechnung: Betrag {euro(amount)} brutto auf Objekte bzw. allgemeine
+          Kostenstellen verteilen. Zählt netto in Nachkalkulation, Kostenstellen und Ausgaben – nicht im
+          DATEV-Export (Buchung über den Kontoauszug beim Steuerberater). Wiederkehrende Zahlungen hier nicht
+          zuordnen (sonst doppelt).
+          {pre && ' Vorbelegt wie die letzte Zuordnung dieses Empfängers.'}
+        </p>
+        <style>{`.crow{display:grid;grid-template-columns:minmax(0,1fr) 130px 34px;gap:8px;align-items:center;margin-bottom:6px}
+.crow[hidden]{display:none!important}.crow select,.crow input{width:100%;min-width:0}.crow-h{font-size:12.5px;color:var(--mut,#6e6e73);margin-bottom:4px}`}</style>
+        <div class="crow crow-h">
+          <span>Objekt / Kostenstelle</span>
+          <span style="text-align:right">Betrag brutto €</span>
+          <span></span>
+        </div>
+        {Array.from({ length: rows }, (_, i) => (
+          <div class="crow" data-crow={String(i)} hidden={i > 0}>
+            <select name="ziel" aria-label="Objekt oder Kostenstelle" required={i === 0}>
+              <TargetOptions sel={i === 0 ? pre?.target : undefined} />
+            </select>
+            <input
+              name="betrag"
+              inputmode="decimal"
+              aria-label="Betrag brutto"
+              placeholder={i === 0 ? 'ganzer Betrag' : '0,00'}
+              style="text-align:right"
+            />
+            {i > 0 ? (
+              <a
+                href="#"
+                class="btn sm ghost"
+                data-crow-del="1"
+                title="Zeile entfernen"
+                aria-label="Zeile entfernen"
+              >
+                ×
+              </a>
+            ) : (
+              <span></span>
+            )}
+          </div>
+        ))}
+        <div class="actions" style="margin:6px 0 10px;align-items:center">
+          <a href="#" class="btn sm sec" data-crow-add="1">
+            + auf weiteres Objekt aufteilen
+          </a>
+          <span class="small" data-cost-sum></span>
+        </div>
+        <div class="grid">
+          <div>
+            <label>Kostenart</label>
+            <select name="kategorie" required>
+              <option value="">– bitte wählen –</option>
+              {COST_ASSIGN_CATEGORIES.map((k) => (
+                <option value={k} selected={pre?.category === k}>
+                  {EXPENSE_CATEGORY[k]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>USt im Betrag</label>
+            <select name="ust">
+              {[
+                [1900, '19 %'],
+                [700, '7 %'],
+                [0, '0 % / ohne (z. B. Kleinunternehmer, Gebühren)'],
+              ].map(([v, l]) => (
+                <option value={String(v)} selected={(pre?.vat_bp ?? 1900) === v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Leistungsmonat</label>
+            <input type="month" name="monat" value={t.booking_date.slice(0, 7)} required />
+          </div>
+          <div>
+            <label>Notiz</label>
+            <input name="note" placeholder="z. B. Reinigungsmittel Baumarkt" maxlength={200} />
+          </div>
+          <div>
+            <label>Beleg (optional, Foto/PDF)</label>
+            <input type="file" name="beleg" accept="application/pdf,image/*" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn">Kosten zuordnen</button>
+          <a class="btn sec" href="#" data-inline-close="1">
+            Abbrechen
+          </a>
+        </div>
+      </form>
+    );
+  };
+  const COST_JS = `(function(){
+  function eur(c){return (c/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+  function cents(v){v=(v||'').replace(/[.]/g,'').replace(',','.').trim();var n=Number(v);return isFinite(n)?Math.round(n*100):NaN;}
+  function calc(f){var amt=Number(f.getAttribute('data-amount'));var rows=[].slice.call(f.querySelectorAll('[data-crow]')).filter(function(r){return !r.hidden;});
+    var out=f.querySelector('[data-cost-sum]');if(!out)return;if(rows.length<2){out.textContent='';return;}
+    var sum=0;rows.forEach(function(r){var c=cents(r.querySelector('input[name=betrag]').value);if(c>0)sum+=c;});
+    var d=amt-sum;out.textContent='Summe '+eur(sum)+' von '+eur(amt)+(d?' – noch '+eur(d)+' offen':' ✓');out.style.color=d?'#b45309':'#2e7d32';}
+  document.addEventListener('click',function(e){var a=e.target.closest('[data-crow-add]');var x=e.target.closest('[data-crow-del]');
+    if(a){e.preventDefault();var f=a.closest('form');var r=f.querySelector('[data-crow][hidden]');if(r){r.hidden=false;var s=r.querySelector('select');if(s)s.required=true;}calc(f);return;}
+    if(x){e.preventDefault();var tr=x.closest('[data-crow]');tr.hidden=true;tr.querySelector('input').value='';var s2=tr.querySelector('select');s2.value='';s2.required=false;s2.dispatchEvent(new Event('change',{bubbles:true}));calc(tr.closest('form'));}});
+  document.addEventListener('input',function(e){var f=e.target.closest('form.cost-form');if(f)calc(f);});
+})();`;
+
+  app.get(`/transfer/kontoumsaetze/:id{${UUID}}/kosten`, async (c) => {
+    const t = await getTransaction(sql, c.req.param('id'));
+    if (!t) return c.notFound();
+    if (t.status !== 'offen') return c.redirect(`${BACK}/${t.id}`);
+    return shell(
+      c,
+      'konto',
+      'Kosten direkt zuordnen',
+      <>
+        <style>{TX_CSS}</style>
+        <TxHead t={t} />
+        <div class="card">
+          <CostForm t={t} {...await costFormData(t)} />
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: COST_JS }} />
+      </>,
+    );
+  });
+
+  app.post(`/transfer/kontoumsaetze/:id{${UUID}}/kosten`, async (c) => {
+    const id = c.req.param('id');
+    const b = await c.req.parseBody({ all: true });
+    const list = (k: string) => {
+      const v = b[k];
+      return (Array.isArray(v) ? v : v === undefined ? [] : [v]).map((x) => (typeof x === 'string' ? x : ''));
+    };
+    const ziele = list('ziel');
+    const betraege = list('betrag');
+    const lines = ziele.map((target, i) => {
+      const raw = (betraege[i] ?? '').trim();
+      let gross = 0n;
+      if (raw)
+        try {
+          gross = parseEuro(raw);
+        } catch {
+          throw new BusinessError(`Betrag nicht lesbar: ${raw}`);
+        }
+      return { target: target.trim(), gross };
+    });
+    const t = await getTransaction(sql, id);
+    await assignCosts(
+      sql,
+      id,
+      {
+        lines,
+        category: str(b as Record<string, string>, 'kategorie') ?? '',
+        vatBp: Number(str(b as Record<string, string>, 'ust') || '1900'),
+        month: str(b as Record<string, string>, 'monat') ?? '',
+        note: str(b as Record<string, string>, 'note') || null,
+      },
+      c.get('actor'),
+    );
+    const f = b['beleg'];
+    const file = Array.isArray(f) ? f[0] : f;
+    if (file && typeof file !== 'string' && file.size > 0) {
+      if (file.size > env.UPLOAD_MAX_BYTES) throw new BusinessError('Beleg ist zu groß');
+      await storeFile(
+        sql,
+        { dir: env.FILES_DIR, maxBytes: env.UPLOAD_MAX_BYTES },
+        {
+          id: randomUUID(),
+          name: file.name || `Beleg_${t?.booking_date ?? ''}.pdf`,
+          type: file.type || 'application/octet-stream',
+          data: new Uint8Array(await file.arrayBuffer()),
+          link: { type: 'bank_transaction', id },
+          category: 'Beleg',
+        },
+        c.get('actor'),
+      );
+    }
+    return back(c, BACK, { ok: 'Kosten zugeordnet.' });
   });
 
   const TxHead = ({ t }: { t: BankTx }) => (
@@ -1197,7 +1509,9 @@ export function registerTransferRoutes({ app, deps, page, back }: Ctx) {
       <div class="tx-match">
         {t.status !== 'offen' && (
           <>
-            <span class={`badge ${t.status === 'zugeordnet' ? 'ok' : ''}`}>{TX_STATUS[t.status]}</span>{' '}
+            <span class={`badge ${t.status === 'zugeordnet' ? 'ok' : ''}`}>
+              {t.assigned_kind === 'kosten' ? 'Kosten zugeordnet' : TX_STATUS[t.status]}
+            </span>{' '}
             {t.note}
             {t.matched_by ? ` (${t.matched_by}, ${at(t.matched_at!)})` : ''}
           </>

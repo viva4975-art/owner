@@ -6074,3 +6074,18 @@ Testadresse.
   **Ahmed: In Lexware muss der Stundensatz der Lohnart „Krank“ bei Festgehalt-Mitarbeitenden dem Satz aus der App
   entsprechen (Gehalt ÷ Soll-Stunden), sonst stimmt die Summe dort nicht – erste Abrechnung gegenprüfen.** Urlaub bei
   Festgehalt bleibt im Gehalt (nicht getrennt). Test in `payroll-absence.db.test.ts`.
+- 2026-11-26: **Kontoumsatz direkt als Kosten zuordnen** (Ahmed: „Bestellungen von Lieferanten, die ich nicht anlegen will,
+  Kosten trotzdem einem Objekt zuordnen“): Kontoumsätze → bei jedem offenen Umsatz Knopf/Reiter **„Kosten“** (auch
+  „Kosten direkt zuordnen“ auf der Umsatz-Seite, `/transfer/kontoumsaetze/:id/kosten`): Objekt oder allgemeine
+  Kostenstelle, Betrag brutto (eine Zeile ohne Betrag = ganzer Umsatz), „+ auf weiteres Objekt aufteilen“ (Summe muss dem
+  Umsatz entsprechen, rechnet im Browser mit), Kostenart (ohne Steuern/Privat), USt im Betrag 19/7/0 %, Leistungsmonat
+  (Buchungsmonat vorbelegt), Notiz, optional Beleg (Foto/PDF, write-once, Link `bank_transaction`, auch S3-Archiv; später
+  auf der Umsatz-Seite nachladbar). Vorbelegt wie die letzte Zuordnung desselben Empfängers (IBAN, sonst Name). Tabelle
+  `app.bank_cost_allocations` (netto kaufmännisch gerundet), Umsatz danach erledigt mit `assigned_kind = 'kosten'`;
+  „wieder öffnen“ löscht die Aufteilung. Neue View **`app.booked_cost_lines`** = Eingangsrechnungen (erfasst/freigegeben/
+  bezahlt) + diese Kosten; Nachkalkulation, „Kosten aufschlüsseln“, Kosten im Detail je Objekt, Kostenstellen-Auswertung,
+  Ø Stundensätze (NU) und Budget-Gemeinkosten lesen daraus. Ausgaben-Statistik über die Kostenart des Umsatzes.
+  Material an allgemeinen Kostenstellen zählt in der Nachkalkulation weiter nicht (Entscheidung 27.10.).
+  **Steuer/GoBD:** Vorsteuer nur mit Beleg (bis 250 € Kleinbetragsrechnung); nicht im DATEV-Export – der Steuerberater
+  bucht über den Kontoauszug. Wiederkehrende Zahlungen nicht zusätzlich so zuordnen (sonst doppelt in der Nachkalkulation).
+  Migration `20270212000001`, Test `bank-costs.db.test.ts`.

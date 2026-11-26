@@ -68,6 +68,7 @@ const LINK_PAGE: Record<string, (id: string) => string> = {
   tender: () => '/ausschreibungen',
   legacy_import: () => '/transfer/altdaten',
   vehicle: () => '/fahrzeuge',
+  bank_transaction: () => '/transfer/kontoumsaetze',
   word_template: () => '/einstellungen/word-vorlagen',
 };
 

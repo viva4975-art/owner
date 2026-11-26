@@ -7,6 +7,7 @@ import {
   subcontractEstimates,
 } from './costing.js';
 import { COST_CATEGORY, type CostCategory } from './purchasing.js';
+import { EXPENSE_CATEGORY } from './bank.js';
 import { recurringCosts } from './recurring-payments.js';
 import { laborFromPayroll } from './costing-labor.js';
 
@@ -75,16 +76,38 @@ async function incomingItems(
      where ${target.siteId ? sql`a.site_id = ${target.siteId}` : sql`a.cost_center_id = ${target.costCenterId!}`}
        and i.status in ('erfasst', 'freigegeben', 'bezahlt') and a.month between ${from} and ${to}
      group by 1, 2, 3, 4, 5, 6, 7`;
-  return rows.map((r) => ({
-    category: r.category,
-    item: {
-      date: r.invoice_date,
-      label: `${r.supplier_name} · Rechnung ${r.invoice_no}`,
-      sub: `Eingangsrechnung · ${COST_CATEGORY[r.category as CostCategory] ?? r.category} · Leistungsmonat ${r.month} · ${r.status}`,
-      href: `/rechnungseingang/${r.id}`,
-      amount: r.net,
-    } satisfies CostItem,
-  }));
+  const bank = await sql<
+    { id: string; name: string | null; booking_date: string; category: string; month: string; net: bigint }[]
+  >`
+    select t.id, t.counterparty_name as name, t.booking_date::text as booking_date, b.category,
+           to_char(b.month, 'MM/YYYY') as month, sum(b.net_cents)::bigint as net
+      from app.bank_cost_allocations b join app.bank_transactions t on t.id = b.bank_transaction_id
+     where t.status = 'ignoriert' and t.assigned_kind = 'kosten'
+       and ${target.siteId ? sql`b.site_id = ${target.siteId}` : sql`b.cost_center_id = ${target.costCenterId!}`}
+       and b.month between ${from} and ${to}
+     group by 1, 2, 3, 4, 5`;
+  return [
+    ...rows.map((r) => ({
+      category: r.category,
+      item: {
+        date: r.invoice_date,
+        label: `${r.supplier_name} · Rechnung ${r.invoice_no}`,
+        sub: `Eingangsrechnung · ${COST_CATEGORY[r.category as CostCategory] ?? r.category} · Leistungsmonat ${r.month} · ${r.status}`,
+        href: `/rechnungseingang/${r.id}`,
+        amount: r.net,
+      } satisfies CostItem,
+    })),
+    ...bank.map((r) => ({
+      category: r.category,
+      item: {
+        date: r.booking_date,
+        label: `${r.name ?? 'Kontoumsatz'} · Kontoumsatz`,
+        sub: `direkt zugeordnet (ohne Rechnung) · ${EXPENSE_CATEGORY[r.category] ?? r.category} · Leistungsmonat ${r.month} · netto`,
+        href: `/transfer/kontoumsaetze/${r.id}`,
+        amount: r.net,
+      } satisfies CostItem,
+    })),
+  ];
 }
 
 function bucket(b: CostBreakdown, category: string | null) {

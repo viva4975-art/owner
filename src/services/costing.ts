@@ -183,8 +183,8 @@ export async function subcontractEstimates(
       : (
           await sql<{ k: string }[]>`
         select distinct a.site_id || '|' || to_char(a.month, 'YYYY-MM') as k
-          from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
-         where i.category = 'nachunternehmer' and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+          from app.booked_cost_lines a
+         where a.category = 'nachunternehmer'
            and a.month between date_trunc('month', ${from}::date) and ${to}::date`
         ).map((r) => r.k),
   );
@@ -535,19 +535,17 @@ export async function siteCosting(
       ) mat group by site_id`,
     // Eingangsrechnungen (auch Nachunternehmer) nach Aufteilung auf Kostenstelle = Objekt und Leistungsmonat
     sql<{ site_id: string; category: string; net: bigint }[]>`
-      select a.site_id, i.category::text as category, sum(a.net_cents)::bigint as net
-        from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
-       where a.site_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
-         and a.month between ${from} and ${to}
-       group by a.site_id, i.category`,
+      select a.site_id, a.category, sum(a.net_cents)::bigint as net
+        from app.booked_cost_lines a
+       where a.site_id is not null and a.month between ${from} and ${to}
+       group by a.site_id, a.category`,
     plannedShifts(sql, { from, to, ...(siteId ? { siteId } : {}) }),
     siteId
       ? Promise.resolve([])
       : sql<{ id: string; number: string; name: string; category: string; net: bigint }[]>`
-          select cc.id, cc.number, cc.name, i.category::text as category, sum(a.net_cents)::bigint as net
-            from app.incoming_cost_lines a join app.cost_centers cc on cc.id = a.cost_center_id
-            join app.incoming_invoices i on i.id = a.incoming_invoice_id
-           where a.cost_center_id is not null and i.status in ('erfasst', 'freigegeben', 'bezahlt')
+          select cc.id, cc.number, cc.name, a.category, sum(a.net_cents)::bigint as net
+            from app.booked_cost_lines a join app.cost_centers cc on cc.id = a.cost_center_id
+           where a.cost_center_id is not null
              and a.month between ${from} and ${to}
            group by 1, 2, 3, 4 order by cc.number`,
   ]);
@@ -715,13 +713,24 @@ export async function siteCostDetails(sql: Sql, siteId: string, period: { from: 
       status: string;
       month: string;
       net: bigint;
+      href: string;
     }[]
   >`
-    select i.id, s.name as supplier_name, i.invoice_no, i.invoice_date::text as invoice_date,
-           i.category::text as category, i.status::text as status, to_char(a.month, 'YYYY-MM') as month,
-           sum(a.net_cents)::bigint as net
-      from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
-      join app.suppliers s on s.id = i.supplier_id
-     where a.site_id = ${siteId} and a.month between ${from} and ${to}
-     group by 1, 2, 3, 4, 5, 6, 7 order by 7, 4`;
+    select * from (
+      select i.id, s.name as supplier_name, i.invoice_no, i.invoice_date::text as invoice_date,
+             i.category::text as category, i.status::text as status, to_char(a.month, 'YYYY-MM') as month,
+             sum(a.net_cents)::bigint as net, '/rechnungseingang/' || i.id as href
+        from app.incoming_cost_lines a join app.incoming_invoices i on i.id = a.incoming_invoice_id
+        join app.suppliers s on s.id = i.supplier_id
+       where a.site_id = ${siteId} and a.month between ${from} and ${to}
+       group by 1, 2, 3, 4, 5, 6, 7
+      union all
+      select t.id, coalesce(t.counterparty_name, 'Kontoumsatz'), 'Kontoumsatz (ohne Rechnung)', t.booking_date::text,
+             b.category, 'bezahlt', to_char(b.month, 'YYYY-MM'), sum(b.net_cents)::bigint,
+             '/transfer/kontoumsaetze/' || t.id
+        from app.bank_cost_allocations b join app.bank_transactions t on t.id = b.bank_transaction_id
+       where t.status = 'ignoriert' and t.assigned_kind = 'kosten'
+         and b.site_id = ${siteId} and b.month between ${from} and ${to}
+       group by t.id, t.counterparty_name, t.booking_date, b.category, b.month
+    ) x order by 7, 4`;
 }

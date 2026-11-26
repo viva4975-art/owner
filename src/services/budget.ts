@@ -486,14 +486,15 @@ async function costSuggestions(sql: Sql, year: number) {
            (date_trunc('month', (now() at time zone 'Europe/Berlin')::date) - interval '1 day')::date::text as to`;
   const { from, to } = win!;
   const inc = await sql<{ category: string; number: string; text: string; net: bigint }[]>`
-    select i.category::text as category, cc.number, coalesce(su.name, '') || ' ' || coalesce(i.note, '') as text,
+    select a.category, cc.number,
+           coalesce(su.name, bt.counterparty_name, '') || ' ' || coalesce(i.note, bt.purpose, '') as text,
            sum(a.net_cents)::bigint as net
-      from app.incoming_cost_lines a join app.cost_centers cc on cc.id = a.cost_center_id
-      join app.incoming_invoices i on i.id = a.incoming_invoice_id
+      from app.booked_cost_lines a join app.cost_centers cc on cc.id = a.cost_center_id
+      left join app.incoming_invoices i on a.source = 'eingang' and i.id = a.ref_id
       left join app.suppliers su on su.id = i.supplier_id
+      left join app.bank_transactions bt on a.source = 'bank' and bt.id = a.ref_id
      where a.cost_center_id is not null and a.site_id is null
-       and i.status in ('erfasst', 'freigegeben', 'bezahlt')
-       and i.category::text not in ('material', 'umsatzsteuer', 'koerperschaftsteuer')
+       and a.category not in ('material', 'umsatzsteuer', 'koerperschaftsteuer')
        and a.month between ${from} and ${to}
      group by 1, 2, 3`;
   const yearly = new Map<string, bigint>();

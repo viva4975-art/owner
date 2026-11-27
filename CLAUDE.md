@@ -6143,3 +6143,18 @@ Testadresse.
   (Verwaltung → Briefe, Kunde, Objekt, Lieferant, Mitarbeiter), Mitarbeiter-Briefvorlagen, Serienbriefe an Kunden,
   Preisanpassungs-Anschreiben. Rechnungen, Mahnungen, Gutschriften, Bestellscheine, Lieferscheine bleiben im Rechnungs-
   stil. Bereits archivierte PDFs bleiben unverändert. Die Word-Fassung der freien Briefe ist unverändert.
+- 2026-11-27: **Qualitätskontrolle ohne Empfang im normalen Ablauf** (Ahmed: „funktioniert nicht ohne Empfang“): Bisher ging
+  offline nur über die eigene Seite „Ohne Netz prüfen“ und nur, wenn vorher dort Objekte geladen waren; im normalen Audit
+  (`/qm/audit/…`) führte Speichern ohne Netz zur Fehlerseite (Eingaben weg). Jetzt auf allen QM-Seiten (`QM_GLUE_JS` in
+  `src/web/qm-offline-js.ts`, gemeinsamer Kern `QM_OFF_CORE`): Service Worker `/qm/sw.js` wird immer angemeldet (Hülle beim
+  Installieren gespeichert, Navigation unter `/qm/` nach 12 s ohne Antwort → Hülle), **Objekte automatisch aufs Handy**
+  (Objektleitung alle eigenen, Büro die im letzten Jahr geprüften, max. 80; höchstens alle 6 Std., Paket älter als 12 Std.
+  wird erneuert; beim Öffnen eines Audits/Raums das Objekt sofort). **Raum speichern** schickt das Formular per fetch (45 s
+  Zeitlimit); ohne Netz bzw. bei Abbruch wird der Raum mit Bewertungen, Bemerkungen und Fotos (auf 1600 px) auf dem Handy
+  gespeichert und die Offline-Ansicht desselben Audits geöffnet. **Audit starten** ohne Netz legt es auf dem Handy an,
+  wenn das Objekt dort ist. Ohne Netz geöffnete `/qm/audit/<id>/raum/<raum>` zeigt die passende Offline-Ansicht (online
+  schon bewertete Räume mit Ergebnis). Offene Räume werden auf jeder QM-Seite übertragen, sobald Netz da ist (feste IDs,
+  nichts doppelt). Mit dem Browser durchgespielt (Server abgeschaltet = kein Netz): Raum ohne Netz gespeichert, zweiter
+  Raum offline, Audit offline gestartet, nach Neustart alles übertragen. **Grenze:** Abschließen mit Unterschrift und
+  Bericht weiter nur mit Netz; Fotos aus der Offline-Erfassung tragen die Handy-Zeit. Nebenbei: Foto-Stempel stürzte bei
+  sehr kleinen Bildern ab (unter 800 px wird jetzt vergrößert).

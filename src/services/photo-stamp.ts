@@ -84,7 +84,13 @@ export async function stampPhoto(input: Uint8Array, info: StampInfo): Promise<Ui
     fit: 'inside',
     withoutEnlargement: true,
   });
-  const { data: img, info: meta } = await base.jpeg({ quality: 92 }).toBuffer({ resolveWithObject: true });
+  let { data: img, info: meta } = await base.jpeg({ quality: 92 }).toBuffer({ resolveWithObject: true });
+  // sehr kleine Bilder (z. B. Vorschaubilder) vergrößern, sonst passt der Stempel nicht darauf
+  if (meta.width < 800)
+    ({ data: img, info: meta } = await sharp(img)
+      .resize({ width: 800 })
+      .jpeg({ quality: 92 })
+      .toBuffer({ resolveWithObject: true }));
   const W = meta.width;
   const H = meta.height;
   const band = Math.max(96, Math.round(Math.min(W, H) * 0.16));

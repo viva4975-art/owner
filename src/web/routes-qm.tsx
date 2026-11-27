@@ -1,3 +1,4 @@
+import { QM_GLUE_JS } from './qm-offline-js.js';
 import { PushCard } from './push-ui.js';
 import { GLASS_CSS, GLASS_HEAD_JS } from './glass-css.js';
 import { timeAnomalies } from '../services/time-anomalies.js';
@@ -248,6 +249,8 @@ export const QmLayout: FC<{
       {/* während einer Kontrolle keine Leiste unten (Ahmed 15.10.) */}
       {!/^\/qm\/(audit\/|personalbogen\/|unterweisungen\/neu)/.test(path) && <AppTabbar path={path} />}
       <script dangerouslySetInnerHTML={{ __html: SCROLL_JS }} />
+      {/* Qualitätskontrolle auch ohne Empfang (Service Worker, Objekte aufs Handy, Speichern bei fehlendem Netz) */}
+      <script dangerouslySetInnerHTML={{ __html: QM_GLUE_JS }} />
     </body>
   </html>
 );
@@ -904,6 +907,18 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
           </h1>
           <span style="width:36px" />
         </div>
+        <div
+          id="qm-audit-data"
+          hidden
+          data-json={JSON.stringify({
+            id: qc.id,
+            siteId: qc.site_id,
+            siteNo: qc.site_no,
+            siteName: qc.site_name,
+            date: qc.check_date,
+            rated: Object.fromEntries(rooms.filter((r) => r.rated > 0).map((r) => [r.id, r.score ?? null])),
+          })}
+        />
         <div class="qm-note">
           <span class="mut">
             {qc.number} · {done} von {rooms.length} Räumen
@@ -991,6 +1006,20 @@ export function registerQmRoutes({ app, deps, back, page }: Ctx) {
             + Ticket
           </a>
         </div>
+        {!locked && (
+          <div
+            id="qm-room-data"
+            hidden
+            data-json={JSON.stringify({
+              audit: qc.id,
+              site: qc.site_id,
+              room: room.id,
+              siteNo: qc.site_no,
+              siteName: qc.site_name,
+              date: qc.check_date,
+            })}
+          />
+        )}
         <div class="qm-note">
           <span>Gesamtnote</span>
           <b id="gnote">{room.score != null ? `${room.score} %` : '0 %'}</b>

@@ -10,9 +10,9 @@ import { QM_OFFLINE_JS } from './qm-offline-js.js';
  */
 
 const SW = `
-var C='vd-qm-off-v1';
+var C='vd-qm-off-v2';
 var SHELL='/qm/offline';
-self.addEventListener('install',function(e){self.skipWaiting();});
+self.addEventListener('install',function(e){e.waitUntil(caches.open(C).then(function(c){return Promise.all([c.add(SHELL),c.add('/static/logo-transparent.png')]).catch(function(){});}).then(function(){return self.skipWaiting();}));});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.filter(function(k){return k.indexOf('vd-qm-off')===0&&k!==C;}).map(function(k){return caches.delete(k);}));}).then(function(){return self.clients.claim();}));});
 self.addEventListener('message',function(e){if(e.data==='cache-shell'){fetch(SHELL,{credentials:'same-origin',redirect:'manual'}).then(function(r){if(r.ok&&!r.redirected&&r.type!=='opaqueredirect')return caches.open(C).then(function(c){return Promise.all([c.put(SHELL,r),c.add('/static/logo-transparent.png').catch(function(){})]);});}).catch(function(){});}});
 self.addEventListener('fetch',function(e){
@@ -20,7 +20,9 @@ self.addEventListener('fetch',function(e){
   var u=new URL(r.url); if(u.origin!==location.origin)return;
   if(u.pathname==='/static/logo-transparent.png'){e.respondWith(caches.match(r).then(function(m){return m||fetch(r);}));return;}
   if(r.mode!=='navigate'||u.pathname.indexOf('/qm/')!==0)return;
-  e.respondWith(fetch(r).then(function(res){
+  // schwacher Empfang: nach 12 s die Hülle zeigen statt endlos zu laden
+  var net=fetch(r);var slow=new Promise(function(res,rej){setTimeout(function(){rej(new Error('slow'))},12000);});
+  e.respondWith(Promise.race([net,slow]).then(function(res){
     if(u.pathname===SHELL&&res.ok&&!res.redirected){var cp=res.clone();caches.open(C).then(function(c){c.put(SHELL,cp);});}
     return res;
   }).catch(function(){return caches.match(SHELL).then(function(m){return m||new Response('<h1>Keine Verbindung</h1>',{headers:{'Content-Type':'text/html; charset=utf-8'}});});}));
@@ -78,9 +80,19 @@ export function registerQmOfflineRoutes({ app, deps }: Ctx) {
   app.get('/qm/offline', (c) => c.html(PAGE, 200, { 'Cache-Control': 'no-cache' }));
 
   app.get('/qm/offline/objekte.json', async (c) => {
-    const sites = await qmSites(sql, c.get('sites'));
+    const scoped = c.get('sites');
+    const sites = await qmSites(sql, scoped);
+    // im Hintergrund aufs Handy laden: Objektleitung alle eigenen, Büro die im letzten Jahr geprüften (max. 80)
+    const recent = new Set(
+      (
+        await sql<{ site_id: string }[]>`
+          select site_id from app.quality_checks where check_date >= current_date - 400
+           group by site_id order by max(check_date) desc limit 80`
+      ).map((r) => r.site_id),
+    );
     return c.json(
       sites.map((s) => ({
+        prefetch: scoped ? true : recent.has(s.id),
         id: s.id,
         no: s.site_no,
         name: s.name,

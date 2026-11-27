@@ -40,6 +40,7 @@ import {
   type WorkReportVersion,
 } from '../services/orders.js';
 import { listFiles } from '../services/uploads.js';
+import { ensureGeneralSite } from '../services/fortytools-more-import.js';
 import { fullName } from '../services/users.js';
 import { type Ctx, UUID, assertSite, inScope } from './app.js';
 import { FileArea } from './files.js';
@@ -1193,8 +1194,17 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
     const q = c.req.query();
     const order = !data && q.auftrag ? (await getOrder(sql, q.auftrag))?.order : undefined;
     const w = data?.report;
-    const siteId = w?.site_id ?? order?.site_id ?? q.objekt ?? '';
     const scope = c.get('sites');
+    // Ohne Objekt (Ahmed 27.11.): Schein beim Kunden – Kostenstelle ist dessen Objekt „Allgemein“ (nur Büro)
+    if (!data && !q.objekt && !order && q.kunde && /^[0-9a-f-]{36}$/.test(q.kunde)) {
+      if (scope) throw new BusinessError('Ohne Objekt nur im Büro – bitte ein Objekt wählen');
+      const [k] = await sql<{ customer_no: string }[]>`
+        select customer_no from app.customers where id = ${q.kunde}`;
+      const gen = k ? await ensureGeneralSite(sql, k.customer_no, c.get('actor')) : null;
+      if (!gen) throw new BusinessError('Kunde nicht gefunden');
+      return c.redirect(`/arbeitsscheine/${id}?objekt=${gen}&ohne=1`, 303);
+    }
+    const siteId = w?.site_id ?? order?.site_id ?? q.objekt ?? '';
     const sites = (await listSites(sql)).filter((s) => !scope || scope.includes(s.id));
     const emps = siteId
       ? await sql<{ id: string; name: string }[]>`
@@ -1625,6 +1635,10 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
       </tr>
     );
     const notes = siteId ? await executionNotes(sql, siteId, w?.work_date ?? todayBerlin()) : [];
+    const siteRow = sites.find((s) => s.id === siteId);
+    const isGeneral = q.ohne === '1' || /^Allgemein( \(aus Fortytools\))?$/.test(siteRow?.name ?? '');
+    const customers =
+      !siteId && !scope ? (await listCustomers(sql)).filter((k) => !k.is_internal && k.active) : [];
     const staff = w ? await activeStaff() : [];
     return page(
       c,
@@ -1639,13 +1653,32 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         </PageHead>
         {w && <VersionsBox id={id} versions={versions} copiedFrom={copyRow ?? null} />}
         {!siteId ? (
-          <form method="get" action={`/arbeitsscheine/${id}`} class="card" style="max-width:520px">
-            <label for="objekt">Objekt</label>
-            <select id="objekt" name="objekt" onchange="this.form.submit()" required>
-              <option value="">– bitte wählen –</option>
-              <SiteOptions sites={sites} />
-            </select>
-          </form>
+          <div class="card" style="max-width:560px">
+            <form method="get" action={`/arbeitsscheine/${id}`}>
+              <label for="objekt">Objekt</label>
+              <select id="objekt" name="objekt" onchange="this.form.submit()" required>
+                <option value="">– bitte wählen –</option>
+                <SiteOptions sites={sites} />
+              </select>
+            </form>
+            {!scope && (
+              <form method="get" action={`/arbeitsscheine/${id}`} style="margin-top:16px">
+                <label for="kunde">oder ohne Objekt – nur Kunde</label>
+                <select id="kunde" name="kunde" onchange="this.form.submit()" required>
+                  <option value="">– Kunde wählen –</option>
+                  {customers.map((k) => (
+                    <option value={k.id}>
+                      {k.customer_no} · {k.name}
+                    </option>
+                  ))}
+                </select>
+                <p class="mut small">
+                  Der Schein läuft auf die Kostenstelle „Allgemein“ des Kunden; den Einsatzort tragen Sie
+                  danach als Text ein.
+                </p>
+              </form>
+            )}
+          </div>
         ) : (
           <div class="cols">
             <form
@@ -1661,6 +1694,22 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
                 Objekt: <b>{sites.find((s) => s.id === siteId)?.name}</b>
                 {(w?.order_number ?? order?.number) && <> · Auftrag {w?.order_number ?? order?.number}</>}
               </p>
+              {(isGeneral || w?.place_text) && (
+                <>
+                  <label for="place_text">Einsatzort (Adresse, optional)</label>
+                  <textarea
+                    id="place_text"
+                    name="place_text"
+                    rows={2}
+                    placeholder="z. B. Musterstraße 1, 80331 München – Treppenhaus"
+                  >
+                    {w?.place_text ?? ''}
+                  </textarea>
+                  <p class="mut small" style="margin-top:2px">
+                    Steht im PDF statt der Objektanschrift. Leer = Anschrift von „{siteRow?.name}“.
+                  </p>
+                </>
+              )}
               {notes.length > 0 && (
                 <div class="flash" style="background:var(--warn-50,#fffbeb);border:1px solid #fde68a">
                   <b>Ausführungshinweise</b>
@@ -1976,6 +2025,7 @@ export function registerOrderRoutes({ app, deps, page, back, shells }: Ctx) {
         description: str(b, 'description'),
         materials: str(b, 'materials'),
         remarks: str(b, 'remarks'),
+        placeText: str(b, 'place_text'),
         lines,
         expectedVersion: versionOf(b.version),
       },

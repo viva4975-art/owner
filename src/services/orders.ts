@@ -450,6 +450,8 @@ export interface WorkReport {
   description: string | null;
   materials: string | null;
   remarks: string | null;
+  /** Einsatzort als Text (Schein ohne eigenes Objekt) */
+  place_text: string | null;
   status: WorkReportStatus;
   signed_by_name: string | null;
   signed_at: Date | null;
@@ -558,6 +560,8 @@ export interface WorkReportInput {
   description: string | null;
   materials: string | null;
   remarks: string | null;
+  /** Einsatzort als Text (nur bei Schein ohne eigenes Objekt) */
+  placeText?: string | null;
   lines: {
     description: string;
     quantity: Quantity;
@@ -621,6 +625,7 @@ export async function saveWorkReport(sql: Sql, id: string, input: WorkReportInpu
       description: input.description,
       materials: input.materials,
       remarks: input.remarks,
+      place_text: input.placeText?.trim() ? input.placeText.trim().slice(0, 500) : null,
     };
     if (cur) await tx`update app.work_reports set ${tx(row as Record<string, unknown>)} where id = ${id}`;
     else {
@@ -703,6 +708,7 @@ export async function copyWorkReport(
       description: w.description,
       materials: w.materials,
       remarks: w.remarks,
+      placeText: same ? w.place_text : null,
       lines: src.lines.map((l) => ({
         description: l.description,
         quantity: l.quantity_milli as Quantity,
@@ -1015,14 +1021,22 @@ export async function renderWorkReportPdf(deps: Deps, id: string): Promise<Uint8
         Boolean,
       ),
     },
-    {
-      label: 'Objektanschrift',
-      lines: [
-        w.site_name,
-        site?.street ?? '',
-        `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim(),
-      ].filter(Boolean),
-    },
+    w.place_text
+      ? {
+          label: 'Einsatzort',
+          lines: w.place_text
+            .split(/\r?\n/)
+            .map((x) => x.trim())
+            .filter(Boolean),
+        }
+      : {
+          label: 'Objektanschrift',
+          lines: [
+            w.site_name,
+            site?.street ?? '',
+            `${site?.postal_code ?? ''} ${site?.city ?? ''}`.trim(),
+          ].filter(Boolean),
+        },
   );
   if (w.description) {
     d.section('Ausgeführte Arbeiten');

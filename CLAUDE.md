@@ -6158,3 +6158,10 @@ Testadresse.
   Raum offline, Audit offline gestartet, nach Neustart alles übertragen. **Grenze:** Abschließen mit Unterschrift und
   Bericht weiter nur mit Netz; Fotos aus der Offline-Erfassung tragen die Handy-Zeit. Nebenbei: Foto-Stempel stürzte bei
   sehr kleinen Bildern ab (unter 800 px wird jetzt vergrößert).
+- 2026-11-27: **Arbeitsschein ohne Objektzuordnung** (Ahmed): Neuer Arbeitsschein → unter der Objektauswahl „oder ohne
+  Objekt – nur Kunde“ (nur Büro, nicht Objektleitung). Der Schein läuft auf das Objekt „Allgemein“ des Kunden
+  (`ensureGeneralSite`, wird bei Bedarf angelegt = Kostenstelle für Nachkalkulation/Rechnung, wie beim Einzelauftrag).
+  Neues Feld **„Einsatzort (Adresse, optional)“** (`work_reports.place_text`, Migration `20270214000001`), erscheint bei
+  „Allgemein“-Objekten bzw. wenn befüllt; im PDF steht dann „Einsatzort“ statt der Objektanschrift. Kopie behält den
+  Einsatzort nur am selben Objekt. Mitarbeiter-Häkchen gibt es dort nur für dem „Allgemein“-Objekt zugeordnete Leute –
+  Regiestunden mit Namen gehen wie immer.
